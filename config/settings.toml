@@ -1,0 +1,30 @@
+[smtp]
+host = "smtp.gmail.com"
+port = 587
+# sender/recipient are intentionally NOT set here — your email is PII + per-machine. Set it in
+# the gitignored .env (INTERNSHELPER_SMTP_SENDER / INTERNSHELPER_SMTP_RECIPIENT) and the app
+# password via INTERNSHELPER_SMTP_PASSWORD. `bash scripts/bootstrap.sh` scaffolds .env for you.
+# Leaving them unset means an email-enabled run with no creds gives a clear "set INTERNSHELPER_
+# SMTP_SENDER/RECIPIENT" error instead of silently trying to mail a placeholder address.
+
+[review]
+# Email a review nudge once at least this many postings are pending classification.
+notify_threshold = 10
+
+[filters]
+# Keyword flags are PRIORITY HINTS for the review queue (candidates first) — not a gate.
+# These booleans tune the dashboard's keyword-based "All postings" filtering only.
+require_cs = true
+require_intern_or_newgrad = true
+
+[keywords]
+# A flag is true iff >=1 of its keywords matches (whole-word, case-insensitive)
+# anywhere in the title + HTML-stripped description.
+# The sentinel "summer 20xx" is expanded to the year-aware pattern \bsummer\s+20\d{2}\b.
+internship = ["intern", "interns", "internship", "co-op", "coop", "summer 20xx"]
+newgrad = ["new grad", "new-grad", "newgrad", "entry level", "entry-level", "university grad", "early career"]
+cs = [
+    "software", "swe", "sde", "developer", "engineer", "data", "machine learning",
+    "ml", "ai", "quant", "backend", "frontend", "full stack", "fullstack",
+    "infrastructure", "platform", "security", "embedded",
+]

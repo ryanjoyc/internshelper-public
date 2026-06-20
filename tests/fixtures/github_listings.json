@@ -1,0 +1,72 @@
+[
+  {
+    "date_updated": 1761203288,
+    "sponsorship": "Offers Sponsorship",
+    "active": true,
+    "degrees": [
+      "Bachelor's"
+    ],
+    "url": "https://jobs.lever.co/shieldai/b3e9f8bb-42dc-4daa-80ae-c5cefd9855c7",
+    "company_name": "Shield AI",
+    "title": "Hardware Test Engineering Fall Co-op",
+    "locations": [
+      "Dallas, TX"
+    ],
+    "terms": [
+      "Summer 2026",
+      "Fall 2026"
+    ],
+    "category": "Hardware Engineering",
+    "source": "AlmondCroffle",
+    "id": "6539aef4-45c3-4158-b5c4-ebb8f7fa8624",
+    "date_posted": 1761203288,
+    "company_url": "",
+    "is_visible": true
+  },
+  {
+    "date_updated": 1761209995,
+    "sponsorship": "Does Not Offer Sponsorship",
+    "active": true,
+    "degrees": [
+      "Bachelor's"
+    ],
+    "url": "https://bloomenergy.wd1.myworkdayjobs.com/en-US/BloomEnergyCareers/job/San-Jose-California/Full-Stack-Developer-Intern_JR-20763",
+    "company_name": "Bloom Energy",
+    "title": "Full Stack Developer Intern",
+    "locations": [
+      "San Jose, CA"
+    ],
+    "terms": [
+      "Summer 2026"
+    ],
+    "category": "Software Engineering",
+    "source": "AlmondCroffle",
+    "id": "d9d3656e-d93b-4c07-971b-af063e953961",
+    "date_posted": 1761209995,
+    "company_url": "",
+    "is_visible": true
+  },
+  {
+    "source": "Simplify",
+    "category": "AI/ML/Data",
+    "company_name": "Experian",
+    "id": "fb9ec36c-e922-4fe4-8834-c87e2fa6eeb2",
+    "title": "Data Analyst Summer Intern - Remote & Paid",
+    "active": false,
+    "terms": [
+      "Summer 2026"
+    ],
+    "date_updated": 1761085779,
+    "date_posted": 1761085779,
+    "url": "https://jobs.smartrecruiters.com/Experian/744000089133739",
+    "locations": [
+      "Remote in USA"
+    ],
+    "company_url": "https://simplify.jobs/c/Experian",
+    "is_visible": true,
+    "sponsorship": "Other",
+    "degrees": [
+      "Bachelor's"
+    ]
+  }
+]

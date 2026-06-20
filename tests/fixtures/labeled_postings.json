@@ -1,0 +1,95 @@
+[
+  {
+    "id": "swe-intern",
+    "title": "Software Engineer Intern",
+    "description": "",
+    "expected": {"is_internship": true, "is_newgrad": false, "is_cs_relevant": true}
+  },
+  {
+    "id": "summer-year-pattern",
+    "title": "Summer 2026 Analyst Program",
+    "description": "",
+    "note": "summer 20xx sentinel must match 'Summer 2026'; 'Analyst Program' is not CS.",
+    "expected": {"is_internship": true, "is_newgrad": false, "is_cs_relevant": false}
+  },
+  {
+    "id": "swe-coop",
+    "title": "Software Engineering Co-op",
+    "description": "",
+    "note": "co-op matches; 'software' gives CS ('engineering' alone would not match \\bengineer\\b).",
+    "expected": {"is_internship": true, "is_newgrad": false, "is_cs_relevant": true}
+  },
+  {
+    "id": "newgrad-swe",
+    "title": "New Grad Software Engineer",
+    "description": "",
+    "expected": {"is_internship": false, "is_newgrad": true, "is_cs_relevant": true}
+  },
+  {
+    "id": "entry-data",
+    "title": "Entry-Level Data Analyst",
+    "description": "",
+    "expected": {"is_internship": false, "is_newgrad": true, "is_cs_relevant": true}
+  },
+  {
+    "id": "ml-intern",
+    "title": "Machine Learning Intern",
+    "description": "",
+    "expected": {"is_internship": true, "is_newgrad": false, "is_cs_relevant": true}
+  },
+  {
+    "id": "retail-adversarial-negative",
+    "title": "Retail Associate (available shifts)",
+    "description": "Flexible hours, training provided.",
+    "note": "ADVERSARIAL: 'ai' inside 'available' must NOT match \\bai\\b; 'intern' inside 'training' must not match.",
+    "expected": {"is_internship": false, "is_newgrad": false, "is_cs_relevant": false}
+  },
+  {
+    "id": "marketing-internship-not-cs",
+    "title": "Marketing Internship",
+    "description": "",
+    "expected": {"is_internship": true, "is_newgrad": false, "is_cs_relevant": false}
+  },
+  {
+    "id": "senior-swe-no-level",
+    "title": "Senior Staff Software Engineer",
+    "description": "",
+    "note": "CS but neither intern nor new-grad; the default filter will exclude it.",
+    "expected": {"is_internship": false, "is_newgrad": false, "is_cs_relevant": true}
+  },
+  {
+    "id": "sales-engineer-overmatch",
+    "title": "Sales Engineer",
+    "description": "",
+    "note": "Documents accepted recall-favored over-match: broad token 'engineer' flags CS.",
+    "expected": {"is_internship": false, "is_newgrad": false, "is_cs_relevant": true}
+  },
+  {
+    "id": "html-dev-intern",
+    "title": "HTML/CSS Developer Intern",
+    "description": "",
+    "note": "ADVERSARIAL: 'ml' inside 'HTML' must NOT match \\bml\\b; 'developer' gives CS.",
+    "expected": {"is_internship": true, "is_newgrad": false, "is_cs_relevant": true}
+  },
+  {
+    "id": "email-coordinator-adversarial-negative",
+    "title": "Email Marketing Coordinator",
+    "description": "",
+    "note": "ADVERSARIAL: 'ai' inside 'Email' must NOT match.",
+    "expected": {"is_internship": false, "is_newgrad": false, "is_cs_relevant": false}
+  },
+  {
+    "id": "quant-description-match",
+    "title": "Quantitative Researcher",
+    "description": "A summer internship opportunity for students interested in quant trading.",
+    "note": "Match comes from the description: 'internship' + standalone 'quant'.",
+    "expected": {"is_internship": true, "is_newgrad": false, "is_cs_relevant": true}
+  },
+  {
+    "id": "html-strip-load-bearing",
+    "title": "Office Assistant",
+    "description": "<a href=\"https://ai-jobs.example.com/apply\">Apply here</a>",
+    "note": "ADVERSARIAL: without HTML stripping, 'ai' in the 'ai-jobs' URL would match \\bai\\b and wrongly flag CS. After stripping, only 'Apply here' remains.",
+    "expected": {"is_internship": false, "is_newgrad": false, "is_cs_relevant": false}
+  }
+]

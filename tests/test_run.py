@@ -1,0 +1,206 @@
+import json
+from pathlib import Path
+
+import httpx
+
+from internshelper import db, run, store
+from internshelper.config import Settings, SourceEntry
+from internshelper.models import Posting
+
+
+def _settings(notify_threshold=10):
+    return Settings(
+        smtp_host="smtp.test", smtp_port=587, smtp_sender="me@test", smtp_recipient="me@test",
+        require_cs=True, require_intern_or_newgrad=True,
+        keywords={"internship": ["intern"], "newgrad": ["new grad"], "cs": ["software"]},
+        notify_threshold=notify_threshold,
+    )
+
+
+def _conn(tmp_path):
+    c = db.connect(tmp_path / "t.db")
+    db.init_db(c)
+    return c
+
+
+class _FakeConnector:
+    def __init__(self, posts=None, exc=None):
+        self._posts = posts or []
+        self._exc = exc
+
+    def fetch(self):
+        if self._exc:
+            raise self._exc
+        return self._posts
+
+
+def _wire(monkeypatch, mapping):
+    monkeypatch.setattr(run, "build_connector", lambda entry: mapping[entry.source_key])
+
+
+class _Send:
+    def __init__(self, fail=False):
+        self.calls = []
+        self.fail = fail
+
+    def __call__(self, settings, subject, html, password):
+        if self.fail:
+            raise RuntimeError("smtp down")
+        self.calls.append((subject, html))
+
+
+def _raw(pid, source_key, title="Software Engineer Intern"):
+    return Posting(posting_id=pid, source_key=source_key, title=title,
+                   company="C", url=f"https://x/{pid}", raw={"id": pid, "title": title})
+
+
+def _collect(c, tmp_path, settings, sources, now, send):
+    return run.run_cycle(c, settings, sources, now=now, password="pw",
+                         payloads_dir=tmp_path / "payloads", send_fn=send)
+
+
+def test_heartbeat_written_at_start_even_with_zero_sources(tmp_path):
+    c = _conn(tmp_path)
+    _collect(c, tmp_path, _settings(), [], "2026-06-18T12:00:00+00:00", _Send())
+    hb = c.execute("SELECT ok, count FROM runs WHERE source_key='run'").fetchall()
+    assert len(hb) == 1 and hb[0]["ok"] == 1 and hb[0]["count"] == 0
+
+
+def test_collect_stores_pending_with_payload_and_flags(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    e = SourceEntry(type="greenhouse", token="stripe")
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=[_raw("greenhouse:1", e.source_key)])})
+    _collect(c, tmp_path, _settings(notify_threshold=1), [e], "2026-06-18T12:00:00+00:00", _Send())
+    row = c.execute("SELECT review_status, payload_path, is_cs_relevant, is_internship "
+                    "FROM postings WHERE posting_id='greenhouse:1'").fetchone()
+    assert row["review_status"] == "pending"
+    assert row["is_cs_relevant"] == 1 and row["is_internship"] == 1
+    assert json.loads(Path(row["payload_path"]).read_text())["id"] == "greenhouse:1"
+
+
+def test_per_source_title_filter_drops_nonmatching(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    e = SourceEntry(type="greenhouse", token="bigco", title_must_match=["engineer"])
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=[
+        _raw("greenhouse:eng", e.source_key, "Software Engineer Intern"),
+        _raw("greenhouse:cashier", e.source_key, "Cashier"),
+    ])})
+    _collect(c, tmp_path, _settings(notify_threshold=99), [e], "t", _Send())
+    ids = [r["posting_id"] for r in c.execute("SELECT posting_id FROM postings")]
+    assert ids == ["greenhouse:eng"]  # 'Cashier' dropped before store
+
+
+def test_failure_isolation_one_source_raises(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    a = SourceEntry(type="greenhouse", token="aaa")
+    b = SourceEntry(type="lever", token="bbb")
+    store.upsert(c, _raw("greenhouse:old", a.source_key), now="2026-06-18T08:00:00+00:00")
+    _wire(monkeypatch, {
+        a.source_key: _FakeConnector(exc=RuntimeError("boom")),
+        b.source_key: _FakeConnector(posts=[_raw("lever:1", b.source_key)]),
+    })
+    _collect(c, tmp_path, _settings(notify_threshold=99), [a, b], "2026-06-18T12:00:00+00:00", _Send())
+    arun = c.execute("SELECT ok, error FROM runs WHERE source_key=?", (a.source_key,)).fetchone()
+    assert arun["ok"] == 0 and "boom" in arun["error"]
+    assert c.execute("SELECT 1 FROM postings WHERE posting_id='lever:1'").fetchone()
+    assert c.execute("SELECT is_active FROM postings WHERE posting_id='greenhouse:old'").fetchone()["is_active"] == 1
+
+
+def test_timeout_recorded_and_does_not_close(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    a = SourceEntry(type="greenhouse", token="aaa")
+    store.upsert(c, _raw("greenhouse:old", a.source_key), now="2026-06-18T08:00:00+00:00")
+    _wire(monkeypatch, {a.source_key: _FakeConnector(exc=httpx.ReadTimeout("slow"))})
+    _collect(c, tmp_path, _settings(notify_threshold=99), [a], "2026-06-18T12:00:00+00:00", _Send())
+    arun = c.execute("SELECT ok, error FROM runs WHERE source_key=?", (a.source_key,)).fetchone()
+    assert arun["ok"] == 0 and "timeout" in arun["error"].lower()
+    assert c.execute("SELECT is_active FROM postings WHERE posting_id='greenhouse:old'").fetchone()["is_active"] == 1
+
+
+# ---------- threshold notify ----------
+
+def test_nudge_fires_once_when_threshold_crossed(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    e = SourceEntry(type="greenhouse", token="stripe")
+    posts = [_raw(f"greenhouse:{i}", e.source_key) for i in range(3)]
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=posts)})
+    send = _Send()
+    res = _collect(c, tmp_path, _settings(notify_threshold=3), [e], "2026-06-18T12:00:00+00:00", send)
+    assert res.pending == 3 and res.sent is True
+    assert len(send.calls) == 1 and "3 postings ready" in send.calls[0][0]
+    assert db.get_meta(c, "pending_notified") == "1"
+    nrun = c.execute("SELECT ok, count FROM runs WHERE source_key='notify'").fetchone()
+    assert nrun["ok"] == 1 and nrun["count"] == 3
+
+    # Second cycle, same pending, nothing new -> no duplicate nudge
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=posts)})
+    res2 = _collect(c, tmp_path, _settings(notify_threshold=3), [e], "2026-06-18T13:00:00+00:00", send)
+    assert res2.sent is False and len(send.calls) == 1
+
+
+def test_no_nudge_below_threshold(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    e = SourceEntry(type="greenhouse", token="stripe")
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=[_raw("greenhouse:1", e.source_key)])})
+    send = _Send()
+    res = _collect(c, tmp_path, _settings(notify_threshold=10), [e], "2026-06-18T12:00:00+00:00", send)
+    assert res.sent is False and send.calls == []
+    assert (db.get_meta(c, "pending_notified") or "0") == "0"
+
+
+def test_email_disabled_suppresses_nudge(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    e = SourceEntry(type="greenhouse", token="stripe")
+    posts = [_raw(f"greenhouse:{i}", e.source_key) for i in range(3)]
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=posts)})
+    send = _Send()
+    res = run.run_cycle(c, _settings(notify_threshold=3), [e], now="2026-06-18T12:00:00+00:00",
+                        password="pw", payloads_dir=tmp_path / "payloads",
+                        send_fn=send, email_enabled=False)
+    assert res.sent is False and send.calls == []
+    assert c.execute("SELECT 1 FROM runs WHERE source_key='notify'").fetchone() is None
+    # collection itself still happened
+    assert c.execute("SELECT 1 FROM postings WHERE posting_id='greenhouse:0'").fetchone()
+
+
+def test_collect_disabled_skips_fetch(tmp_path, monkeypatch):
+    monkeypatch.setenv("INTERNSHELPER_FEATURE_COLLECT", "0")
+    called = []
+    monkeypatch.setattr(run, "build_connector", lambda e: called.append(e) or _FakeConnector())
+    assert run.main([]) == 0
+    assert called == []
+
+
+def test_main_end_to_end_collects_surfaces_config_error_and_honors_email_flag(tmp_path, monkeypatch):
+    db_file = tmp_path / "t.db"
+    src = tmp_path / "sources.yaml"
+    settings = tmp_path / "settings.toml"
+    src.write_text("sources:\n  - type: greenhouse\n    token: stripe\n  - type: martian\n    token: x\n")
+    settings.write_text('[smtp]\nhost="smtp.test"\n[review]\nnotify_threshold=1\n'
+                        '[keywords]\ninternship=["intern"]\nnewgrad=["new grad"]\ncs=["software"]\n')
+    monkeypatch.setenv("INTERNSHELPER_DB", str(db_file))
+    monkeypatch.setenv("INTERNSHELPER_SOURCES", str(src))
+    monkeypatch.setenv("INTERNSHELPER_SETTINGS", str(settings))
+    monkeypatch.setenv("INTERNSHELPER_FEATURE_EMAIL", "0")   # below-the-flag path through main()
+    monkeypatch.delenv("INTERNSHELPER_FEATURE_COLLECT", raising=False)
+    monkeypatch.setattr(run, "build_connector",
+                        lambda entry: _FakeConnector(posts=[_raw("greenhouse:1", "greenhouse:stripe")]))
+    assert run.main([]) == 0
+    c = db.connect(db_file)
+    db.init_db(c)
+    assert c.execute("SELECT 1 FROM postings WHERE posting_id='greenhouse:1'").fetchone()    # collected
+    assert c.execute("SELECT 1 FROM runs WHERE source_key='config' AND ok=0").fetchone()     # malformed surfaced
+    assert c.execute("SELECT 1 FROM runs WHERE source_key='notify'").fetchone() is None      # EMAIL=0 honored
+
+
+def test_nudge_send_failure_keeps_flag_unset(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    e = SourceEntry(type="greenhouse", token="stripe")
+    posts = [_raw(f"greenhouse:{i}", e.source_key) for i in range(3)]
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=posts)})
+    failing = _Send(fail=True)
+    res = _collect(c, tmp_path, _settings(notify_threshold=3), [e], "2026-06-18T12:00:00+00:00", failing)
+    assert res.sent is False
+    assert (db.get_meta(c, "pending_notified") or "0") == "0"  # retry next cycle
+    nrun = c.execute("SELECT ok, error FROM runs WHERE source_key='notify'").fetchone()
+    assert nrun["ok"] == 0 and "smtp down" in nrun["error"]

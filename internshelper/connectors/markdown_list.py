@@ -1,0 +1,186 @@
+"""Connector for curated internship lists published as a README Markdown table.
+
+Most community lists (e.g. sndsh404/summer-2027-internships, vanshb03/Summer2026-Internships)
+are hand-maintained Markdown tables, not the structured JSON the `github` connector reads.
+This parses the table generically (auto-detected columns), handles `<a href>` and `[apply]()`
+link styles, `↳` continuation rows, and `🔒` closed markers, and keys each row on a stable
+synthetic id (sha1 of the canonicalized apply URL).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from datetime import datetime, timezone
+from urllib.parse import urlsplit, urlunsplit
+
+import httpx
+
+from internshelper.clock import to_iso
+from internshelper.connectors.base import HEADERS, TIMEOUT, Connector, register
+from internshelper.models import Posting
+from internshelper.text import strip_html
+
+# Column header aliases (case-insensitive). A per-source `columns` override wins.
+_HEADER_ALIASES = {
+    "company": ["company", "employer"],
+    "title": ["role", "position", "title", "job"],
+    "location": ["location", "locations", "loc"],
+    "url": ["application/link", "application", "apply", "apply link", "link"],
+    "posted": ["added", "date posted", "date", "posted"],
+}
+_CONTINUATION_MARKS = {"↳", "⤷", "->", "<-"}
+_CLOSED_MARKERS = ["🔒"]
+
+
+def canonical_url(url: str) -> str:
+    """Lowercase scheme+host + path, dropping query/fragment + trailing slash (stable id key)."""
+    if not url:
+        return ""
+    s = urlsplit(url)
+    return urlunsplit((s.scheme.lower(), s.netloc.lower(), s.path.rstrip("/"), "", ""))
+
+
+def _synth_id(url: str, company: str, title: str, location: str) -> str:
+    key = canonical_url(url) if url else f"{company}|{title}|{location}".lower()
+    return hashlib.sha1(key.encode()).hexdigest()[:16]
+
+
+def _cells(line: str) -> list[str]:
+    parts = [c.strip() for c in line.split("|")]
+    if parts and parts[0] == "":
+        parts = parts[1:]
+    if parts and parts[-1] == "":
+        parts = parts[:-1]
+    return parts
+
+
+def _is_separator(line: str) -> bool:
+    s = line.strip()
+    return bool(s) and set(s) <= set("|:- \t") and "-" in s
+
+
+def _clean(cell: str) -> str:
+    cell = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cell)  # [txt](url) -> txt
+    return strip_html(cell).strip()  # drop <a>/<img>/tags, collapse whitespace
+
+
+def _extract_url(cell: str) -> str:
+    m = re.search(r"""<a[^>]+href=["']([^"']+)["']""", cell)
+    if m:
+        return m.group(1)
+    m = re.search(r"\[[^\]]*\]\((https?://[^)\s]+)\)", cell)
+    if m:
+        return m.group(1)
+    m = re.search(r"(https?://[^\s)]+)", cell)
+    if m:
+        return m.group(1).rstrip(".,")
+    return ""
+
+
+def _map_columns(header_cells: list[str], override: dict[str, str]) -> dict[str, int]:
+    lower = [h.lower() for h in header_cells]
+    idx: dict[str, int] = {}
+    for field, aliases in _HEADER_ALIASES.items():
+        name = override.get(field, "").lower()
+        if name and name in lower:
+            idx[field] = lower.index(name)
+            continue
+        for a in aliases:  # exact header match first
+            if a in lower:
+                idx[field] = lower.index(a)
+                break
+        else:  # substring fallback
+            for j, h in enumerate(lower):
+                if any(a in h for a in aliases):
+                    idx[field] = j
+                    break
+    return idx
+
+
+@register
+class MarkdownListConnector(Connector):
+    type = "markdown"
+
+    def fetch(self) -> list[Posting]:
+        resp = httpx.get(self.entry.token, timeout=TIMEOUT, headers=HEADERS, follow_redirects=True)
+        resp.raise_for_status()
+        return self.parse(resp.text, now=datetime.now(timezone.utc))
+
+    def parse(self, text: str, now: datetime | None = None) -> list[Posting]:
+        """Parse EVERY table in the document (these lists are split into category sections),
+        deduping rows that recur across tables. `now` resolves year-less posted dates."""
+        lines = text.splitlines()
+        postings: list[Posting] = []
+        seen: set[str] = set()
+        for header_i in self._find_headers(lines):
+            postings.extend(self._parse_table(lines, header_i, seen, now))
+        return postings
+
+    def _parse_table(
+        self, lines: list[str], header_i: int, seen: set[str], now: datetime | None
+    ) -> list[Posting]:
+        idx = _map_columns(_cells(lines[header_i]), self.entry.columns)
+        if "company" not in idx or "title" not in idx:
+            return []  # can't make a posting without these
+        need = max(idx.values())
+
+        out: list[Posting] = []
+        last_company = ""
+        k = header_i + 2
+        while k < len(lines):
+            line = lines[k]
+            if not line.strip().startswith("|"):
+                break  # table ended
+            # A row immediately followed by a separator is the next table's header — stop here.
+            if k + 1 < len(lines) and _is_separator(lines[k + 1]):
+                break
+            k += 1
+            if _is_separator(line) or any(m in line for m in _CLOSED_MARKERS):
+                continue  # separator row, or a filled/closed role
+            cells = _cells(line)
+            if len(cells) <= need:
+                continue  # malformed / short row
+
+            company_cell = _clean(cells[idx["company"]])
+            if not company_cell or company_cell in _CONTINUATION_MARKS:
+                company = last_company
+            else:
+                company = company_cell
+                last_company = company
+
+            title = _clean(cells[idx["title"]])
+            if not title:
+                continue
+            location = _clean(cells[idx["location"]]) if "location" in idx else ""
+            url = _extract_url(cells[idx["url"]]) if "url" in idx else ""
+            posted_at = (
+                to_iso(_clean(cells[idx["posted"]]), now=now) if "posted" in idx else None
+            )
+
+            posting_id = f"{self.type}:{_synth_id(url, company, title, location)}"
+            if posting_id in seen:
+                continue  # same role listed in another category table
+            seen.add(posting_id)
+            out.append(
+                Posting(
+                    posting_id=posting_id,
+                    source_key=self.source_key,
+                    title=title,
+                    company=company or self.company_fallback,
+                    url=url,
+                    location=location,
+                    description="",  # markdown rows carry no JD
+                    posted_at=posted_at,
+                    raw={"company": company, "role": title, "location": location,
+                         "url": url, "source_line": line.strip()},
+                )
+            )
+        return out
+
+    @staticmethod
+    def _find_headers(lines: list[str]) -> list[int]:
+        return [
+            i for i in range(len(lines) - 1)
+            if lines[i].strip().startswith("|") and _is_separator(lines[i + 1])
+        ]

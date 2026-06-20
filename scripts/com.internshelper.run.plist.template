@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd template for the hourly internsHELPer run.
+
+  This is a TEMPLATE. Replace __REPO_DIR__ and write the realized copy to
+  ~/Library/LaunchAgents/com.internshelper.run.plist (gitignored; per-machine absolute path).
+  Secrets are NOT in here anymore — internshelper.run loads the gitignored `.env` at startup.
+  `python -m internshelper.setup` realizes + loads this for you. See README.md "Schedule".
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.internshelper.run</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO_DIR__/.venv/bin/python</string>
+        <string>-m</string>
+        <string>internshelper.run</string>
+    </array>
+
+    <!-- launchd jobs do not inherit your shell's working dir or PATH. -->
+    <key>WorkingDirectory</key>
+    <string>__REPO_DIR__</string>
+
+    <!-- Secrets come from the gitignored .env loaded by internshelper.run (no plaintext here). -->
+
+    <!-- Fire every hour, and once immediately on load / login / wake. -->
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_DIR__/data/run.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO_DIR__/data/run.err.log</string>
+</dict>
+</plist>
