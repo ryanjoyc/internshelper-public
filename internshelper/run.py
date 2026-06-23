@@ -48,14 +48,17 @@ def process_source(
         return False
 
     # Coarse per-source flood guard (the "Arby's" filter): drop titles the source opted out of.
+    fetched = len(postings)
     postings = [p for p in postings if entry.accepts(p.title)]
+    dropped = fetched - len(postings)
 
     seen = set()
     for posting in postings:
         classify.classify(posting, compiled)  # keyword priority hints only — not a gate
         store.upsert(conn, posting, now, payloads_dir=payloads_dir)
         seen.add(posting.posting_id)
-    store.record_run(conn, entry.source_key, ok=True, count=len(postings), error=None, now=now)
+    store.record_run(conn, entry.source_key, ok=True, count=len(postings),
+                     error=None, now=now, dropped=dropped)
     store.apply_close_detection(conn, entry.source_key, seen, ok=True, count=len(postings))
     return True
 

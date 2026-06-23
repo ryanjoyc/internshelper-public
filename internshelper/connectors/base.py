@@ -59,3 +59,13 @@ class Connector:
 
     def parse(self, data) -> list[Posting]:
         raise NotImplementedError
+
+    def parse_warnings(self) -> list[str]:
+        """Structural diagnostics for the add-time fetch-test.
+
+        Returns human-readable warnings when the source *fetched* but the parse looks
+        degenerate (e.g. a Markdown list whose required columns can't be mapped, which
+        otherwise silently yields 0 rows). Empty list = no structural problems detected.
+        Connectors that can't tell "broken" from "empty" leave the default (no warnings).
+        """
+        return []

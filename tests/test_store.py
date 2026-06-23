@@ -189,6 +189,53 @@ def test_record_run_and_read_back(tmp_path):
     assert (rows[1]["ok"], rows[1]["error"]) == (0, "boom")
 
 
+def _seed_runs(c, source_key, counts):
+    """Record successful runs (oldest first) with monotonically increasing timestamps."""
+    for i, n in enumerate(counts):
+        store.record_run(c, source_key=source_key, ok=True, count=n,
+                         error=None, now=f"2026-06-18T10:00:{i:02d}+00:00")
+
+
+def test_source_baselines_flags_drop_to_zero(tmp_path):
+    c = _conn(tmp_path)
+    _seed_runs(c, "greenhouse:stripe", [10, 12, 11, 0])  # latest dropped to 0
+    info = store.source_baselines(c)["greenhouse:stripe"]
+    assert info["latest"] == 0 and info["baseline"] > 0 and info["quiet"] is True
+
+
+def test_source_baselines_flags_sharp_drop(tmp_path):
+    c = _conn(tmp_path)
+    _seed_runs(c, "greenhouse:stripe", [20, 20, 20, 5])  # 5 < 50% of ~20
+    assert store.source_baselines(c)["greenhouse:stripe"]["quiet"] is True
+
+
+def test_source_baselines_steady_source_not_flagged(tmp_path):
+    c = _conn(tmp_path)
+    _seed_runs(c, "greenhouse:stripe", [10, 11, 9, 10])
+    assert store.source_baselines(c)["greenhouse:stripe"]["quiet"] is False
+
+
+def test_source_baselines_no_baseline_not_flagged(tmp_path):
+    c = _conn(tmp_path)
+    _seed_runs(c, "greenhouse:stripe", [0])  # first-ever run, nothing to compare
+    assert store.source_baselines(c)["greenhouse:stripe"]["quiet"] is False
+
+
+def test_source_baselines_errored_latest_not_flagged(tmp_path):
+    c = _conn(tmp_path)
+    _seed_runs(c, "greenhouse:stripe", [10, 10, 10])
+    store.record_run(c, source_key="greenhouse:stripe", ok=False, count=0,
+                     error="boom", now="2026-06-18T11:00:00+00:00")
+    # An errored latest run already shows ❌ in Health; don't double-flag it as quiet.
+    assert store.source_baselines(c)["greenhouse:stripe"]["quiet"] is False
+
+
+def test_source_baselines_excludes_meta_keys(tmp_path):
+    c = _conn(tmp_path)
+    store.record_run(c, source_key="run", ok=True, count=5, error=None, now="t")
+    assert "run" not in store.source_baselines(c)
+
+
 def test_set_application_upserts(tmp_path):
     c = _conn(tmp_path)
     store.upsert(c, _p("greenhouse:1"), now="t")

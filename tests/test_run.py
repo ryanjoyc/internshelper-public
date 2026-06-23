@@ -90,6 +90,19 @@ def test_per_source_title_filter_drops_nonmatching(tmp_path, monkeypatch):
     assert ids == ["greenhouse:eng"]  # 'Cashier' dropped before store
 
 
+def test_flood_guard_drops_are_recorded(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    e = SourceEntry(type="greenhouse", token="bigco", title_must_match=["engineer"])
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=[
+        _raw("greenhouse:eng", e.source_key, "Software Engineer Intern"),
+        _raw("greenhouse:cashier", e.source_key, "Cashier"),
+    ])})
+    _collect(c, tmp_path, _settings(notify_threshold=99), [e], "t", _Send())
+    row = c.execute("SELECT count, dropped FROM runs WHERE source_key=?",
+                    (e.source_key,)).fetchone()
+    assert row["count"] == 1 and row["dropped"] == 1
+
+
 def test_failure_isolation_one_source_raises(tmp_path, monkeypatch):
     c = _conn(tmp_path)
     a = SourceEntry(type="greenhouse", token="aaa")

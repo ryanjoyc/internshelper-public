@@ -22,6 +22,7 @@ from pathlib import Path
 
 import yaml
 
+from internshelper import sniffer
 from internshelper.config import ID_FIELD, ConfigError, SourceEntry, default_path, load_sources
 from internshelper.connectors import build_connector
 from internshelper.dotenv import load_dotenv
@@ -128,9 +129,42 @@ def find_duplicate(entries: list[SourceEntry], key: str) -> bool:
     return any(e.source_key == key for e in entries)
 
 
-def fetch_test(entry: SourceEntry, limit: int = 5) -> tuple[int, list[str]]:
-    postings = build_connector(entry).fetch()
-    return len(postings), [p.title for p in postings[:limit]]
+def resolve_entry(
+    url: str,
+    *,
+    label: str | None = None,
+    title_must_match: list[str] | None = None,
+    columns: dict[str, str] | None = None,
+) -> SourceEntry:
+    """Detect a SourceEntry from a URL and apply the optional extras.
+
+    The reusable add-source core shared by the CLI (`_cmd_add`) and the dashboard UI:
+    wraps `detect_source` (propagating `SourceDetectionError` on an unknown host) and layers
+    on a `title_must_match` flood guard and/or markdown `columns` override when given.
+    """
+    entry = detect_source(url, label=label)
+    if title_must_match:
+        entry.title_must_match = list(title_must_match)
+    if columns:
+        entry.columns = dict(columns)
+    return entry
+
+
+def is_duplicate(path: str | Path, entry: SourceEntry) -> bool:
+    """True if `entry.source_key` already has an active entry in the sources file."""
+    return find_duplicate(_load_existing(str(path)), entry.source_key)
+
+
+def fetch_test(entry: SourceEntry, limit: int = 5) -> tuple[int, list[str], list[str]]:
+    """Live fetch-test a source. Returns (count, sample titles, structural warnings).
+
+    Warnings are computed only when the fetch yields 0 rows — that's the ambiguous case
+    where a degenerate parse (e.g. unmappable Markdown columns) looks like an empty board.
+    """
+    connector = build_connector(entry)
+    postings = connector.fetch()
+    warnings = connector.parse_warnings() if not postings else []
+    return len(postings), [p.title for p in postings[:limit]], warnings
 
 
 def _parse_kv(spec: str) -> dict[str, str]:
@@ -164,23 +198,42 @@ def _load_existing(path: str) -> list[SourceEntry]:
 
 def _cmd_add(args) -> int:
     path = _sources_path()
+    tmm = ([s.strip() for s in args.title_must_match.split(",") if s.strip()]
+           if args.title_must_match else None)
+    cols = _parse_kv(args.columns) if args.columns else None
     try:
-        entry = detect_source(args.url, label=args.label)
+        entry = resolve_entry(args.url, label=args.label, title_must_match=tmm, columns=cols)
     except SourceDetectionError as e:
-        print(f"could not detect a source from {args.url!r}: {e}")
-        return 2
-    if args.title_must_match:
-        entry.title_must_match = [s.strip() for s in args.title_must_match.split(",") if s.strip()]
-    if args.columns:
-        entry.columns = _parse_kv(args.columns)
+        # Not a clean board URL — sniff the page for an embedded Greenhouse/Lever/Ashby board.
+        try:
+            candidates = sniffer.sniff_careers_page(args.url, label=args.label)
+        except sniffer.SnifferError as se:
+            print(f"could not detect a source from {args.url!r}: {e}")
+            print(f"(page sniff also failed: {se})")
+            return 2
+        if not candidates:
+            print(f"could not detect a source from {args.url!r}: {e}")
+            return 2
+        if len(candidates) > 1:
+            print(f"found {len(candidates)} embedded boards on that page — "
+                  "re-run `add` with the specific board URL:")
+            for c in candidates:
+                print(f"  - {c.source_key}")
+            return 2
+        entry = candidates[0]
+        if tmm:
+            entry.title_must_match = list(tmm)
+        if cols:
+            entry.columns = dict(cols)
+        print(f"sniffed a {entry.type} board: {entry.source_key}")
 
-    if find_duplicate(_load_existing(path), entry.source_key):
+    if is_duplicate(path, entry):
         print(f"already present: {entry.source_key} (skipped)")
         return 0
 
     if not args.no_test:
         try:
-            count, titles = fetch_test(entry, limit=args.limit)
+            count, titles, warnings = fetch_test(entry, limit=args.limit)
         except Exception as e:
             print(f"fetch failed for {entry.source_key}: {type(e).__name__}: {e}")
             print("not written.")
@@ -188,8 +241,11 @@ def _cmd_add(args) -> int:
         print(f"fetched {count} postings from {entry.source_key}")
         for t in titles:
             print(f"  - {t}")
-        if count == 0 and not args.yes:
-            print("0 postings — the token may be wrong. Re-run with --yes to add anyway. Not written.")
+        for w in warnings:
+            print(f"WARNING: {w}")
+        if (count == 0 or warnings) and not args.yes:
+            reason = "; ".join(warnings) if warnings else "0 postings — the token may be wrong"
+            print(f"{reason}. Re-run with --yes to add anyway. Not written.")
             return 1
 
     if not args.yes:
@@ -242,13 +298,15 @@ def _cmd_test(args) -> int:
             print(f"could not detect a source from {target!r}: {e}")
             return 2
     try:
-        count, titles = fetch_test(entry, limit=args.limit)
+        count, titles, warnings = fetch_test(entry, limit=args.limit)
     except Exception as e:
         print(f"fetch failed for {entry.source_key}: {type(e).__name__}: {e}")
         return 1
     print(f"{entry.source_key}: {count} postings")
     for t in titles:
         print(f"  - {t}")
+    for w in warnings:
+        print(f"WARNING: {w}")
     return 0
 
 

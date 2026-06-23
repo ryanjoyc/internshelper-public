@@ -197,6 +197,41 @@ def health(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+# Synthetic run rows that aren't real sources (heartbeat / nudge / digest / config errors).
+_META_SOURCE_KEYS = ("run", "notify", "config", "digest")
+
+
+def source_baselines(conn: sqlite3.Connection, window: int = 5) -> dict[str, dict]:
+    """Per real source, compare its latest fetch to a recent baseline ("went quiet").
+
+    The baseline is the average `count` of up to `window` prior *successful* runs (excluding
+    the latest). A source is flagged `quiet` when it had a real baseline (>0) and its latest
+    successful run dropped to 0 OR sharply below baseline (<50%) — the classic "the board
+    changed and we silently stopped seeing jobs" failure. Latest runs that errored are not
+    flagged (they already render ❌ in Health). Keyed by source_key.
+    """
+    rows = conn.execute(
+        "SELECT source_key, ok, count FROM runs "
+        "WHERE source_key NOT IN (?,?,?,?) ORDER BY id DESC",
+        _META_SOURCE_KEYS,
+    ).fetchall()
+    by_source: dict[str, list[sqlite3.Row]] = {}
+    for r in rows:
+        by_source.setdefault(r["source_key"], []).append(r)
+
+    out: dict[str, dict] = {}
+    for key, runs in by_source.items():
+        latest = runs[0]
+        prior_ok = [r["count"] for r in runs[1:] if r["ok"]][:window]
+        baseline = sum(prior_ok) / len(prior_ok) if prior_ok else 0.0
+        quiet = bool(
+            latest["ok"] and baseline > 0
+            and (latest["count"] == 0 or latest["count"] < 0.5 * baseline)
+        )
+        out[key] = {"baseline": baseline, "latest": latest["count"], "quiet": quiet}
+    return out
+
+
 def pending_counts(conn: sqlite3.Connection) -> tuple[int, int]:
     """(total pending, keyword-candidate pending) for the review queue + nudge."""
     total = conn.execute(
@@ -216,10 +251,12 @@ def record_run(
     count: int,
     error: str | None,
     now: str,
+    dropped: int = 0,
 ) -> None:
     conn.execute(
-        "INSERT INTO runs (started_at, source_key, ok, count, error) VALUES (?,?,?,?,?)",
-        (now, source_key, int(ok), count, error),
+        "INSERT INTO runs (started_at, source_key, ok, count, dropped, error) "
+        "VALUES (?,?,?,?,?,?)",
+        (now, source_key, int(ok), count, dropped, error),
     )
     conn.commit()
 

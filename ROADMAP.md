@@ -85,6 +85,22 @@ long tail.** Same codebase, same accuracy floor for everyone.
 
 *Goal: fewer sources hard-fail; the "both, balanced" coverage pillar.*
 
+> **This is the most important phase, and the one that deserves the most effort.**
+> Parsing accuracy *is* the product's core promise — "if you added a source, you will
+> see every relevant job it lists." Everything downstream (review, apply, track) is
+> worthless if capture is lossy or wrong. We must parse and extract from each source
+> **accurately and without AI** — accuracy has to be identical with or without a coding
+> agent. Treat this phase as the bedrock, not a feature list to rush through.
+>
+> **Before building, brainstorm an eval loop.** The only way to know we're actually
+> parsing accurately is to measure it. Up front, design how we test extraction
+> accuracy — curated fixture pages per connector (real, saved HTML/JSON), expected
+> extracted output, and a harness that scores parsed-vs-expected (precision/recall on
+> roles + per-field correctness). Build this eval loop *alongside* development so we
+> track our accuracy continuously and catch regressions, rather than discovering misses
+> in production. Nail down the eval design first; don't start the connectors until we
+> can measure them.
+
 - **Generic structured-data connector.** Parse `schema.org/JobPosting` JSON-LD, which
   many job pages expose — deterministic and reliable, a strong generic fallback.
 - **More ATS connectors.** Workday, SmartRecruiters, iCIMS, etc., each a new module in

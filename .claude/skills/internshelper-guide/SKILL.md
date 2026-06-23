@@ -14,16 +14,17 @@ fit*, not every function signature. If you make a structural change, refresh thi
 
 A local, $0 tool that **collects** internship / new-grad postings from boards listed in
 `config/sources.yaml`, keeps a de-duplicated archive (raw payloads saved to disk), and **emails a
-nudge** when a batch piles up. Classification is **on-demand and free**: you open the repo in
-Claude Code and run `/review-internships`, and the agent records match/no-match verdicts. A
-Streamlit dashboard shows confirmed matches, the pending queue, and source health. The hourly cron
-is a dumb free collector; the agent is the classifier — accurate, no API key, $0 ongoing.
+nudge** when a batch piles up. Classification is **on-demand and free**: triage the pending queue
+right in the dashboard (mark match/no-match, peek payloads), or open the repo in Claude Code and run
+`/review-internships` for the agent-assisted pass — same verdicts either way. A Streamlit dashboard
+shows confirmed matches, the (interactive) pending queue, source health, and source management. The
+hourly cron is a dumb free collector; review is the classifier step — accurate, no API key, $0 ongoing.
 
 ## Architecture & data flow
 
 ```
 collect (run.py) → store (store.py / db.py) → nudge (notify.py)
-    → review on demand (review.py + the review-internships skill) → dashboard (dashboard.py)
+    → review on demand (in-app dashboard, or review.py + the review-internships skill) → dashboard (dashboard.py)
 ```
 
 Each collect cycle: scrape every source → save each new posting's raw payload to
@@ -42,7 +43,7 @@ collected or shown.
 |--------|----------------|
 | `run` | Scheduled collector: fetch all sources, store new payloads as pending, compute priority hints, email the nudge. One invocation = one cycle. |
 | `review` | On-demand review CLI: list pending, set verdicts, finish the queue, summarize confirmed matches. Driven by the `review-internships` skill. |
-| `sources` | Add/list/remove/test job-board sources: detect URL type, live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill. |
+| `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the dashboard Sources tab. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`). |
 | `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the launchd plist on macOS. Idempotent. |
 
 **Libraries:**
@@ -57,10 +58,11 @@ collected or shown.
 | `clock` | Canonical UTC ISO-8601 helpers: parse mixed date formats, convert to UTC, diff. |
 | `notify` | Render + send the review-nudge email. |
 | `display` | Pure display helpers: humanize mixed date formats with relative-age hints (no Streamlit dependency). |
-| `dashboard` | Streamlit UI — Feed / Tracker / Health. UI only; data logic lives in `store` / `review`. |
+| `dashboard` | Streamlit UI — Feed / Tracker / Health / Sources. Feed's "Pending review" is interactive (mark match/no_match, peek the raw payload, bulk-clear non-candidates); Sources adds/removes boards in-app. UI only; data logic lives in `store` / `review` / `sources`. |
 | `dotenv` | Stdlib `.env` loader; shell env vars win; silent no-op if the file is missing. |
 | `text` | HTML→plaintext stripper (stdlib `html.parser`) used before keyword matching. |
 | `sourceurl` | Pure URL→`SourceEntry` detection (no network): map a pasted board URL to a source by host + path. |
+| `sniffer` | Heuristic, no-AI detection of embedded Greenhouse/Lever/Ashby boards on an arbitrary careers page (regex over the fetched HTML). The add-source fallback when `sourceurl` can't resolve a clean board URL. |
 | `filters` | Apply user filter booleans (`require_cs`, `require_intern_or_newgrad`) to classified postings. Pure function. |
 | `digest` | Render + email a digest of new matching postings; watermark advances only after a confirmed send. |
 | `__init__` | Package root (version). |
@@ -117,15 +119,15 @@ bash scripts/bootstrap.sh
 ## Conventions & gotchas
 
 - **Always use `.venv/bin/python`** — not bare `python`.
-- **Prefer the `sources` CLI** over editing `config/sources.yaml` by hand; it validates +
-  fetch-tests + preserves comments.
+- **Prefer the `sources` CLI or the dashboard Sources tab** over editing `config/sources.yaml` by
+  hand; both validate + fetch-test + preserve comments.
 - **All persisted timestamps are UTC ISO-8601 strings** (sort-safe), via `clock`.
 - **Connectors self-register** through `base`'s registry — add the connector and a `sourceurl`
   rule rather than wiring it in elsewhere.
 - **launchd doesn't fire while the Mac is asleep**; overnight postings land on the first cycle
   after wake (`RunAtLoad=true`).
-- The agent's classification judgment is the deliberate human-in-the-loop step and is **not**
-  unit-tested — the CLI it drives is.
+- The classification *judgment* (made in-app or by the agent) is the deliberate human-in-the-loop
+  step; the mechanics it drives are unit-tested — the `review` CLI, and the dashboard via `AppTest`.
 
 ## Related skills
 

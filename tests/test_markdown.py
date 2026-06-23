@@ -104,3 +104,26 @@ def test_markdown_extracts_posted_at_from_date_column():
 
 def test_build_connector_resolves_markdown():
     assert build_connector(SourceEntry(type="markdown", token="https://x/r.md")).type == "markdown"
+
+
+def test_diagnose_no_tables_warns():
+    assert _conn(SNDSH)._diagnose("just prose, no tables here") == \
+        ["no Markdown tables found in the document"]
+
+
+def test_diagnose_unmappable_required_columns_warns():
+    md = "| Foo | Bar |\n| --- | --- |\n| a | b |\n"
+    warnings = _conn(SNDSH)._diagnose(md)
+    assert len(warnings) == 1 and "company" in warnings[0] and "title" in warnings[0]
+
+
+def test_diagnose_mappable_table_is_clean():
+    md = "| Company | Role | Location |\n| --- | --- | --- |\n| Acme | SWE Intern | NYC |\n"
+    assert _conn(SNDSH)._diagnose(md) == []
+
+
+def test_diagnose_honors_columns_override():
+    c = build_connector(SourceEntry(type="markdown", token=SNDSH,
+                                    columns={"company": "Org", "title": "Gig"}))
+    md = "| Org | Gig |\n| --- | --- |\n| Acme | SWE Intern |\n"
+    assert c._diagnose(md) == []

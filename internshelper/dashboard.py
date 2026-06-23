@@ -7,12 +7,14 @@ this file is UI only.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import streamlit as st
 
-from internshelper import config, db, display, review, store
+from internshelper import clock, config, db, display, review, sniffer, sources, store, text
 from internshelper.dotenv import load_dotenv
+from internshelper.sourceurl import SourceDetectionError
 
 load_dotenv()  # pick up INTERNSHELPER_* from the gitignored .env (real env still wins)
 
@@ -54,12 +56,108 @@ def _apply_form(conn, posting_id: str) -> None:
             st.success("Saved.")
 
 
+def _payload_peek(payload_path) -> None:
+    """Render the archived raw payload so the user can judge a pending posting."""
+    if not payload_path:
+        st.caption("No saved payload — judging by title only.")
+        return
+    try:
+        raw = json.loads(Path(payload_path).read_text(encoding="utf-8"))
+    except Exception:
+        st.caption("Payload file unreadable.")
+        return
+    desc = ""
+    if isinstance(raw, dict):
+        for k in ("content", "description", "descriptionPlain", "descriptionHtml", "plain"):
+            if raw.get(k):
+                desc = text.strip_html(str(raw[k]))
+                break
+    if desc:
+        st.write(desc[:2000])
+    st.json(raw, expanded=False)  # full payload — nothing hidden
+
+
+def _record_verdict(conn, posting_id: str, verdict: str) -> None:
+    reason = st.session_state.get(f"reason-{posting_id}", "")
+    review.set_verdict(conn, posting_id, verdict, reason, now=clock.now_iso())
+    review.finish(conn)  # resets the nudge flag the moment the queue empties
+    st.rerun()
+
+
+def _bulk_clear_non_candidates(conn) -> None:
+    now = clock.now_iso()
+    for r in review.list_pending(conn):
+        if not (r["is_cs_relevant"] or r["is_internship"] or r["is_newgrad"]):
+            review.set_verdict(conn, r["posting_id"], "no_match", "bulk: non-candidate", now=now)
+    review.finish(conn)
+
+
+def _pending_row(conn, r) -> None:
+    pid = r["posting_id"]
+    released = display.format_release(r["posted_at"], r["first_seen"])
+    is_cand = bool(r["is_cs_relevant"] or r["is_internship"] or r["is_newgrad"])
+    badge = "⭐ " if is_cand else ""
+    st.markdown(f"{badge}**{released}** · {r['company']} — {r['title']} · {r['location'] or '—'}")
+    c1, c2, c3, c4 = st.columns([1, 1, 3, 1])
+    if c1.button("✅ Match", key=f"match-{pid}"):
+        _record_verdict(conn, pid, "match")
+    if c2.button("✖ No match", key=f"nomatch-{pid}"):
+        _record_verdict(conn, pid, "no_match")
+    c3.text_input("reason", key=f"reason-{pid}", label_visibility="collapsed",
+                  placeholder="reason (optional)")
+    c4.markdown(f"[open ↗]({r['url']})")
+    with st.expander("Peek payload"):
+        _payload_peek(r["payload_path"])
+
+
+def _pending_review(conn) -> None:
+    total, cand = store.pending_counts(conn)
+    if total == 0:
+        st.success("Nothing pending — the queue is clear.")
+        return
+    st.caption(f"{total} pending · {cand} keyword-candidates first")
+
+    with st.expander("Bulk actions"):
+        st.caption("Clear obvious non-matches fast, then skim the candidates that remain.")
+        if st.session_state.get("bulk_confirm"):
+            st.warning("Mark every NON-candidate pending posting as no_match?")
+            b1, b2 = st.columns(2)
+            if b1.button("Yes, clear them", key="bulk-yes"):
+                _bulk_clear_non_candidates(conn)
+                st.session_state.pop("bulk_confirm", None)
+                st.rerun()
+            if b2.button("Cancel", key="bulk-no"):
+                st.session_state.pop("bulk_confirm", None)
+                st.rerun()
+        elif st.button("Mark all non-candidates as no_match", key="bulk-start"):
+            st.session_state["bulk_confirm"] = True
+            st.rerun()
+
+    page_size = st.selectbox("Per page", [25, 50, 100], index=0, key="review-pagesize")
+    total_pages = (total + page_size - 1) // page_size
+    page = min(st.session_state.get("review_page", 0), total_pages - 1)
+    rows = review.list_pending(conn, limit=page_size * (page + 1))
+    for r in rows[page * page_size:(page + 1) * page_size]:
+        _pending_row(conn, r)
+
+    if total_pages > 1:
+        c1, c2, c3 = st.columns([1, 2, 1])
+        if c1.button("‹ Prev", key="review-prev", disabled=page <= 0):
+            st.session_state["review_page"] = page - 1
+            st.rerun()
+        c2.caption(f"Page {page + 1} of {total_pages}")
+        if c3.button("Next ›", key="review-next", disabled=page + 1 >= total_pages):
+            st.session_state["review_page"] = page + 1
+            st.rerun()
+
+
 def _feed_tab(conn) -> None:
     st.subheader("Feed")
     total, cand = store.pending_counts(conn)
     st.metric("Pending review", total, help=f"{cand} keyword-candidate, {total - cand} other")
     if total:
-        st.caption("Open this repo in Claude Code and run **/review-internships** to classify them.")
+        st.caption("Triage them in the **Pending review** view below — or run "
+                   "**/review-internships** in Claude Code for the agent-assisted pass.")
 
     view = st.radio("View", ["Confirmed matches", "Pending review", "All postings"],
                     horizontal=True)
@@ -77,17 +175,7 @@ def _feed_tab(conn) -> None:
                 _apply_form(conn, r["posting_id"])
 
     elif view == "Pending review":
-        rows = review.list_pending(conn)
-        st.caption(f"{len(rows)} pending (keyword-candidates first)")
-        st.dataframe(
-            [{"Posted": display.format_release(r["posted_at"], r["first_seen"]),
-              "Company": r["company"], "Title": r["title"], "Location": r["location"],
-              "Candidate": bool(r["is_cs_relevant"] or r["is_internship"] or r["is_newgrad"]),
-              "Apply": r["url"]} for r in rows],
-            width="stretch", hide_index=True,
-            column_order=["Posted", "Company", "Title", "Location", "Candidate", "Apply"],
-            column_config={"Apply": st.column_config.LinkColumn("Apply", display_text="open ↗")},
-        )
+        _pending_review(conn)
 
     else:  # All postings
         search = st.text_input("Search title / company", "")
@@ -126,12 +214,168 @@ def _health_tab(conn) -> None:
     if not rows:
         st.info("No runs recorded yet.")
         return
+
+    baselines = store.source_baselines(conn)
+    quiet = {k: b for k, b in baselines.items() if b["quiet"]}
+    if quiet:
+        detail = ", ".join(
+            f"{k} ({b['latest']} vs ~{b['baseline']:.0f} baseline)" for k, b in quiet.items()
+        )
+        st.warning(f"⚠️ {len(quiet)} source(s) went quiet: {detail}")
+
     st.dataframe(
         [{"Source": r["source_key"], "Last run": r["started_at"],
-          "OK": "✅" if r["ok"] else "❌", "Count": r["count"], "Error": r["error"]}
+          "OK": "✅" if r["ok"] else "❌", "Count": r["count"],
+          "Dropped": r["dropped"],
+          "Quiet?": "⚠️" if baselines.get(r["source_key"], {}).get("quiet") else "",
+          "Error": r["error"]}
          for r in rows],
         width="stretch", hide_index=True,
     )
+
+
+def _sources_path() -> str:
+    return config.default_path("INTERNSHELPER_SOURCES", "config/sources.yaml")
+
+
+def _stage_preview(entry) -> None:
+    """Live fetch-test an entry and stash the result as a pending preview."""
+    try:
+        count, titles, warnings = sources.fetch_test(entry, limit=8)
+        fetch_error = None
+    except Exception as e:  # network/HTTP failure — surface, don't crash the tab
+        count, titles, warnings, fetch_error = 0, [], [], f"{type(e).__name__}: {e}"
+    st.session_state["src_preview"] = {
+        "entry": entry, "count": count, "titles": titles,
+        "warnings": warnings, "fetch_error": fetch_error,
+    }
+
+
+def _add_source_form(path: str) -> None:
+    """Step 1: detect (or sniff) + live fetch-test, then stage a preview in session_state."""
+    with st.form("src-add"):
+        url = st.text_input("Board URL", key="src-url",
+                            placeholder="https://boards.greenhouse.io/stripe")
+        label = st.text_input("Label (optional)", key="src-label")
+        tmm_raw = st.text_input("title_must_match (comma-separated, optional)", key="src-tmm")
+        cols_raw = st.text_input("columns k=v (markdown only, optional)", key="src-cols")
+        submitted = st.form_submit_button("Detect & test")
+    if not submitted:
+        return
+
+    tmm = [s.strip() for s in tmm_raw.split(",") if s.strip()] or None
+    cols = sources._parse_kv(cols_raw) or None
+    try:
+        entry = sources.resolve_entry(url, label=label or None, title_must_match=tmm, columns=cols)
+    except SourceDetectionError as e:
+        # Not a clean board URL — sniff the page for an embedded board.
+        try:
+            candidates = sniffer.sniff_careers_page(url, label=label or None)
+        except sniffer.SnifferError:
+            candidates = []
+        if candidates:
+            st.session_state["src_candidates"] = {"candidates": candidates, "tmm": tmm, "cols": cols}
+            st.rerun()
+        st.error(f"Couldn't detect a source from that URL: {e}")
+        return
+
+    if sources.is_duplicate(path, entry):
+        st.warning(f"Already present: {entry.source_key}")
+        return
+    _stage_preview(entry)
+    st.rerun()
+
+
+def _add_source_candidates(path: str) -> None:
+    """Sniffer fallback: let the user pick one of the embedded boards found on the page."""
+    data = st.session_state["src_candidates"]
+    cands = data["candidates"]
+    st.info(f"No direct match — found {len(cands)} embedded board(s) on that page.")
+    choice = st.radio("Use which board?", [c.source_key for c in cands], key="src-cand-choice")
+    c1, c2 = st.columns(2)
+    if c1.button("Use this board", key="src-cand-use"):
+        entry = next(c for c in cands if c.source_key == choice)
+        if data["tmm"]:
+            entry.title_must_match = list(data["tmm"])
+        if data["cols"]:
+            entry.columns = dict(data["cols"])
+        if sources.is_duplicate(path, entry):
+            st.warning(f"Already present: {entry.source_key}")
+        else:
+            _stage_preview(entry)
+            st.session_state.pop("src_candidates", None)
+            st.rerun()
+    if c2.button("Cancel", key="src-cand-cancel"):
+        st.session_state.pop("src_candidates", None)
+        st.rerun()
+
+
+def _add_source_preview(path: str, preview: dict) -> None:
+    """Step 2: show the fetch-test result and a confirm/cancel decision."""
+    entry = preview["entry"]
+    st.markdown(f"Detected: `{entry.source_key}`")
+    if preview["fetch_error"]:
+        st.error(f"Fetch failed: {preview['fetch_error']}")
+    else:
+        st.write(f"Fetched **{preview['count']}** postings.")
+        for t in preview["titles"]:
+            st.write(f"- {t}")
+    for w in preview["warnings"]:
+        st.warning(w)
+
+    # Mirror the CLI's --yes gate: an empty/degenerate fetch needs an explicit "Add anyway".
+    needs_force = preview["fetch_error"] is None and (preview["count"] == 0 or preview["warnings"])
+    confirm_label = "Add anyway" if needs_force else "Confirm & add"
+    c1, c2 = st.columns(2)
+    if c1.button(confirm_label, key="src-confirm", disabled=preview["fetch_error"] is not None):
+        sources.append_source(path, entry)
+        st.session_state.pop("src_preview", None)
+        st.success(f"Added {entry.source_key}")
+        st.rerun()
+    if c2.button("Cancel", key="src-cancel"):
+        st.session_state.pop("src_preview", None)
+        st.rerun()
+
+
+def _sources_tab(conn) -> None:
+    st.subheader("Sources")
+    path = _sources_path()
+
+    try:
+        entries, errors = config.load_sources(path)
+    except config.ConfigError as e:
+        st.error(f"Couldn't read the sources file: {e}")
+        entries, errors = [], []
+    for err in errors:
+        st.warning(f"Malformed entry skipped: {err['reason']}")
+
+    if entries:
+        st.dataframe(
+            [{"Source key": e.source_key, "Type": e.type, "Label": e.display,
+              "Filter": ", ".join(e.title_must_match),
+              "Columns": ", ".join(f"{k}={v}" for k, v in e.columns.items())} for e in entries],
+            width="stretch", hide_index=True,
+        )
+        c1, c2 = st.columns([3, 1])
+        key = c1.selectbox("Remove a source", [e.source_key for e in entries],
+                           key="src-remove-select")
+        if c2.button("Remove", key="src-remove-btn"):
+            if sources.remove_source(path, key):
+                st.success(f"Removed {key}")
+            else:
+                st.error(f"Could not remove {key}")
+            st.rerun()
+    else:
+        st.caption("No sources configured yet. Add one below.")
+
+    st.divider()
+    st.markdown("**Add a source**")
+    if st.session_state.get("src_preview") is not None:
+        _add_source_preview(path, st.session_state["src_preview"])
+    elif st.session_state.get("src_candidates") is not None:
+        _add_source_candidates(path)
+    else:
+        _add_source_form(path)
 
 
 def main() -> None:
@@ -139,13 +383,15 @@ def main() -> None:
     _inject_css()
     st.title("🎯 internsHELPer")
     conn = _open_conn()
-    feed, tracker, health = st.tabs(["Feed", "Tracker", "Health"])
+    feed, tracker, health, srcs = st.tabs(["Feed", "Tracker", "Health", "Sources"])
     with feed:
         _feed_tab(conn)
     with tracker:
         _tracker_tab(conn)
     with health:
         _health_tab(conn)
+    with srcs:
+        _sources_tab(conn)
 
 
 if __name__ == "__main__":

@@ -48,6 +48,37 @@ def test_migration_adds_v2_columns_to_v1_db_without_data_loss(tmp_path):
     assert row["review_status"] == "pending"  # default applied to the migrated row
 
 
+def test_fresh_db_runs_has_dropped_column(tmp_path):
+    conn = _conn(tmp_path)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(runs)")}
+    assert "dropped" in cols
+
+
+def test_migration_adds_dropped_to_old_runs_table_without_data_loss(tmp_path):
+    p = tmp_path / "v1.db"
+    raw = sqlite3.connect(p)
+    raw.execute(
+        """CREATE TABLE runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL,
+            source_key TEXT NOT NULL, ok INTEGER NOT NULL,
+            count INTEGER NOT NULL DEFAULT 0, error TEXT)"""
+    )
+    raw.execute(
+        "INSERT INTO runs (started_at, source_key, ok, count) VALUES ('t','greenhouse:stripe',1,7)"
+    )
+    raw.commit()
+    raw.close()
+
+    conn = db.connect(p)
+    db.init_db(conn)  # should migrate in place
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(runs)")}
+    assert "dropped" in cols
+    row = conn.execute("SELECT count, dropped FROM runs WHERE source_key='greenhouse:stripe'").fetchone()
+    assert row["count"] == 7  # data preserved
+    assert row["dropped"] == 0  # default applied to the migrated row
+
+
 def test_init_db_creates_all_tables(tmp_path):
     conn = _conn(tmp_path)
     names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}

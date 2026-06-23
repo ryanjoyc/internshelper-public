@@ -15,14 +15,18 @@ from internshelper.models import Posting
 
 
 class _FakeConnector:
-    def __init__(self, posts=None, exc=None):
+    def __init__(self, posts=None, exc=None, warnings=None):
         self._posts = posts or []
         self._exc = exc
+        self._warnings = warnings or []
 
     def fetch(self):
         if self._exc:
             raise self._exc
         return self._posts
+
+    def parse_warnings(self):
+        return self._warnings
 
 
 def _post(pid, title):
@@ -36,9 +40,9 @@ def srcfile(tmp_path, monkeypatch):
     return p
 
 
-def _wire(monkeypatch, posts=None, exc=None):
+def _wire(monkeypatch, posts=None, exc=None, warnings=None):
     monkeypatch.setattr(sources, "build_connector",
-                        lambda entry: _FakeConnector(posts=posts, exc=exc))
+                        lambda entry: _FakeConnector(posts=posts, exc=exc, warnings=warnings))
 
 
 # ---------- pure helpers ----------
@@ -144,10 +148,50 @@ def test_add_zero_count_without_yes_refuses(srcfile, monkeypatch):
     assert config.load_sources(srcfile)[0] == []
 
 
-def test_add_unknown_host_exit_2(srcfile):
+_MD_URL = "https://raw.githubusercontent.com/foo/bar/main/README.md"
+
+
+def test_add_structural_warning_without_yes_refuses(srcfile, monkeypatch):
     srcfile.write_text("sources:\n")
+    _wire(monkeypatch, posts=[], warnings=["required column(s) not mapped"])
+    rc = sources.main(["add", _MD_URL])
+    assert rc == 1
+    assert config.load_sources(srcfile)[0] == []
+
+
+def test_add_structural_warning_with_yes_writes(srcfile, monkeypatch):
+    srcfile.write_text("sources:\n")
+    _wire(monkeypatch, posts=[], warnings=["required column(s) not mapped"])
+    rc = sources.main(["add", _MD_URL, "--yes"])
+    assert rc == 0
+    assert config.load_sources(srcfile)[0][0].source_key == f"markdown:{_MD_URL}"
+
+
+def test_add_unknown_host_exit_2(srcfile, monkeypatch):
+    srcfile.write_text("sources:\n")
+    monkeypatch.setattr(sources.sniffer, "sniff_careers_page", lambda url, label=None: [])
     rc = sources.main(["add", "https://mycorp.com/careers", "--yes"])
-    assert rc == 2
+    assert rc == 2  # page sniffed, no embedded board found
+    assert config.load_sources(srcfile)[0] == []
+
+
+def test_add_unknown_host_falls_back_to_sniffer(srcfile, monkeypatch):
+    srcfile.write_text("sources:\n")
+    monkeypatch.setattr(sources.sniffer, "sniff_careers_page",
+                        lambda url, label=None: [SourceEntry(type="greenhouse", token="stripe")])
+    _wire(monkeypatch, posts=[_post("1", "SWE Intern")])
+    rc = sources.main(["add", "https://mycorp.com/careers", "--yes"])
+    assert rc == 0
+    assert config.load_sources(srcfile)[0][0].source_key == "greenhouse:stripe"
+
+
+def test_add_sniffer_multiple_candidates_exit_2(srcfile, monkeypatch):
+    srcfile.write_text("sources:\n")
+    monkeypatch.setattr(sources.sniffer, "sniff_careers_page",
+                        lambda url, label=None: [SourceEntry(type="greenhouse", token="a"),
+                                                 SourceEntry(type="lever", token="b")])
+    rc = sources.main(["add", "https://mycorp.com/careers", "--yes"])
+    assert rc == 2  # ambiguous — won't guess
     assert config.load_sources(srcfile)[0] == []
 
 
@@ -170,6 +214,35 @@ def test_add_with_columns_flag(srcfile, monkeypatch):
 
 def test_parse_kv_drops_segments_without_equals():
     assert sources._parse_kv("a=1, b=2 , bad") == {"a": "1", "b": "2"}
+
+
+# ---------- reusable add-source core (resolve_entry / is_duplicate) ----------
+
+def test_resolve_entry_applies_title_must_match_and_columns():
+    entry = sources.resolve_entry(
+        "https://boards.greenhouse.io/stripe",
+        label="Stripe",
+        title_must_match=["engineer", "intern"],
+        columns={"company": "Org"},
+    )
+    assert entry.source_key == "greenhouse:stripe"
+    assert entry.label == "Stripe"
+    assert entry.title_must_match == ["engineer", "intern"]
+    assert entry.columns == {"company": "Org"}
+
+
+def test_resolve_entry_unknown_host_raises():
+    from internshelper.sourceurl import SourceDetectionError
+    with pytest.raises(SourceDetectionError):
+        sources.resolve_entry("https://mycorp.com/careers")
+
+
+def test_is_duplicate_true_false(srcfile):
+    srcfile.write_text("sources:\n  - type: greenhouse\n    token: stripe\n")
+    dup = SourceEntry(type="greenhouse", token="stripe")
+    fresh = SourceEntry(type="lever", token="netflix")
+    assert sources.is_duplicate(srcfile, dup) is True
+    assert sources.is_duplicate(srcfile, fresh) is False
 
 
 def test_add_with_title_must_match_flag(srcfile, monkeypatch):

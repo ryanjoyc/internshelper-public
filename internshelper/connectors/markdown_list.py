@@ -117,6 +117,33 @@ class MarkdownListConnector(Connector):
             postings.extend(self._parse_table(lines, header_i, seen, now))
         return postings
 
+    def parse_warnings(self) -> list[str]:
+        resp = httpx.get(self.entry.token, timeout=TIMEOUT, headers=HEADERS, follow_redirects=True)
+        resp.raise_for_status()
+        return self._diagnose(resp.text)
+
+    def _diagnose(self, text: str) -> list[str]:
+        """Pure structural check (no network) of a fetched Markdown document.
+
+        Flags the degenerate cases that otherwise produce a silent 0 rows: no tables at
+        all, or tables whose required company/title columns can't be mapped (the per-source
+        `columns` override is honored, same as `_parse_table`)."""
+        lines = text.splitlines()
+        headers = self._find_headers(lines)
+        if not headers:
+            return ["no Markdown tables found in the document"]
+        mappable = 0
+        for header_i in headers:
+            idx = _map_columns(_cells(lines[header_i]), self.entry.columns)
+            if "company" in idx and "title" in idx:
+                mappable += 1
+        if mappable == 0:
+            return [
+                f"{len(headers)} table(s) found, but none has mappable 'company' and "
+                "'title' columns — pass --columns to map them, or the parse yields 0 rows"
+            ]
+        return []
+
     def _parse_table(
         self, lines: list[str], header_i: int, seen: set[str], now: datetime | None
     ) -> list[Posting]:

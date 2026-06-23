@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS runs (
     source_key      TEXT NOT NULL,
     ok              INTEGER NOT NULL,
     count           INTEGER NOT NULL DEFAULT 0,
+    dropped         INTEGER NOT NULL DEFAULT 0,
     error           TEXT
 );
 
@@ -86,11 +87,17 @@ _POSTINGS_V2_COLUMNS = [
     ("posted_at", "TEXT"),
 ]
 
+# Additive migration for the `runs` table, same idiom as `_POSTINGS_V2_COLUMNS`.
+_RUNS_V2_COLUMNS = [
+    ("dropped", "INTEGER NOT NULL DEFAULT 0"),
+]
+
 
 def init_db(conn: sqlite3.Connection) -> None:
     """Create all tables if they do not exist, then apply additive migrations (idempotent)."""
     conn.executescript(SCHEMA)
     _migrate_postings(conn)
+    _migrate_runs(conn)
     conn.commit()
 
 
@@ -100,6 +107,14 @@ def _migrate_postings(conn: sqlite3.Connection) -> None:
     for name, decl in _POSTINGS_V2_COLUMNS:
         if name not in existing:
             conn.execute(f"ALTER TABLE postings ADD COLUMN {name} {decl}")
+
+
+def _migrate_runs(conn: sqlite3.Connection) -> None:
+    """Add any newer `runs` columns missing from an older database, preserving data."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
+    for name, decl in _RUNS_V2_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")
 
 
 def get_meta(conn: sqlite3.Connection, key: str) -> str | None:
