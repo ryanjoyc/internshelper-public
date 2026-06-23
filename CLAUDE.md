@@ -2,6 +2,9 @@
 
 This repo ships its own onboarding skills. Use them rather than re-deriving the layout from scratch.
 
+- **Where are we right now?** Read **`STATE.md`** (repo root) or invoke the **`project-state`** skill
+  first — it's the living dashboard (current focus, git/VCS status, planning-doc index). Keep it
+  current with **`update-project-state`**, and run **`session-state-check`** before wrapping up.
 - **Starting work here?** Invoke the **`internshelper-guide`** skill first — it's the orientation
   map (module layout, data flow, the four CLIs, config/data, conventions). It points you to the
   right source file instead of scanning the whole tree.
