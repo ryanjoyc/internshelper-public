@@ -210,25 +210,20 @@ def _health_tab(conn) -> None:
     st.subheader("Health")
     total, cand = store.pending_counts(conn)
     st.caption(f"Pending review: {total} ({cand} candidates)")
-    rows = store.health(conn)
+    rows = store.source_health(conn)
     if not rows:
         st.info("No runs recorded yet.")
         return
-
-    baselines = store.source_baselines(conn)
-    quiet = {k: b for k, b in baselines.items() if b["quiet"]}
+    quiet = [r for r in rows if r["quiet"]]
     if quiet:
-        detail = ", ".join(
-            f"{k} ({b['latest']} vs ~{b['baseline']:.0f} baseline)" for k, b in quiet.items()
+        st.warning(
+            "⚠️ Source(s) went quiet — "
+            + " · ".join(f"**{r['source_key']}** ({r['quiet_reason']})" for r in quiet)
         )
-        st.warning(f"⚠️ {len(quiet)} source(s) went quiet: {detail}")
-
     st.dataframe(
         [{"Source": r["source_key"], "Last run": r["started_at"],
-          "OK": "✅" if r["ok"] else "❌", "Count": r["count"],
-          "Dropped": r["dropped"],
-          "Quiet?": "⚠️" if baselines.get(r["source_key"], {}).get("quiet") else "",
-          "Error": r["error"]}
+          "OK": "✅" if r["ok"] else "❌", "Quiet": "⚠️" if r["quiet"] else "",
+          "Count": r["count"], "Dropped": r["dropped"], "Error": r["error"]}
          for r in rows],
         width="stretch", hide_index=True,
     )

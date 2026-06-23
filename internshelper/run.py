@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from internshelper import classify, clock, config, db, digest, notify, store
+from internshelper import classify, clock, config, db, mailer, notify, store
 from internshelper.config import Settings, SourceEntry
 from internshelper.connectors import build_connector
 from internshelper.dotenv import feature_enabled, load_dotenv
@@ -50,15 +50,15 @@ def process_source(
     # Coarse per-source flood guard (the "Arby's" filter): drop titles the source opted out of.
     fetched = len(postings)
     postings = [p for p in postings if entry.accepts(p.title)]
-    dropped = fetched - len(postings)
+    dropped = fetched - len(postings)  # counted (not silent) so the Health tab can show it
 
     seen = set()
     for posting in postings:
         classify.classify(posting, compiled)  # keyword priority hints only — not a gate
         store.upsert(conn, posting, now, payloads_dir=payloads_dir)
         seen.add(posting.posting_id)
-    store.record_run(conn, entry.source_key, ok=True, count=len(postings),
-                     error=None, now=now, dropped=dropped)
+    store.record_run(conn, entry.source_key, ok=True, count=len(postings), error=None,
+                     now=now, dropped=dropped)
     store.apply_close_detection(conn, entry.source_key, seen, ok=True, count=len(postings))
     return True
 
@@ -70,7 +70,7 @@ def run_cycle(
     now: str,
     password: str | None,
     payloads_dir: str | Path | None,
-    send_fn=digest.send,
+    send_fn=mailer.send,
     email_enabled: bool = True,
 ) -> CollectResult:
     # Heartbeat first, before any (possibly slow) fetch.

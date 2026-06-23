@@ -110,45 +110,29 @@ class MarkdownListConnector(Connector):
     def parse(self, text: str, now: datetime | None = None) -> list[Posting]:
         """Parse EVERY table in the document (these lists are split into category sections),
         deduping rows that recur across tables. `now` resolves year-less posted dates."""
+        self.diagnostics = []  # fresh per parse; populated when a table can't be mapped
         lines = text.splitlines()
         postings: list[Posting] = []
         seen: set[str] = set()
-        for header_i in self._find_headers(lines):
-            postings.extend(self._parse_table(lines, header_i, seen, now))
-        return postings
-
-    def parse_warnings(self) -> list[str]:
-        resp = httpx.get(self.entry.token, timeout=TIMEOUT, headers=HEADERS, follow_redirects=True)
-        resp.raise_for_status()
-        return self._diagnose(resp.text)
-
-    def _diagnose(self, text: str) -> list[str]:
-        """Pure structural check (no network) of a fetched Markdown document.
-
-        Flags the degenerate cases that otherwise produce a silent 0 rows: no tables at
-        all, or tables whose required company/title columns can't be mapped (the per-source
-        `columns` override is honored, same as `_parse_table`)."""
-        lines = text.splitlines()
         headers = self._find_headers(lines)
         if not headers:
-            return ["no Markdown tables found in the document"]
-        mappable = 0
+            self._warn("no Markdown table found (need a header row followed by a |---| separator)")
         for header_i in headers:
-            idx = _map_columns(_cells(lines[header_i]), self.entry.columns)
-            if "company" in idx and "title" in idx:
-                mappable += 1
-        if mappable == 0:
-            return [
-                f"{len(headers)} table(s) found, but none has mappable 'company' and "
-                "'title' columns — pass --columns to map them, or the parse yields 0 rows"
-            ]
-        return []
+            postings.extend(self._parse_table(lines, header_i, seen, now))
+        return postings
 
     def _parse_table(
         self, lines: list[str], header_i: int, seen: set[str], now: datetime | None
     ) -> list[Posting]:
         idx = _map_columns(_cells(lines[header_i]), self.entry.columns)
         if "company" not in idx or "title" not in idx:
+            missing = [f for f in ("company", "title") if f not in idx]
+            self._warn(
+                f"table at line {header_i + 1}: couldn't map required column(s) "
+                f"{', '.join(missing)} — headers were {_cells(lines[header_i])}. "
+                f"Map them with --columns {missing[0]}=<header>"
+                + (f",{missing[1]}=<header>" if len(missing) > 1 else "")
+            )
             return []  # can't make a posting without these
         need = max(idx.values())
 

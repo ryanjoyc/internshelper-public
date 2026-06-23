@@ -106,24 +106,38 @@ def test_build_connector_resolves_markdown():
     assert build_connector(SourceEntry(type="markdown", token="https://x/r.md")).type == "markdown"
 
 
-def test_diagnose_no_tables_warns():
-    assert _conn(SNDSH)._diagnose("just prose, no tables here") == \
-        ["no Markdown tables found in the document"]
+# ---------- diagnostics (P0-3: explain a degenerate / empty parse) ----------
+
+def test_unmappable_required_column_emits_diagnostic_and_returns_empty():
+    md = (
+        "| Company | Where | Link |\n"
+        "| --- | --- | --- |\n"
+        "| A Co | NYC | https://a.co/1 |\n"
+    )
+    c = _conn(SNDSH)
+    posts = c.parse(md)
+    assert posts == []  # no title column -> can't build a posting
+    assert c.diagnostics  # and the reason is recorded, not silent
+    assert "couldn't map required column" in c.diagnostics[0]
+    assert "title" in c.diagnostics[0] and "--columns" in c.diagnostics[0]
 
 
-def test_diagnose_unmappable_required_columns_warns():
-    md = "| Foo | Bar |\n| --- | --- |\n| a | b |\n"
-    warnings = _conn(SNDSH)._diagnose(md)
-    assert len(warnings) == 1 and "company" in warnings[0] and "title" in warnings[0]
+def test_no_table_emits_diagnostic():
+    c = _conn(SNDSH)
+    posts = c.parse("# Just a heading\n\nSome prose, no tables at all.\n")
+    assert posts == []
+    assert any("no Markdown table found" in d for d in c.diagnostics)
 
 
-def test_diagnose_mappable_table_is_clean():
-    md = "| Company | Role | Location |\n| --- | --- | --- |\n| Acme | SWE Intern | NYC |\n"
-    assert _conn(SNDSH)._diagnose(md) == []
+def test_healthy_parse_has_no_diagnostics():
+    c = _conn(SNDSH)
+    c.parse((FX / "md_sndsh404.md").read_text())
+    assert c.diagnostics == []  # clean parse leaves the channel empty
 
 
-def test_diagnose_honors_columns_override():
-    c = build_connector(SourceEntry(type="markdown", token=SNDSH,
-                                    columns={"company": "Org", "title": "Gig"}))
-    md = "| Org | Gig |\n| --- | --- |\n| Acme | SWE Intern |\n"
-    assert c._diagnose(md) == []
+def test_diagnostics_reset_between_parses():
+    c = _conn(SNDSH)
+    c.parse("no tables here")  # populates diagnostics
+    assert c.diagnostics
+    c.parse((FX / "md_sndsh404.md").read_text())  # clean parse must clear them
+    assert c.diagnostics == []

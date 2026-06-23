@@ -50,13 +50,13 @@ collected or shown.
 
 | Module | Responsibility |
 |--------|----------------|
-| `store` | Persistence: upsert postings, per-source close-detection, digest selection, run logging (UTC ISO-8601). |
+| `store` | Persistence: upsert postings, per-source close-detection, run logging + `source_health` ("went quiet" detection), application tracking (UTC ISO-8601). |
 | `db` | SQLite schema, connections, meta key/value store, runs-history pruning. |
 | `config` | Load + validate `sources.yaml` and `settings.toml`; collects errors without halting on a single bad entry. |
 | `models` | The normalized `Posting` dataclass shared across connectors / classify / store; carries scraped + classified fields + the raw payload. |
 | `classify` | Keyword matcher (whole-word, case-insensitive) over title + HTML-stripped description → the three flag booleans. |
 | `clock` | Canonical UTC ISO-8601 helpers: parse mixed date formats, convert to UTC, diff. |
-| `notify` | Render + send the review-nudge email. |
+| `notify` | Render the review-nudge email and send it via `mailer`. |
 | `display` | Pure display helpers: humanize mixed date formats with relative-age hints (no Streamlit dependency). |
 | `dashboard` | Streamlit UI — Feed / Tracker / Health / Sources. Feed's "Pending review" is interactive (mark match/no_match, peek the raw payload, bulk-clear non-candidates); Sources adds/removes boards in-app. UI only; data logic lives in `store` / `review` / `sources`. |
 | `dotenv` | Stdlib `.env` loader; shell env vars win; silent no-op if the file is missing. |
@@ -64,7 +64,7 @@ collected or shown.
 | `sourceurl` | Pure URL→`SourceEntry` detection (no network): map a pasted board URL to a source by host + path. |
 | `sniffer` | Heuristic, no-AI detection of embedded Greenhouse/Lever/Ashby boards on an arbitrary careers page (regex over the fetched HTML). The add-source fallback when `sourceurl` can't resolve a clean board URL. |
 | `filters` | Apply user filter booleans (`require_cs`, `require_intern_or_newgrad`) to classified postings. Pure function. |
-| `digest` | Render + email a digest of new matching postings; watermark advances only after a confirmed send. |
+| `mailer` | Shared SMTP+STARTTLS send helper (the only mail transport); used by `notify`. |
 | `__init__` | Package root (version). |
 
 ## Connectors (`internshelper/connectors/`)
@@ -78,8 +78,8 @@ a type = adding a connector that registers itself + a `sourceurl` detection rule
 | `lever` | Lever public postings API (`/v0/postings/{token}`). |
 | `ashby` | Ashby public board API (`/posting-api/job-board/{org}`); keeps `isListed=true` only. |
 | `github_list` | Structured JSON internship lists (e.g. SimplifyJobs `listings.json`), active+visible rows. |
-| `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns, handles `↳` continuation rows + `🔒` closed markers. |
-| `base` | Base `Connector` class, shared HTTP helpers (httpx, timeouts, headers), and the type→connector registry. |
+| `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns, handles `↳` continuation rows + `🔒` closed markers; emits `diagnostics` when required columns can't be mapped. |
+| `base` | Base `Connector` class, shared HTTP helpers (httpx, timeouts, headers), the type→connector registry, and a `diagnostics`/`_warn` channel surfaced at add-time so a 0-row parse isn't silent. |
 
 ## The four CLIs
 

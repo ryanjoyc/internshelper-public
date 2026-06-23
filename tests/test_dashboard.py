@@ -37,15 +37,15 @@ def _by_label(elements, label):
 
 class _FakeConnector:
     def __init__(self, posts=None, exc=None, warnings=None):
-        self._posts, self._exc, self._warnings = posts or [], exc, warnings or []
+        self._posts, self._exc = posts or [], exc
+        # Push model: diagnostics read off the connector after fetch (matches the real
+        # Connector.diagnostics channel that fetch_test now consumes).
+        self.diagnostics = list(warnings or [])
 
     def fetch(self):
         if self._exc:
             raise self._exc
         return self._posts
-
-    def parse_warnings(self):
-        return self._warnings
 
 
 def _wire(monkeypatch, posts=None, exc=None, warnings=None):
