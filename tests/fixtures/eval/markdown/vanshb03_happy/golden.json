@@ -1,0 +1,67 @@
+{
+  "connector": "markdown",
+  "source": {
+    "type": "markdown",
+    "token": "https://raw.githubusercontent.com/vanshb03/Summer2026-Internships/dev/README.md",
+    "label": "Summer 2026"
+  },
+  "payload_ref": "../../../md_vanshb03.md",
+  "as_of": "2026-06-18T00:00:00+00:00",
+  "seam": "parse",
+  "expected": [
+    {
+      "key": "https://voloridge-investment-management.hiringthing.com/job/1013126/quantitative-developer-intern-2027",
+      "title": "Quantitative Developer Intern",
+      "company": "Voloridge Investment Management",
+      "location": "Jupiter, FL",
+      "url": "https://voloridge-investment-management.hiringthing.com/job/1013126/quantitative-developer-intern-2027?s=lif&jr_id=69eaa8e4dc35f7132c4ab803&utm_source=github-vansh-ouckah",
+      "posted_at": "2026-05-22",
+      "description_present": false
+    },
+    {
+      "key": "https://careers.sig.com/jobs/10837",
+      "title": "Trading System Engineering Intern",
+      "company": "Susquehanna",
+      "location": "Bala Cynwyd, PA",
+      "url": "https://careers.sig.com/jobs/10837?lang=en-us&mode=apply&iis=LinkedIn&jr_id=69f3d11158b23a2329da8088&utm_source=github-vansh-ouckah",
+      "posted_at": "2026-05-22",
+      "description_present": false
+    },
+    {
+      "key": "https://www.stokespace.com/careers/current-openings",
+      "title": "Software Engineer Intern",
+      "company": "Stoke Space",
+      "location": "Kent, WA",
+      "url": "https://www.stokespace.com/careers/current-openings/?gh_jid=5987663004&jr_id=69fae0acd21cf86d1e3cd79c&utm_source=github-vansh-ouckah",
+      "posted_at": "2026-05-22",
+      "description_present": false
+    },
+    {
+      "key": "https://liveramp.wd5.myworkdayjobs.com/LiveRampCareers/job/New-York/Intern--Software-Engineer---Pixel-Serving_JR012201",
+      "title": "Software Engineer Intern, Pixel Serving",
+      "company": "LiveRamp",
+      "location": "New York, NY",
+      "url": "https://liveramp.wd5.myworkdayjobs.com/LiveRampCareers/job/New-York/Intern--Software-Engineer---Pixel-Serving_JR012201?utm_source=github-vansh-ouckah",
+      "posted_at": "2026-05-22",
+      "description_present": false
+    },
+    {
+      "key": "https://leidos.wd5.myworkdayjobs.com/External/job/Chantilly-VA/Software-Engineer-Intern_R-00183707",
+      "title": "Software Engineer Intern",
+      "company": "Kudu Dynamics",
+      "location": "Chantilly, VA",
+      "url": "https://leidos.wd5.myworkdayjobs.com/External/job/Chantilly-VA/Software-Engineer-Intern_R-00183707?utm_source=github-vansh-ouckah",
+      "posted_at": "2026-05-22",
+      "description_present": false
+    },
+    {
+      "key": "https://leidos.wd5.myworkdayjobs.com/External/job/Chantilly-VA/Software-Engineer-Intern_R-00183721",
+      "title": "Software Engineer Intern",
+      "company": "Kudu Dynamics",
+      "location": "Chantilly, VA",
+      "url": "https://leidos.wd5.myworkdayjobs.com/External/job/Chantilly-VA/Software-Engineer-Intern_R-00183721?utm_source=github-vansh-ouckah",
+      "posted_at": "2026-05-22",
+      "description_present": false
+    }
+  ]
+}

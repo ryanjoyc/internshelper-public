@@ -1,0 +1,85 @@
+{
+  "connector": "markdown",
+  "source": {
+    "type": "markdown",
+    "token": "https://raw.githubusercontent.com/sndsh404/summer-2027-internships/main/README.md",
+    "label": "Summer 2027"
+  },
+  "payload_ref": "../../../md_sndsh404.md",
+  "as_of": "2026-06-18T00:00:00+00:00",
+  "seam": "parse",
+  "expected": [
+    {
+      "key": "https://www.ycombinator.com/companies/circleback/jobs/QMpriul-software-engineering-intern-summer-2027",
+      "title": "Software Engineering Intern (Summer 2027) 🛂",
+      "company": "Circleback",
+      "location": "San Francisco, CA",
+      "url": "https://www.ycombinator.com/companies/circleback/jobs/QMpriul-software-engineering-intern-summer-2027",
+      "posted_at": "2026-06-16",
+      "description_present": false
+    },
+    {
+      "key": "https://www.stepstonegroup.com/current-opportunities",
+      "title": "Private Equity Infrastructure & Real Assets Summer Analyst 🛂",
+      "company": "StepStone Group",
+      "location": "New York, NY",
+      "url": "https://www.stepstonegroup.com/current-opportunities/?gh_jid=7872890",
+      "posted_at": "2026-06-15",
+      "description_present": false
+    },
+    {
+      "key": "https://job-boards.greenhouse.io/voloridgeinvestmentmanagement/jobs/4224862009",
+      "title": "Quantitative Developer Intern",
+      "company": "Voloridge Investment Management",
+      "location": "Jupiter, FL",
+      "url": "https://job-boards.greenhouse.io/voloridgeinvestmentmanagement/jobs/4224862009",
+      "posted_at": "2026-06-15",
+      "description_present": false
+    },
+    {
+      "key": "https://job-boards.greenhouse.io/voloridgeinvestmentmanagement/jobs/4226247009",
+      "title": "Quantitative Research Intern",
+      "company": "Voloridge Investment Management",
+      "location": "Jupiter, FL",
+      "url": "https://job-boards.greenhouse.io/voloridgeinvestmentmanagement/jobs/4226247009",
+      "posted_at": "2026-06-15",
+      "description_present": false
+    },
+    {
+      "key": "https://careers.geaerospace.com/global/en/job/GAOGAYGLOBALR5030073EXTERNALENGLOBAL/Engines-Engineering-Co-op-Computer-or-Software-Engineering-US-Spring-2027-Returning-Students",
+      "title": "Engines Engineering Co-op, Computer/Software Engineering (Spring 2027, Returning Students) 🛂 🇺🇸",
+      "company": "GE Aerospace",
+      "location": "Cincinnati, OH / Lynn, MA",
+      "url": "https://careers.geaerospace.com/global/en/job/GAOGAYGLOBALR5030073EXTERNALENGLOBAL/Engines-Engineering-Co-op-Computer-or-Software-Engineering-US-Spring-2027-Returning-Students",
+      "posted_at": "2026-06-14",
+      "description_present": false
+    },
+    {
+      "key": "https://cat.wd5.myworkdayjobs.com/SolarTurbines/job/San-Diego-California/XMLNAME-2027-Internship--Gas-Compressor-Data-Analyst_R0000375786",
+      "title": "Gas Compressor Data Analyst Intern 🛂",
+      "company": "Solar Turbines (Caterpillar)",
+      "location": "San Diego, CA",
+      "url": "https://cat.wd5.myworkdayjobs.com/SolarTurbines/job/San-Diego-California/XMLNAME-2027-Internship--Gas-Compressor-Data-Analyst_R0000375786",
+      "posted_at": "2026-06-12",
+      "description_present": false
+    },
+    {
+      "key": "https://blueorigin.wd5.myworkdayjobs.com/en-US/BlueOrigin/job/Greater-Seattle-Area/Spring-2027--Software-Developer-Internship---Undergraduate_R66216",
+      "title": "Software Developer Intern (Spring 2027) 🇺🇸",
+      "company": "Blue Origin",
+      "location": "Seattle, WA (multiple US)",
+      "url": "https://blueorigin.wd5.myworkdayjobs.com/en-US/BlueOrigin/job/Greater-Seattle-Area/Spring-2027--Software-Developer-Internship---Undergraduate_R66216",
+      "posted_at": "2026-06-10",
+      "description_present": false
+    },
+    {
+      "key": "https://blueorigin.wd5.myworkdayjobs.com/en-US/BlueOrigin/job/Greater-Seattle-Area/Spring-2027-Avionics-Software-Internship---Undergraduate_R66213",
+      "title": "Avionics Software Intern (Spring 2027) 🇺🇸",
+      "company": "Blue Origin",
+      "location": "Seattle, WA (multiple US)",
+      "url": "https://blueorigin.wd5.myworkdayjobs.com/en-US/BlueOrigin/job/Greater-Seattle-Area/Spring-2027-Avionics-Software-Internship---Undergraduate_R66213",
+      "posted_at": "2026-06-10",
+      "description_present": false
+    }
+  ]
+}

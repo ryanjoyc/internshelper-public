@@ -1,0 +1,25 @@
+{
+  "connector": "greenhouse",
+  "source": {"type": "greenhouse", "token": "acme", "label": "Acme"},
+  "seam": "parse",
+  "as_of": null,
+  "notes": "bug #6: a string `location` (not the usual {name: ...} dict) must not crash the parse; it is used verbatim.",
+  "expected": [
+    {
+      "title": "ML Intern",
+      "company": "Acme",
+      "location": "Remote",
+      "url": "https://acme.com/9001",
+      "posted_at": "2026-03-01",
+      "description_present": true
+    },
+    {
+      "title": "Infra Intern",
+      "company": "Acme",
+      "location": "New York, NY",
+      "url": "https://acme.com/9002",
+      "posted_at": "2026-03-02",
+      "description_present": true
+    }
+  ]
+}

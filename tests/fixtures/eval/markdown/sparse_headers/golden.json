@@ -1,0 +1,25 @@
+{
+  "connector": "markdown",
+  "source": {"type": "markdown", "token": "https://example.com/sparse.md", "label": "Sparse"},
+  "seam": "parse",
+  "as_of": "2026-06-18T00:00:00+00:00",
+  "notes": "bug #2: a row that omits the trailing optional column (Added) must still parse; `need` must key off required columns only, not the max mapped index.",
+  "expected": [
+    {
+      "title": "SWE Intern",
+      "company": "Acme",
+      "location": "NYC",
+      "url": "https://acme.com/1",
+      "posted_at": "2026-06-10",
+      "description_present": false
+    },
+    {
+      "title": "Data Intern",
+      "company": "Beta",
+      "location": "SF",
+      "url": "https://beta.com/2",
+      "posted_at": null,
+      "description_present": false
+    }
+  ]
+}

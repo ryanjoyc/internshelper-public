@@ -1,0 +1,31 @@
+{
+  "connector": "ashby",
+  "source": {
+    "type": "ashby",
+    "token": "ramp",
+    "label": "Ramp"
+  },
+  "payload_ref": "../../../ashby_ramp.json",
+  "as_of": null,
+  "seam": "parse",
+  "expected": [
+    {
+      "key": "https://jobs.ashbyhq.com/ramp/34413f8d-26bf-4bbc-8ade-eb309a0e2245",
+      "title": "Security Engineer, Cloud",
+      "company": "Ramp",
+      "location": "New York, NY (HQ)",
+      "url": "https://jobs.ashbyhq.com/ramp/34413f8d-26bf-4bbc-8ade-eb309a0e2245",
+      "posted_at": "2026-04-07T17:12:35.753000+00:00",
+      "description_present": true
+    },
+    {
+      "key": "https://jobs.ashbyhq.com/ramp/63df0ffc-bdc6-40ba-906f-fe03378536b0",
+      "title": "AI Operations Specialist | Agentic Workflows",
+      "company": "Ramp",
+      "location": "New York, NY (HQ)",
+      "url": "https://jobs.ashbyhq.com/ramp/63df0ffc-bdc6-40ba-906f-fe03378536b0",
+      "posted_at": "2026-03-17T20:30:40.304000+00:00",
+      "description_present": true
+    }
+  ]
+}

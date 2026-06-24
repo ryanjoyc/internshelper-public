@@ -1,0 +1,17 @@
+{
+  "connector": "github",
+  "source": {"type": "github", "token": "https://example.com/list.json", "label": "Simplify"},
+  "seam": "parse",
+  "as_of": null,
+  "notes": "bug #5: a string `locations` must not be joined per-character; a string-\"false\" `active` must be treated as falsy and excluded.",
+  "expected": [
+    {
+      "title": "Data Intern",
+      "company": "Acme",
+      "location": "San Francisco, CA",
+      "url": "https://example.com/g1",
+      "posted_at": "2023-11-14",
+      "description_present": false
+    }
+  ]
+}

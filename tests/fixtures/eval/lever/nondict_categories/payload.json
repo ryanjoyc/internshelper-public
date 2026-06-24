@@ -1,0 +1,20 @@
+[
+  {
+    "id": "l1",
+    "text": "Backend Engineer",
+    "hostedUrl": "https://jobs.lever.co/acme/l1",
+    "applyUrl": "https://jobs.lever.co/acme/l1/apply",
+    "categories": {"location": "San Francisco"},
+    "descriptionPlain": "Backend work.",
+    "createdAt": 1600000000000
+  },
+  {
+    "id": "l2",
+    "text": "Frontend Engineer",
+    "hostedUrl": "https://jobs.lever.co/acme/l2",
+    "applyUrl": "https://jobs.lever.co/acme/l2/apply",
+    "categories": ["Engineering"],
+    "descriptionPlain": "Frontend work.",
+    "createdAt": 1600000000000
+  }
+]

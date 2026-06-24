@@ -23,8 +23,12 @@ class GreenhouseConnector(Connector):
 
     def parse(self, data) -> list[Posting]:
         postings = []
-        for job in data.get("jobs", []):
-            location = (job.get("location") or {}).get("name", "") or ""
+        jobs = data.get("jobs", []) if isinstance(data, dict) else []
+        for job in jobs:
+            # Location is normally {"name": ...}; tolerate a bare string (or missing) without
+            # crashing the whole board.
+            loc = job.get("location")
+            location = loc.get("name", "") or "" if isinstance(loc, dict) else (str(loc) if loc else "")
             postings.append(
                 Posting(
                     posting_id=f"{self.type}:{job['id']}",

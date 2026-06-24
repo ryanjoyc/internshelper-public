@@ -1,0 +1,25 @@
+{
+  "connector": "markdown",
+  "source": {"type": "markdown", "token": "https://example.com/synthid.md", "label": "Collide"},
+  "seam": "parse",
+  "as_of": "2026-06-18T00:00:00+00:00",
+  "notes": "bug #1: two distinct roles whose apply URLs differ only by ?gh_jid= share a canonical URL; they must stay TWO postings, not collapse to one via the synth-id.",
+  "expected": [
+    {
+      "title": "Frontend Intern",
+      "company": "Acme",
+      "location": "NYC",
+      "url": "https://acme.com/jobs?gh_jid=111",
+      "posted_at": null,
+      "description_present": false
+    },
+    {
+      "title": "Backend Intern",
+      "company": "Acme",
+      "location": "NYC",
+      "url": "https://acme.com/jobs?gh_jid=222",
+      "posted_at": null,
+      "description_present": false
+    }
+  ]
+}

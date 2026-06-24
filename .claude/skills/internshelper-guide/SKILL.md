@@ -58,13 +58,14 @@ collected or shown.
 | `clock` | Canonical UTC ISO-8601 helpers: parse mixed date formats, convert to UTC, diff. |
 | `notify` | Render the review-nudge email and send it via `mailer`. |
 | `display` | Pure display helpers: humanize mixed date formats with relative-age hints (no Streamlit dependency). |
-| `dashboard` | Streamlit UI — Feed / Tracker / Health / Sources. Feed's "Pending review" is interactive (mark match/no_match, peek the raw payload, bulk-clear non-candidates); Sources adds/removes boards in-app. UI only; data logic lives in `store` / `review` / `sources`. |
+| `dashboard` | Streamlit UI — Feed / Tracker / Health / Sources / Accuracy. Feed's "Pending review" is interactive (mark match/no_match, peek the raw payload, bulk-clear non-candidates); Sources adds/removes boards in-app; Accuracy shows the live `eval` scorecard. UI only; data logic lives in `store` / `review` / `sources` / `eval`. |
 | `dotenv` | Stdlib `.env` loader; shell env vars win; silent no-op if the file is missing. |
 | `text` | HTML→plaintext stripper (stdlib `html.parser`) used before keyword matching. |
 | `sourceurl` | Pure URL→`SourceEntry` detection (no network): map a pasted board URL to a source by host + path. |
 | `sniffer` | Heuristic, no-AI detection of embedded Greenhouse/Lever/Ashby boards on an arbitrary careers page (regex over the fetched HTML). The add-source fallback when `sourceurl` can't resolve a clean board URL. |
 | `filters` | Apply user filter booleans (`require_cs`, `require_intern_or_newgrad`) to classified postings. Pure function. |
 | `mailer` | Shared SMTP+STARTTLS send helper (the only mail transport); used by `notify`. |
+| `eval/` | **Offline extraction-accuracy harness** (a package): replays saved fixture responses through each connector's real `parse()` and scores parsed-vs-golden — role recall/precision + per-field correctness + a storage round-trip. `harness` (discovery + parse seam + round-trip), `scoring` (content-key matching + per-field tolerances), `__main__` (the `python -m internshelper.eval` scorecard CLI). Deterministic, network-free; the bedrock for "did we capture every job, correctly?" |
 | `__init__` | Package root (version). |
 
 ## Connectors (`internshelper/connectors/`)
@@ -114,7 +115,14 @@ bash scripts/bootstrap.sh
 .venv/bin/python -m pytest                              # tests (fixtures, no live calls)
 .venv/bin/python -m internshelper.run                  # one collection cycle
 .venv/bin/streamlit run internshelper/dashboard.py     # dashboard
+.venv/bin/python -m internshelper.eval                 # connector accuracy scorecard
+.venv/bin/python -m internshelper.eval --check         # CI gate: exit 1 if any fixture < 100%
 ```
+
+The accuracy harness reads golden fixtures from `tests/fixtures/eval/<connector>/<case>/`
+(a `golden.json` of expected postings + a saved/`payload_ref`'d response). `tests/test_eval.py`
+gates every fixture at a perfect 100%. **When you touch a connector, add or update a golden
+fixture** — `--emit-skeleton <golden.json>` prints a skeleton from the current parser to start from.
 
 ## Conventions & gotchas
 

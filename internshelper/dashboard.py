@@ -229,6 +229,68 @@ def _health_tab(conn) -> None:
     )
 
 
+@st.cache_data
+def _eval_scorecard() -> list[dict]:
+    """Run the offline accuracy harness once and cache it (deterministic, sub-second). The
+    Re-run button clears this cache so it always reflects the current parser code."""
+    from internshelper.eval import score_all
+
+    def pct(v):
+        return "—" if v is None else f"{v * 100:.0f}%"
+
+    out = []
+    for r in score_all():
+        out.append({
+            "Connector": r.connector, "Case": r.case,
+            "Exp": r.expected_n, "Got": r.parsed_n,
+            "Recall": pct(r.recall), "Precision": pct(r.precision),
+            "Title": pct(r.field_acc("title")), "Company": pct(r.field_acc("company")),
+            "Loc": pct(r.field_acc("location")), "URL": pct(r.field_acc("url")),
+            "Date": pct(r.field_acc("posted_at")), "Desc": pct(r.field_acc("description_present")),
+            "Storage": "✅" if r.storage_ok else "❌",
+            "_perfect": r.is_perfect(), "_recall": r.recall, "_precision": r.precision,
+        })
+    return out
+
+
+def _eval_tab(conn) -> None:  # conn unused — the harness is self-contained — kept for tab symmetry
+    st.subheader("Accuracy")
+    st.caption("Offline extraction-accuracy harness: each connector parses saved fixture pages, "
+               "scored against hand-labeled goldens — role recall/precision + per-field correctness.")
+    if st.button("Re-run harness", key="eval-rerun"):
+        _eval_scorecard.clear()
+        st.rerun()
+    try:
+        rows = _eval_scorecard()
+    except Exception as e:  # never let a harness error blank the tab
+        st.error(f"Eval harness failed to run: {e}")
+        return
+    if not rows:
+        st.info("No eval fixtures found under tests/fixtures/eval/.")
+        return
+
+    n = len(rows)
+    perfect = sum(1 for r in rows if r["_perfect"])
+    macro_recall = sum(r["_recall"] for r in rows) / n
+    macro_prec = sum(r["_precision"] for r in rows) / n
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Fixtures perfect", f"{perfect}/{n}")
+    c2.metric("Recall", f"{macro_recall:.0%}")
+    c3.metric("Precision", f"{macro_prec:.0%}")
+
+    failing = [r for r in rows if not r["_perfect"]]
+    if failing:
+        st.warning("⚠️ Accuracy regressions — "
+                   + " · ".join(f"**{r['Connector']}/{r['Case']}**" for r in failing))
+    else:
+        st.success("All fixtures at 100%.")
+
+    st.dataframe(
+        [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows],
+        width="stretch", hide_index=True,
+    )
+
+
 def _sources_path() -> str:
     return config.default_path("INTERNSHELPER_SOURCES", "config/sources.yaml")
 
@@ -378,7 +440,8 @@ def main() -> None:
     _inject_css()
     st.title("🎯 internsHELPer")
     conn = _open_conn()
-    feed, tracker, health, srcs = st.tabs(["Feed", "Tracker", "Health", "Sources"])
+    feed, tracker, health, srcs, accuracy = st.tabs(
+        ["Feed", "Tracker", "Health", "Sources", "Accuracy"])
     with feed:
         _feed_tab(conn)
     with tracker:
@@ -387,6 +450,8 @@ def main() -> None:
         _health_tab(conn)
     with srcs:
         _sources_tab(conn)
+    with accuracy:
+        _eval_tab(conn)
 
 
 if __name__ == "__main__":

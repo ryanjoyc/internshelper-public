@@ -1,0 +1,17 @@
+{
+  "connector": "ashby",
+  "source": {"type": "ashby", "token": "acme", "label": "Acme"},
+  "seam": "parse",
+  "as_of": null,
+  "notes": "bug #3: a job missing the isListed key must be EXCLUDED (safe-by-default), not leaked in.",
+  "expected": [
+    {
+      "title": "Software Engineer Intern",
+      "company": "Acme",
+      "location": "Remote",
+      "url": "https://jobs.ashbyhq.com/acme/a1",
+      "posted_at": "2026-05-01",
+      "description_present": true
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "connector": "markdown",
+  "source": {"type": "markdown", "token": "https://example.com/url.md", "label": "Url"},
+  "seam": "parse",
+  "as_of": "2026-06-18T00:00:00+00:00",
+  "notes": "bug #9: an angle-bracket autolink <https://...> must not capture the trailing '>' into the URL.",
+  "expected": [
+    {
+      "title": "Role X",
+      "company": "Acme",
+      "location": "NYC",
+      "url": "https://acme.com/jobx",
+      "posted_at": null,
+      "description_present": false
+    }
+  ]
+}

@@ -12,6 +12,17 @@ from internshelper.connectors.base import Connector, register
 from internshelper.models import Posting
 
 
+def _truthy(value) -> bool:
+    """Robust truthiness for JSON flags that may arrive as bools, ints, or strings.
+
+    A string like "false"/"0"/"no" is falsy (some lists serialize booleans as strings);
+    bare bools/ints fall through to normal truthiness.
+    """
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "false", "0", "no")
+    return bool(value)
+
+
 @register
 class GithubListConnector(Connector):
     type = "github"
@@ -22,10 +33,11 @@ class GithubListConnector(Connector):
 
     def parse(self, data) -> list[Posting]:
         postings = []
-        for item in data:
-            if not (item.get("active") and item.get("is_visible")):
+        for item in data if isinstance(data, list) else []:
+            if not (_truthy(item.get("active")) and _truthy(item.get("is_visible"))):
                 continue
-            locations = item.get("locations") or []
+            locs = item.get("locations")
+            location = ", ".join(str(x) for x in locs) if isinstance(locs, list) else (str(locs) if locs else "")
             postings.append(
                 Posting(
                     posting_id=f"{self.type}:{item['id']}",
@@ -33,7 +45,7 @@ class GithubListConnector(Connector):
                     title=(item.get("title") or "").strip(),
                     company=item.get("company_name") or self.company_fallback,
                     url=item.get("url", ""),
-                    location=", ".join(locations),
+                    location=location,
                     description="",  # community lists carry no description
                     posted_at=to_iso(item.get("date_posted")),
                     raw=item,

@@ -1,0 +1,22 @@
+{
+  "jobs": [
+    {
+      "id": 9001,
+      "title": "ML Intern",
+      "company_name": "Acme",
+      "absolute_url": "https://acme.com/9001",
+      "location": "Remote",
+      "content": "<p>Train models.</p>",
+      "first_published": "2026-03-01T00:00:00+00:00"
+    },
+    {
+      "id": 9002,
+      "title": "Infra Intern",
+      "company_name": "Acme",
+      "absolute_url": "https://acme.com/9002",
+      "location": {"name": "New York, NY"},
+      "content": "<p>Run servers.</p>",
+      "first_published": "2026-03-02T00:00:00+00:00"
+    }
+  ]
+}

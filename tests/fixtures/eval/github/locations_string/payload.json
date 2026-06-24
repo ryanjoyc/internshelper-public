@@ -1,0 +1,22 @@
+[
+  {
+    "id": "g1",
+    "title": "Data Intern",
+    "url": "https://example.com/g1",
+    "company_name": "Acme",
+    "locations": "San Francisco, CA",
+    "date_posted": 1700000000,
+    "active": true,
+    "is_visible": true
+  },
+  {
+    "id": "g2",
+    "title": "Leaked Inactive Role",
+    "url": "https://example.com/g2",
+    "company_name": "Acme",
+    "locations": ["New York, NY"],
+    "date_posted": 1700000000,
+    "active": "false",
+    "is_visible": true
+  }
+]

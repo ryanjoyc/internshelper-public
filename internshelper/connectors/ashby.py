@@ -24,8 +24,11 @@ class AshbyConnector(Connector):
 
     def parse(self, data) -> list[Posting]:
         postings = []
-        for job in data.get("jobs", []):
-            if not job.get("isListed", True):
+        jobs = data.get("jobs", []) if isinstance(data, dict) else []
+        for job in jobs:
+            # Safe-by-default: only an explicit isListed=true is treated as posted. A missing
+            # key means exclude — never leak an unlisted/closed role if the flag ever vanishes.
+            if not job.get("isListed", False):
                 continue
             postings.append(
                 Posting(

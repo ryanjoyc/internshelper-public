@@ -1,0 +1,30 @@
+{
+  "connector": "lever",
+  "source": {
+    "type": "lever",
+    "token": "leverdemo"
+  },
+  "payload_ref": "../../../lever_leverdemo.json",
+  "as_of": null,
+  "seam": "parse",
+  "expected": [
+    {
+      "key": "https://jobs.lever.co/leverdemo/33538a2f-d27d-4a96-8f05-fa4b0e4d940e",
+      "title": "AbelsonTaylor Writer",
+      "company": "leverdemo",
+      "location": "Arlington, TX",
+      "url": "https://jobs.lever.co/leverdemo/33538a2f-d27d-4a96-8f05-fa4b0e4d940e",
+      "posted_at": "2019-03-21T16:33:55.299000+00:00",
+      "description_present": true
+    },
+    {
+      "key": "https://jobs.lever.co/leverdemo/dbedd284-e008-4961-b75c-e70d284eab5a",
+      "title": "Account Director (Inside/Outside Hybrid Sales)",
+      "company": "leverdemo",
+      "location": "Atlanta, Georgia",
+      "url": "https://jobs.lever.co/leverdemo/dbedd284-e008-4961-b75c-e70d284eab5a",
+      "posted_at": "2017-08-16T18:11:42.690000+00:00",
+      "description_present": true
+    }
+  ]
+}

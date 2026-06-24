@@ -1,0 +1,17 @@
+{
+  "connector": "markdown",
+  "source": {"type": "markdown", "token": "https://example.com/mismap.md", "label": "Mismap"},
+  "seam": "parse",
+  "as_of": "2026-06-18T00:00:00+00:00",
+  "notes": "bug #10: the short alias 'loc' must not substring-match an unrelated header like 'Allocation'; with no real location column, location stays empty.",
+  "expected": [
+    {
+      "title": "SWE Intern",
+      "company": "Acme",
+      "location": "",
+      "url": "https://acme.com/1",
+      "posted_at": null,
+      "description_present": false
+    }
+  ]
+}

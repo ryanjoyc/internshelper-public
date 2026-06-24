@@ -37,7 +37,7 @@ def test_vanshb03_href_links_continuation_and_closed_skip():
     assert all(p.company != "Granite Construction" for p in posts)  # closed row dropped
 
 
-def test_posting_id_uses_canonical_url_and_is_stable():
+def test_posting_id_uses_canonical_url_and_title_and_is_stable():
     text = (FX / "md_vanshb03.md").read_text()
     c = _conn(VANSH)
     a = c.parse(text)
@@ -45,9 +45,9 @@ def test_posting_id_uses_canonical_url_and_is_stable():
     ids = [p.posting_id for p in a]
     assert ids == [p.posting_id for p in b]  # stable across parses
     assert len(ids) == len(set(ids))  # unique
-    expected = "markdown:" + hashlib.sha1(
-        markdown_list.canonical_url(a[0].url).encode()
-    ).hexdigest()[:16]
+    # Synth id keys on canonical URL + title, so two roles sharing a canonical URL stay distinct.
+    key = f"{markdown_list.canonical_url(a[0].url)}|{a[0].title.strip().lower()}"
+    expected = "markdown:" + hashlib.sha1(key.encode()).hexdigest()[:16]
     assert a[0].posting_id == expected
 
 

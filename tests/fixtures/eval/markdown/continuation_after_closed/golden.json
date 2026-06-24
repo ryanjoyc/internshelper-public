@@ -1,0 +1,25 @@
+{
+  "connector": "markdown",
+  "source": {"type": "markdown", "token": "https://example.com/continuation.md", "label": "Cont"},
+  "seam": "parse",
+  "as_of": "2026-06-18T00:00:00+00:00",
+  "notes": "bug #11: a closed (🔒) row must still set the running company so a following ↳ continuation row inherits the closed parent's company (Beta), not the prior open one (Acme).",
+  "expected": [
+    {
+      "title": "Role A",
+      "company": "Acme",
+      "location": "NYC",
+      "url": "https://acme.com/a",
+      "posted_at": null,
+      "description_present": false
+    },
+    {
+      "title": "Role C",
+      "company": "Beta",
+      "location": "LA",
+      "url": "https://beta.com/c",
+      "posted_at": null,
+      "description_present": false
+    }
+  ]
+}

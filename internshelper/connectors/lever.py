@@ -23,19 +23,25 @@ class LeverConnector(Connector):
 
     def parse(self, data) -> list[Posting]:
         postings = []
-        for job in data:
-            categories = job.get("categories") or {}
-            postings.append(
-                Posting(
-                    posting_id=f"{self.type}:{job['id']}",
-                    source_key=self.source_key,
-                    title=(job.get("text") or "").strip(),
-                    company=self.company_fallback,
-                    url=job.get("hostedUrl") or job.get("applyUrl", ""),
-                    location=categories.get("location", "") or "",
-                    description=job.get("descriptionPlain", "") or "",
-                    posted_at=to_iso(job.get("createdAt")),
-                    raw=job,
+        for job in data if isinstance(data, list) else []:
+            try:
+                # `categories` is normally a dict; tolerate a non-dict (and a non-str `text`)
+                # rather than letting one malformed posting crash the whole board.
+                cats = job.get("categories")
+                location = (cats.get("location", "") if isinstance(cats, dict) else "") or ""
+                postings.append(
+                    Posting(
+                        posting_id=f"{self.type}:{job['id']}",
+                        source_key=self.source_key,
+                        title=str(job.get("text") or "").strip(),
+                        company=self.company_fallback,
+                        url=job.get("hostedUrl") or job.get("applyUrl", ""),
+                        location=location,
+                        description=job.get("descriptionPlain", "") or "",
+                        posted_at=to_iso(job.get("createdAt")),
+                        raw=job,
+                    )
                 )
-            )
+            except Exception as e:  # one bad row must not zero the source
+                self._warn(f"skipped a malformed Lever posting: {type(e).__name__}: {e}")
         return postings

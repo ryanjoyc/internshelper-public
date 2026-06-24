@@ -1,0 +1,25 @@
+{
+  "connector": "lever",
+  "source": {"type": "lever", "token": "acme"},
+  "seam": "parse",
+  "as_of": null,
+  "notes": "bug #4: a job whose `categories` is a non-dict (list) must not crash the whole board; it parses with an empty location.",
+  "expected": [
+    {
+      "title": "Backend Engineer",
+      "company": "acme",
+      "location": "San Francisco",
+      "url": "https://jobs.lever.co/acme/l1",
+      "posted_at": "2020-09-13",
+      "description_present": true
+    },
+    {
+      "title": "Frontend Engineer",
+      "company": "acme",
+      "location": "",
+      "url": "https://jobs.lever.co/acme/l2",
+      "posted_at": "2020-09-13",
+      "description_present": true
+    }
+  ]
+}

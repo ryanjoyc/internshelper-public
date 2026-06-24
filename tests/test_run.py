@@ -119,6 +119,29 @@ def test_failure_isolation_one_source_raises(tmp_path, monkeypatch):
     assert c.execute("SELECT is_active FROM postings WHERE posting_id='greenhouse:old'").fetchone()["is_active"] == 1
 
 
+def test_store_failure_isolates_source_and_continues(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    a = SourceEntry(type="greenhouse", token="aaa")
+    b = SourceEntry(type="lever", token="bbb")
+    _wire(monkeypatch, {
+        a.source_key: _FakeConnector(posts=[_raw("greenhouse:1", a.source_key)]),
+        b.source_key: _FakeConnector(posts=[_raw("lever:1", b.source_key)]),
+    })
+    real_upsert = store.upsert
+
+    def boom(conn, posting, now, payloads_dir=None):
+        if posting.source_key == a.source_key:
+            raise RuntimeError("disk full")
+        return real_upsert(conn, posting, now, payloads_dir=payloads_dir)
+
+    monkeypatch.setattr(run.store, "upsert", boom)
+    _collect(c, tmp_path, _settings(notify_threshold=99), [a, b], "2026-06-18T12:00:00+00:00", _Send())
+    arun = c.execute("SELECT ok, error FROM runs WHERE source_key=?", (a.source_key,)).fetchone()
+    assert arun["ok"] == 0 and "disk full" in arun["error"]  # failure recorded, not raised
+    # The later source still collected despite a's store failure — the cycle didn't abort.
+    assert c.execute("SELECT 1 FROM postings WHERE posting_id='lever:1'").fetchone()
+
+
 def test_timeout_recorded_and_does_not_close(tmp_path, monkeypatch):
     c = _conn(tmp_path)
     a = SourceEntry(type="greenhouse", token="aaa")

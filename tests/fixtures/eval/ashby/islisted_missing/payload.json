@@ -1,0 +1,23 @@
+{
+  "jobs": [
+    {
+      "id": "a1",
+      "title": "Software Engineer Intern",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/a1",
+      "applyUrl": "https://jobs.ashbyhq.com/acme/a1/application",
+      "location": "Remote",
+      "descriptionPlain": "Build things.",
+      "publishedAt": "2026-05-01T00:00:00+00:00",
+      "isListed": true
+    },
+    {
+      "id": "a2",
+      "title": "Unlisted Internal Role",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/a2",
+      "applyUrl": "https://jobs.ashbyhq.com/acme/a2/application",
+      "location": "New York, NY",
+      "descriptionPlain": "Should not be ingested.",
+      "publishedAt": "2026-05-02T00:00:00+00:00"
+    }
+  ]
+}

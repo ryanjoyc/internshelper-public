@@ -42,7 +42,13 @@ def canonical_url(url: str) -> str:
 
 
 def _synth_id(url: str, company: str, title: str, location: str) -> str:
-    key = canonical_url(url) if url else f"{company}|{title}|{location}".lower()
+    # Include the title alongside the canonical URL: two distinct roles whose apply links
+    # differ only by a query param (e.g. ?gh_jid=) share a canonical URL, and would otherwise
+    # collapse onto one id. The title keeps them distinct; identical url+title still dedupes.
+    if url:
+        key = f"{canonical_url(url)}|{title.strip().lower()}"
+    else:
+        key = f"{company}|{title}|{location}".lower()
     return hashlib.sha1(key.encode()).hexdigest()[:16]
 
 
@@ -60,6 +66,15 @@ def _is_separator(line: str) -> bool:
     return bool(s) and set(s) <= set("|:- \t") and "-" in s
 
 
+def _cell(cells: list[str], i: int | None) -> str:
+    """A cell by index, or '' if the column is unmapped or the row is shorter than the index.
+
+    Lets an optional column (location/url/posted) be missing on a given row without skipping
+    the whole row — required columns are guarded separately by the `need` floor.
+    """
+    return cells[i] if (i is not None and i < len(cells)) else ""
+
+
 def _clean(cell: str) -> str:
     cell = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cell)  # [txt](url) -> txt
     return strip_html(cell).strip()  # drop <a>/<img>/tags, collapse whitespace
@@ -72,29 +87,34 @@ def _extract_url(cell: str) -> str:
     m = re.search(r"\[[^\]]*\]\((https?://[^)\s]+)\)", cell)
     if m:
         return m.group(1)
-    m = re.search(r"(https?://[^\s)]+)", cell)
+    m = re.search(r"https?://[^\s)<>\]]+", cell)  # bare URL; stop at ) < > ] (autolink/markup)
     if m:
-        return m.group(1).rstrip(".,")
+        return m.group(0).rstrip(".,;:")
     return ""
+
+
+def _header_tokens(header: str) -> set[str]:
+    """The header split into lowercase alphanumeric tokens (for whole-token alias matching)."""
+    return {t for t in re.split(r"[^a-z0-9]+", header.lower()) if t}
 
 
 def _map_columns(header_cells: list[str], override: dict[str, str]) -> dict[str, int]:
     lower = [h.lower() for h in header_cells]
+    tokens = [_header_tokens(h) for h in header_cells]
     idx: dict[str, int] = {}
     for field, aliases in _HEADER_ALIASES.items():
         name = override.get(field, "").lower()
         if name and name in lower:
             idx[field] = lower.index(name)
             continue
-        for a in aliases:  # exact header match first
-            if a in lower:
-                idx[field] = lower.index(a)
-                break
-        else:  # substring fallback
-            for j, h in enumerate(lower):
-                if any(a in h for a in aliases):
-                    idx[field] = j
-                    break
+        hit = next((lower.index(a) for a in aliases if a in lower), None)  # exact header first
+        if hit is None:
+            # Whole-token match — an alias must be a full token of the header (so "loc" matches
+            # "Loc"/"Job Loc" but NOT "Allocation"). Kills the greedy-substring mismap.
+            hit = next((j for j, toks in enumerate(tokens)
+                        if any(a in toks for a in aliases)), None)
+        if hit is not None:
+            idx[field] = hit
     return idx
 
 
@@ -134,10 +154,13 @@ class MarkdownListConnector(Connector):
                 + (f",{missing[1]}=<header>" if len(missing) > 1 else "")
             )
             return []  # can't make a posting without these
-        need = max(idx.values())
+        # Floor on required columns only. A row just needs enough cells to carry company+title;
+        # missing trailing *optional* columns (location/url/posted) must not skip the row.
+        need = max(idx["company"], idx["title"])
 
         out: list[Posting] = []
         last_company = ""
+        data_rows = 0
         k = header_i + 2
         while k < len(lines):
             line = lines[k]
@@ -147,28 +170,34 @@ class MarkdownListConnector(Connector):
             if k + 1 < len(lines) and _is_separator(lines[k + 1]):
                 break
             k += 1
-            if _is_separator(line) or any(m in line for m in _CLOSED_MARKERS):
-                continue  # separator row, or a filled/closed role
+            if _is_separator(line):
+                continue
             cells = _cells(line)
             if len(cells) <= need:
-                continue  # malformed / short row
+                continue  # too few columns to carry even company + title
 
+            closed = any(m in line for m in _CLOSED_MARKERS)
             company_cell = _clean(cells[idx["company"]])
+            for m in _CLOSED_MARKERS:
+                company_cell = company_cell.replace(m, "")
+            company_cell = company_cell.strip()
             if not company_cell or company_cell in _CONTINUATION_MARKS:
                 company = last_company
             else:
                 company = company_cell
-                last_company = company
+                last_company = company  # precedent carries forward, even from a closed row
+            if closed:
+                continue  # filled/closed role: not emitted, but its company is now the precedent
 
             title = _clean(cells[idx["title"]])
             if not title:
                 continue
-            location = _clean(cells[idx["location"]]) if "location" in idx else ""
-            url = _extract_url(cells[idx["url"]]) if "url" in idx else ""
-            posted_at = (
-                to_iso(_clean(cells[idx["posted"]]), now=now) if "posted" in idx else None
-            )
+            location = _clean(_cell(cells, idx.get("location")))
+            url = _extract_url(_cell(cells, idx.get("url")))
+            posted_cell = _clean(_cell(cells, idx.get("posted")))
+            posted_at = to_iso(posted_cell, now=now) if posted_cell else None
 
+            data_rows += 1
             posting_id = f"{self.type}:{_synth_id(url, company, title, location)}"
             if posting_id in seen:
                 continue  # same role listed in another category table
@@ -187,6 +216,8 @@ class MarkdownListConnector(Connector):
                          "url": url, "source_line": line.strip()},
                 )
             )
+        if data_rows == 0:
+            self._warn(f"table at line {header_i + 1}: header mapped but no data rows parsed")
         return out
 
     @staticmethod

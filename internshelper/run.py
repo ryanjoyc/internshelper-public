@@ -52,15 +52,23 @@ def process_source(
     postings = [p for p in postings if entry.accepts(p.title)]
     dropped = fetched - len(postings)  # counted (not silent) so the Health tab can show it
 
-    seen = set()
-    for posting in postings:
-        classify.classify(posting, compiled)  # keyword priority hints only — not a gate
-        store.upsert(conn, posting, now, payloads_dir=payloads_dir)
-        seen.add(posting.posting_id)
-    store.record_run(conn, entry.source_key, ok=True, count=len(postings), error=None,
-                     now=now, dropped=dropped)
-    store.apply_close_detection(conn, entry.source_key, seen, ok=True, count=len(postings))
-    return True
+    # Isolate the store loop too: a single posting that makes upsert raise must record the
+    # failure and move on, not abort the whole cycle (skipping every later source) or run
+    # close-detection on a half-stored source.
+    try:
+        seen = set()
+        for posting in postings:
+            classify.classify(posting, compiled)  # keyword priority hints only — not a gate
+            store.upsert(conn, posting, now, payloads_dir=payloads_dir)
+            seen.add(posting.posting_id)
+        store.record_run(conn, entry.source_key, ok=True, count=len(postings), error=None,
+                         now=now, dropped=dropped)
+        store.apply_close_detection(conn, entry.source_key, seen, ok=True, count=len(postings))
+        return True
+    except Exception as e:
+        store.record_run(conn, entry.source_key, ok=False, count=0,
+                         error=f"store: {type(e).__name__}: {e}", now=now, dropped=dropped)
+        return False
 
 
 def run_cycle(
