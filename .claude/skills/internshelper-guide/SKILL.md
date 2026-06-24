@@ -55,14 +55,15 @@ collected or shown.
 | `config` | Load + validate `sources.yaml` and `settings.toml`; collects errors without halting on a single bad entry. |
 | `models` | The normalized `Posting` dataclass shared across connectors / classify / store; carries scraped + classified fields + the raw payload. |
 | `classify` | Keyword matcher (whole-word, case-insensitive) over title + HTML-stripped description → the three flag booleans. |
-| `clock` | Canonical UTC ISO-8601 helpers: parse mixed date formats, convert to UTC, diff. |
+| `clock` | Canonical UTC ISO-8601 helpers: parse mixed date formats (epoch, ISO, `Mon DD`, and **relative ages** like `5d`/`3w`/`2mo` resolved against `now`), convert to UTC, diff. |
 | `notify` | Render the review-nudge email and send it via `mailer`. |
 | `display` | Pure display helpers: humanize mixed date formats with relative-age hints (no Streamlit dependency). |
-| `dashboard` | Streamlit UI — Feed / Tracker / Health / Sources / Accuracy. Feed's "Pending review" is interactive (mark match/no_match, peek the raw payload, bulk-clear non-candidates); Sources adds/removes boards in-app; Accuracy shows the live `eval` scorecard. UI only; data logic lives in `store` / `review` / `sources` / `eval`. |
+| `dashboard` | Streamlit UI — Feed / Tracker / Health / Sources / Accuracy. Feed's "Pending review" is interactive (mark match/no_match, peek the raw payload, bulk-clear non-candidates); Sources adds/removes boards in-app (a bare-repo URL resolves via `github_repo` to a multi-select of its list files); Accuracy shows the live `eval` scorecard. UI only; data logic lives in `store` / `review` / `sources` / `eval`. |
 | `dotenv` | Stdlib `.env` loader; shell env vars win; silent no-op if the file is missing. |
 | `text` | HTML→plaintext stripper (stdlib `html.parser`) used before keyword matching. |
 | `sourceurl` | Pure URL→`SourceEntry` detection (no network): map a pasted board URL to a source by host + path. |
 | `sniffer` | Heuristic, no-AI detection of embedded Greenhouse/Lever/Ashby boards on an arbitrary careers page (regex over the fetched HTML). The add-source fallback when `sourceurl` can't resolve a clean board URL. |
+| `github_repo` | Networked add-time fallback for a **bare** `github.com/<u>/<r>` (or `/tree/<branch>`) repo URL: hits the GitHub API for the default branch + root file list and returns one `SourceEntry` per job-list file (`*.md`→markdown, `*.json`→github), so a multi-file repo can be file-level multi-selected instead of hand-resolved. Keeps `sourceurl` pure. |
 | `filters` | Apply user filter booleans (`require_cs`, `require_intern_or_newgrad`) to classified postings. Pure function. |
 | `mailer` | Shared SMTP+STARTTLS send helper (the only mail transport); used by `notify`. |
 | `eval/` | **Offline extraction-accuracy harness** (a package): replays saved fixture responses through each connector's real `parse()` and scores parsed-vs-golden — role recall/precision + per-field correctness + a storage round-trip. `harness` (discovery + parse seam + round-trip), `scoring` (content-key matching + per-field tolerances), `__main__` (the `python -m internshelper.eval` scorecard CLI). Deterministic, network-free; the bedrock for "did we capture every job, correctly?" |
@@ -79,7 +80,7 @@ a type = adding a connector that registers itself + a `sourceurl` detection rule
 | `lever` | Lever public postings API (`/v0/postings/{token}`). |
 | `ashby` | Ashby public board API (`/posting-api/job-board/{org}`); keeps `isListed=true` only. |
 | `github_list` | Structured JSON internship lists (e.g. SimplifyJobs `listings.json`), active+visible rows. |
-| `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns, handles `↳` continuation rows + `🔒` closed markers; emits `diagnostics` when required columns can't be mapped. |
+| `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns (URL aliases include `posting`/`listing`; date aliases include `age`), handles `↳` continuation rows + `🔒` closed markers; emits `diagnostics` when required columns can't be mapped. |
 | `base` | Base `Connector` class, shared HTTP helpers (httpx, timeouts, headers), the type→connector registry, and a `diagnostics`/`_warn` channel surfaced at add-time so a 0-row parse isn't silent. |
 
 ## The four CLIs

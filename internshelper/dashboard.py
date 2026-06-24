@@ -12,7 +12,11 @@ from pathlib import Path
 
 import streamlit as st
 
-from internshelper import clock, config, db, display, review, sniffer, sources, store, text
+from urllib.parse import urlsplit
+
+from internshelper import (
+    clock, config, db, display, github_repo, review, sniffer, sources, store, text,
+)
 from internshelper.dotenv import load_dotenv
 from internshelper.sourceurl import SourceDetectionError
 
@@ -325,13 +329,28 @@ def _add_source_form(path: str) -> None:
     try:
         entry = sources.resolve_entry(url, label=label or None, title_must_match=tmm, columns=cols)
     except SourceDetectionError as e:
-        # Not a clean board URL — sniff the page for an embedded board.
+        # A bare github.com repo resolves to its job-list files (multi-select); any other
+        # unrecognized URL falls through to the careers-page sniffer (single-pick).
+        host = (urlsplit(url if "://" in url else "https://" + url).hostname or "").lower()
+        if host == "github.com":
+            try:
+                files = github_repo.resolve_repo(url, label=label or None)
+            except github_repo.GitHubRepoError as ge:
+                st.error(f"Couldn't resolve that repo: {ge}")
+                return
+            if files:
+                st.session_state["src_candidates"] = {
+                    "kind": "repo", "candidates": files, "tmm": tmm, "cols": cols}
+                st.rerun()
+            st.error(f"No job-list files (.md/.json) found in that repo.")
+            return
         try:
             candidates = sniffer.sniff_careers_page(url, label=label or None)
         except sniffer.SnifferError:
             candidates = []
         if candidates:
-            st.session_state["src_candidates"] = {"candidates": candidates, "tmm": tmm, "cols": cols}
+            st.session_state["src_candidates"] = {
+                "kind": "sniffer", "candidates": candidates, "tmm": tmm, "cols": cols}
             st.rerun()
         st.error(f"Couldn't detect a source from that URL: {e}")
         return
@@ -344,18 +363,71 @@ def _add_source_form(path: str) -> None:
 
 
 def _add_source_candidates(path: str) -> None:
-    """Sniffer fallback: let the user pick one of the embedded boards found on the page."""
+    """Resolve a multi-candidate URL: a github repo (multi-select its list files) or a careers
+    page (single-pick an embedded board)."""
     data = st.session_state["src_candidates"]
+    if data.get("kind") == "repo":
+        _add_repo_candidates(path, data)
+    else:
+        _add_sniffer_candidate(path, data)
+
+
+def _apply_extras(entry, data) -> None:
+    if data["tmm"]:
+        entry.title_must_match = list(data["tmm"])
+    if data["cols"]:
+        entry.columns = dict(data["cols"])
+
+
+def _add_repo_candidates(path: str, data: dict) -> None:
+    """Bare-repo fallback: the repo's list files, multi-selectable so the user adds only the ones
+    they want (the "ask which, don't flood" UX). Each chosen file is fetch-tested + appended."""
+    cands = data["candidates"]
+    st.info(f"That repo has {len(cands)} job-list file(s) — pick the ones to add.")
+    labels = {f"{c.label}  ({c.type})  {c.token}": c for c in cands}
+    chosen = st.multiselect("Add which list file(s)?", list(labels), key="src-repo-pick")
+    c1, c2 = st.columns(2)
+    if c1.button("Add selected", key="src-repo-add"):
+        if not chosen:
+            st.warning("Nothing selected.")
+            return
+        added, skipped, failed = [], [], []
+        for lbl in chosen:
+            entry = labels[lbl]
+            _apply_extras(entry, data)
+            if sources.is_duplicate(path, entry):
+                skipped.append(entry.source_key)
+                continue
+            try:
+                count, _titles, _warnings = sources.fetch_test(entry, limit=1)
+            except Exception as e:  # network/HTTP failure — record, keep going
+                failed.append(f"{entry.source_key}: {type(e).__name__}: {e}")
+                continue
+            sources.append_source(path, entry)
+            added.append(f"{entry.source_key} ({count} postings)")
+        if added:
+            st.success("Added: " + ", ".join(added))
+        if skipped:
+            st.info("Already present: " + ", ".join(skipped))
+        if failed:
+            st.error("Failed: " + "; ".join(failed))
+        st.session_state.pop("src_candidates", None)
+        if added or skipped:
+            st.rerun()
+    if c2.button("Cancel", key="src-repo-cancel"):
+        st.session_state.pop("src_candidates", None)
+        st.rerun()
+
+
+def _add_sniffer_candidate(path: str, data: dict) -> None:
+    """Sniffer fallback: let the user pick one of the embedded boards found on the page."""
     cands = data["candidates"]
     st.info(f"No direct match — found {len(cands)} embedded board(s) on that page.")
     choice = st.radio("Use which board?", [c.source_key for c in cands], key="src-cand-choice")
     c1, c2 = st.columns(2)
     if c1.button("Use this board", key="src-cand-use"):
         entry = next(c for c in cands if c.source_key == choice)
-        if data["tmm"]:
-            entry.title_must_match = list(data["tmm"])
-        if data["cols"]:
-            entry.columns = dict(data["cols"])
+        _apply_extras(entry, data)
         if sources.is_duplicate(path, entry):
             st.warning(f"Already present: {entry.source_key}")
         else:

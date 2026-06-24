@@ -30,8 +30,12 @@ Run everything from the repo root with the project venv: `.venv/bin/python`.
      find the real board host/token (step 2).
    - **A single job-posting link** (e.g. `jobs.lever.co/acme/<uuid>`) → the board token is the
      path segment right after the host; for a careers-page job link, find the underlying ATS.
-   - **A bare GitHub repo** (`github.com/<u>/<r>`, no `/blob/…`) → resolve the default branch and
-     the path to `listings.json` or `README.md`, then build the **raw** URL.
+   - **A bare GitHub repo** (`github.com/<u>/<r>`, no `/blob/…`) → you can pass it straight to
+     `add`: the CLI's networked fallback resolves the repo's job-list files itself (each `*.md`
+     → markdown, each `*.json` → github) and, when the repo splits jobs across **several** files
+     (e.g. README + NEW_GRAD_USA + INTERN_INTL), prints the raw URLs and exits 0 so **you present
+     them to the user and add only the chosen file(s)** — don't flood them with all of them. A
+     single-list repo is added directly. (You may still hand-resolve to a specific raw URL.)
 
 2. **Research (only when needed).** Use `WebSearch` / `WebFetch` to find the ATS and slug:
    - Search e.g. `"<company> greenhouse OR lever OR ashby careers"`, or fetch the careers page and

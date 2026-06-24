@@ -22,7 +22,9 @@ from pathlib import Path
 
 import yaml
 
-from internshelper import sniffer
+from urllib.parse import urlsplit
+
+from internshelper import github_repo, sniffer
 from internshelper.config import ID_FIELD, ConfigError, SourceEntry, default_path, load_sources
 from internshelper.connectors import build_connector
 from internshelper.dotenv import load_dotenv
@@ -196,6 +198,11 @@ def _load_existing(path: str) -> list[SourceEntry]:
 
 # ---------- subcommands ----------
 
+def _is_github_repo_url(url: str) -> bool:
+    host = (urlsplit(url if "://" in url else "https://" + url).hostname or "").lower()
+    return host == "github.com"
+
+
 def _cmd_add(args) -> int:
     path = _sources_path()
     tmm = ([s.strip() for s in args.title_must_match.split(",") if s.strip()]
@@ -204,33 +211,78 @@ def _cmd_add(args) -> int:
     try:
         entry = resolve_entry(args.url, label=args.label, title_must_match=tmm, columns=cols)
     except SourceDetectionError as e:
-        # Not a clean board URL — sniff the page for an embedded Greenhouse/Lever/Ashby board.
-        try:
-            candidates = sniffer.sniff_careers_page(args.url, label=args.label)
-        except sniffer.SnifferError as se:
-            print(f"could not detect a source from {args.url!r}: {e}")
-            print(f"(page sniff also failed: {se})")
-            return 2
-        if not candidates:
-            print(f"could not detect a source from {args.url!r}: {e}")
-            return 2
-        if len(candidates) > 1:
-            print(f"found {len(candidates)} embedded boards on that page — "
-                  "re-run `add` with the specific board URL:")
-            for c in candidates:
-                print(f"  - {c.source_key}")
-            return 2
-        entry = candidates[0]
-        if tmm:
-            entry.title_must_match = list(tmm)
-        if cols:
-            entry.columns = dict(cols)
-        print(f"sniffed a {entry.type} board: {entry.source_key}")
+        # A bare github.com repo resolves to its job-list files (networked fallback); any other
+        # unrecognized URL falls through to the careers-page sniffer. Each returns (entry, code):
+        # entry to continue with, or None + the exit code to return now.
+        if _is_github_repo_url(args.url):
+            entry, code = _resolve_repo_entry(args, tmm, cols, e)
+        else:
+            entry, code = _sniff_entry(args, tmm, cols, e)
+        if entry is None:
+            return code
 
     if is_duplicate(path, entry):
         print(f"already present: {entry.source_key} (skipped)")
         return 0
 
+    return _finish_add(args, entry, path)
+
+
+def _resolve_repo_entry(args, tmm, cols, detect_err) -> tuple[SourceEntry | None, int]:
+    """Bare github.com repo -> its job-list files. A single file is added directly; multiple files
+    are listed for the user to re-run `add` per chosen file (the "ask which, don't flood" UX)."""
+    try:
+        files = github_repo.resolve_repo(args.url, label=args.label)
+    except github_repo.GitHubRepoError as ge:
+        print(f"could not detect a source from {args.url!r}: {detect_err}")
+        print(f"(repo resolve also failed: {ge})")
+        return None, 2
+    if not files:
+        print(f"no job-list files (.md/.json) found in repo {args.url!r}.")
+        return None, 2
+    if len(files) > 1:
+        print(f"found {len(files)} list file(s) in that repo — "
+              "re-run `add` with the specific file URL(s):")
+        for f in files:
+            print(f"  - {f.token}")
+        return None, 0  # informational listing, not an error
+    entry = files[0]
+    if tmm:
+        entry.title_must_match = list(tmm)
+    if cols:
+        entry.columns = dict(cols)
+    print(f"resolved repo to a single {entry.type} list: {entry.token}")
+    return entry, 0
+
+
+def _sniff_entry(args, tmm, cols, detect_err) -> tuple[SourceEntry | None, int]:
+    """Careers-page fallback: sniff the page for an embedded Greenhouse/Lever/Ashby board."""
+    try:
+        candidates = sniffer.sniff_careers_page(args.url, label=args.label)
+    except sniffer.SnifferError as se:
+        print(f"could not detect a source from {args.url!r}: {detect_err}")
+        print(f"(page sniff also failed: {se})")
+        return None, 2
+    if not candidates:
+        print(f"could not detect a source from {args.url!r}: {detect_err}")
+        return None, 2
+    if len(candidates) > 1:
+        print(f"found {len(candidates)} embedded boards on that page — "
+              "re-run `add` with the specific board URL:")
+        for c in candidates:
+            print(f"  - {c.source_key}")
+        return None, 2
+    entry = candidates[0]
+    if tmm:
+        entry.title_must_match = list(tmm)
+    if cols:
+        entry.columns = dict(cols)
+    print(f"sniffed a {entry.type} board: {entry.source_key}")
+    return entry, 0
+
+
+def _finish_add(args, entry: SourceEntry, path: str) -> int:
+    """Shared tail: live fetch-test (unless skipped), confirm, append."""
     if not args.no_test:
         try:
             count, titles, warnings = fetch_test(entry, limit=args.limit)
