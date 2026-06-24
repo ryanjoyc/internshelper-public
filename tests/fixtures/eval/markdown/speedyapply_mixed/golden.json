@@ -1,0 +1,41 @@
+{
+  "connector": "markdown",
+  "source": {"type": "markdown", "token": "https://example.com/speedyapply.md", "label": "SpeedyApply"},
+  "seam": "parse",
+  "as_of": "2026-06-18T00:00:00+00:00",
+  "notes": "Connector coverage: speedyapply-style lists put the apply link in a 'Posting' column and date rows by a relative 'Age' column ('5d'/'18d'/'3w'/'2mo'). Mixed 6-col (with Salary) + 5-col (without) tables in one doc. Expected urls come from the Posting cell; expected posted_at = as_of minus the Age (5d->06-13, 18d->05-31, 3w->05-28, 2mo->04-19).",
+  "expected": [
+    {
+      "title": "Software Engineer",
+      "company": "Acme",
+      "location": "New York, NY",
+      "url": "https://acme.example/apply/swe",
+      "posted_at": "2026-06-13",
+      "description_present": false
+    },
+    {
+      "title": "Backend Engineer",
+      "company": "Beta Labs",
+      "location": "Remote",
+      "url": "https://beta.example/apply/be",
+      "posted_at": "2026-05-31",
+      "description_present": false
+    },
+    {
+      "title": "SWE Intern",
+      "company": "Gamma",
+      "location": "London, UK",
+      "url": "https://gamma.example/apply/intern",
+      "posted_at": "2026-05-28",
+      "description_present": false
+    },
+    {
+      "title": "Data Science Intern",
+      "company": "Delta Corp",
+      "location": "Berlin, DE",
+      "url": "https://delta.example/apply/ds",
+      "posted_at": "2026-04-19",
+      "description_present": false
+    }
+  ]
+}

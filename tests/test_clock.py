@@ -48,3 +48,39 @@ def test_to_iso_garbage_and_empty_and_none():
     assert to_iso("not a date") is None
     assert to_iso("") is None
     assert to_iso(None) is None
+
+
+# ---------- relative age ("5d", "3w", "2mo", "12h", "1y") ----------
+
+_NOW = datetime(2026, 6, 18, tzinfo=timezone.utc)
+
+
+def test_to_iso_rel_age_days():
+    assert to_iso("5d", now=_NOW) == "2026-06-13"
+    assert to_iso("18d", now=_NOW) == "2026-05-31"
+
+
+def test_to_iso_rel_age_weeks():
+    assert to_iso("3w", now=_NOW) == "2026-05-28"  # 21 days back
+
+
+def test_to_iso_rel_age_months_approximate():
+    assert to_iso("2mo", now=_NOW) == "2026-04-19"  # 60 days back (mo≈30d)
+
+
+def test_to_iso_rel_age_hours_same_day():
+    assert to_iso("12h", now=_NOW) == "2026-06-18"  # h collapses to same day
+
+
+def test_to_iso_rel_age_years_approximate():
+    assert to_iso("1y", now=_NOW) == "2025-06-18"  # 365 days back
+
+
+def test_to_iso_rel_age_spaced_and_long_units():
+    assert to_iso("5 days", now=_NOW) == "2026-06-13"
+    assert to_iso("3 weeks", now=_NOW) == "2026-05-28"
+
+
+def test_to_iso_rel_age_junk_is_none():
+    assert to_iso("5x", now=_NOW) is None
+    assert to_iso("d5", now=_NOW) is None

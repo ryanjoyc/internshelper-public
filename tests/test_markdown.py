@@ -141,3 +141,31 @@ def test_diagnostics_reset_between_parses():
     assert c.diagnostics
     c.parse((FX / "md_sndsh404.md").read_text())  # clean parse must clear them
     assert c.diagnostics == []
+
+
+# ---------- "Posting" URL alias + "Age" date alias (speedyapply-style headers) ----------
+
+def test_posting_header_populates_url():
+    from datetime import datetime, timezone
+    text = (
+        "| Company | Position | Location | Posting | Age |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        '| <a href="https://x.com"><strong>Acme</strong></a> | SWE Intern | NYC '
+        '| <a href="https://acme.com/apply"><img src="x"></a> | 5d |\n'
+    )
+    now = datetime(2026, 6, 18, tzinfo=timezone.utc)
+    [p] = _conn("https://example.com/x.md").parse(text, now=now)
+    assert p.company == "Acme"
+    assert p.title == "SWE Intern"
+    assert p.url == "https://acme.com/apply"     # "Posting" column mapped to url
+    assert p.posted_at == "2026-06-13"           # "Age" column mapped to posted, 5d before now
+
+
+def test_listing_header_alias_for_url():
+    text = (
+        "| Company | Role | Listing |\n"
+        "| --- | --- | --- |\n"
+        '| Beta | Data Intern | <a href="https://beta.com/2"><img></a> |\n'
+    )
+    [p] = _conn("https://example.com/x.md").parse(text)
+    assert p.url == "https://beta.com/2"

@@ -26,8 +26,8 @@ _HEADER_ALIASES = {
     "company": ["company", "employer"],
     "title": ["role", "position", "title", "job"],
     "location": ["location", "locations", "loc"],
-    "url": ["application/link", "application", "apply", "apply link", "link"],
-    "posted": ["added", "date posted", "date", "posted"],
+    "url": ["application/link", "application", "apply", "apply link", "link", "posting", "listing"],
+    "posted": ["added", "date posted", "date", "posted", "age"],
 }
 _CONTINUATION_MARKS = {"↳", "⤷", "->", "<-"}
 _CLOSED_MARKERS = ["🔒"]
