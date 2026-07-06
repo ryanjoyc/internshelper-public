@@ -28,11 +28,10 @@ def nav_context(conn: sqlite3.Connection) -> dict:
         for r in store.matches_with_status(conn)
         if (r["status"] or "Untracked") in ("Untracked", "Interested")
     )
-    runs = store.health(conn)
-    baselines = store.source_baselines(conn)
+    runs = store.source_health(conn)
     if any(not r["ok"] for r in runs):
         dot = "err"
-    elif any(b["quiet"] for b in baselines.values()):
+    elif any(r["quiet"] for r in runs):
         dot = "quiet"
     else:
         dot = "ok"

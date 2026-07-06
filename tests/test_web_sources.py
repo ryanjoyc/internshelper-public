@@ -11,15 +11,13 @@ from internshelper.models import Posting
 
 class _FakeConnector:
     def __init__(self, posts=None, exc=None, warnings=None):
-        self._posts, self._exc, self._warnings = posts or [], exc, warnings or []
+        self._posts, self._exc = posts or [], exc
+        self.diagnostics = list(warnings or [])  # push-model channel, filled during parse
 
     def fetch(self):
         if self._exc:
             raise self._exc
         return self._posts
-
-    def parse_warnings(self):
-        return self._warnings
 
 
 def _wire(monkeypatch, posts=None, exc=None, warnings=None):

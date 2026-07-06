@@ -23,9 +23,8 @@ def healthz() -> PlainTextResponse:
 
 @router.get("/health")
 def health_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
-    runs = store.health(conn)
-    baselines = store.source_baselines(conn)
-    quiet = sorted(k for k, b in baselines.items() if b["quiet"])
+    runs = store.source_health(conn)
+    quiet = sorted(r["source_key"] for r in runs if r["quiet"])
     return templates.TemplateResponse(
         request,
         "health/index.html",
@@ -33,7 +32,6 @@ def health_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
             "nav": nav_context(conn),
             "active": "health",
             "runs": runs,
-            "baselines": baselines,
             "quiet": quiet,
         },
     )

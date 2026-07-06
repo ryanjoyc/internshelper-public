@@ -57,7 +57,7 @@ collected or shown.
 
 | Module | Responsibility |
 |--------|----------------|
-| `store` | Persistence: upsert postings, per-source close-detection, digest selection, run logging (UTC ISO-8601). |
+| `store` | Persistence: upsert postings, per-source close-detection, source-health/quiet detection, run logging (UTC ISO-8601). |
 | `db` | SQLite schema, connections, meta key/value store, runs-history pruning. |
 | `config` | Load + validate `sources.yaml` and `settings.toml`; collects errors without halting on a single bad entry. |
 | `models` | The normalized `Posting` dataclass shared across connectors / classify / store; carries scraped + classified fields + the raw payload. |
@@ -70,7 +70,7 @@ collected or shown.
 | `sourceurl` | Pure URL→`SourceEntry` detection (no network): map a pasted board URL to a source by host + path. |
 | `sniffer` | Heuristic, no-AI detection of embedded Greenhouse/Lever/Ashby boards on an arbitrary careers page (regex over the fetched HTML). The add-source fallback when `sourceurl` can't resolve a clean board URL. |
 | `filters` | Apply user filter booleans (`require_cs`, `require_intern_or_newgrad`) to classified postings. Pure function. |
-| `digest` | Render + email a digest of new matching postings; watermark advances only after a confirmed send. |
+| `mailer` | Shared SMTP send helper used by `notify` (the v1 digest emailer is gone). |
 | `__init__` | Package root (version). |
 
 ## Connectors (`internshelper/connectors/`)

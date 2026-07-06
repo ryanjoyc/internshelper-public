@@ -18,15 +18,14 @@ class _FakeConnector:
     def __init__(self, posts=None, exc=None, warnings=None):
         self._posts = posts or []
         self._exc = exc
-        self._warnings = warnings or []
+        # Push model: diagnostics are populated during fetch/parse and read off the
+        # connector afterwards (matches the real Connector.diagnostics channel).
+        self.diagnostics = list(warnings or [])
 
     def fetch(self):
         if self._exc:
             raise self._exc
         return self._posts
-
-    def parse_warnings(self):
-        return self._warnings
 
 
 def _post(pid, title):

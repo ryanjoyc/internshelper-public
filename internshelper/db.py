@@ -49,8 +49,9 @@ CREATE TABLE IF NOT EXISTS runs (
     source_key      TEXT NOT NULL,
     ok              INTEGER NOT NULL,
     count           INTEGER NOT NULL DEFAULT 0,
-    dropped         INTEGER NOT NULL DEFAULT 0,
-    error           TEXT
+    error           TEXT,
+    -- titles dropped by a source's title_must_match flood guard before storing (visibility)
+    dropped         INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS meta (
@@ -87,8 +88,8 @@ _POSTINGS_V2_COLUMNS = [
     ("posted_at", "TEXT"),
 ]
 
-# Additive migration for the `runs` table, same idiom as `_POSTINGS_V2_COLUMNS`.
-_RUNS_V2_COLUMNS = [
+# Columns added to `runs` after its original v2 shape, for additive migration of older DBs.
+_RUNS_COLUMNS = [
     ("dropped", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
@@ -96,25 +97,23 @@ _RUNS_V2_COLUMNS = [
 def init_db(conn: sqlite3.Connection) -> None:
     """Create all tables if they do not exist, then apply additive migrations (idempotent)."""
     conn.executescript(SCHEMA)
-    _migrate_postings(conn)
-    _migrate_runs(conn)
+    _migrate_columns(conn, "postings", _POSTINGS_V2_COLUMNS)
+    _migrate_columns(conn, "runs", _RUNS_COLUMNS)
     conn.commit()
 
 
-def _migrate_postings(conn: sqlite3.Connection) -> None:
-    """Add any v2 `postings` columns missing from a pre-v2 database, preserving data."""
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(postings)")}
-    for name, decl in _POSTINGS_V2_COLUMNS:
-        if name not in existing:
-            conn.execute(f"ALTER TABLE postings ADD COLUMN {name} {decl}")
+def _migrate_columns(
+    conn: sqlite3.Connection, table: str, columns: list[tuple[str, str]]
+) -> None:
+    """Add any listed columns missing from `table`, preserving existing data.
 
-
-def _migrate_runs(conn: sqlite3.Connection) -> None:
-    """Add any newer `runs` columns missing from an older database, preserving data."""
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
-    for name, decl in _RUNS_V2_COLUMNS:
+    SQLite allows ADD COLUMN with a constant DEFAULT, so this back-fills old databases
+    without a rewrite. Idempotent: a column already present is skipped.
+    """
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for name, decl in columns:
         if name not in existing:
-            conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
 
 def get_meta(conn: sqlite3.Connection, key: str) -> str | None:

@@ -158,13 +158,13 @@ def is_duplicate(path: str | Path, entry: SourceEntry) -> bool:
 def fetch_test(entry: SourceEntry, limit: int = 5) -> tuple[int, list[str], list[str]]:
     """Live fetch-test a source. Returns (count, sample titles, structural warnings).
 
-    Warnings are computed only when the fetch yields 0 rows — that's the ambiguous case
-    where a degenerate parse (e.g. unmappable Markdown columns) looks like an empty board.
+    Warnings come from the connector's `diagnostics` channel, populated during the parse
+    (e.g. a degenerate Markdown parse whose required columns can't be mapped). They surface
+    even alongside a nonzero count, so a partially-degenerate parse isn't silent either.
     """
     connector = build_connector(entry)
     postings = connector.fetch()
-    warnings = connector.parse_warnings() if not postings else []
-    return len(postings), [p.title for p in postings[:limit]], warnings
+    return len(postings), [p.title for p in postings[:limit]], list(connector.diagnostics)
 
 
 def parse_kv(spec: str) -> dict[str, str]:

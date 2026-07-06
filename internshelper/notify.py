@@ -1,11 +1,11 @@
 """The review nudge: a one-line email telling the user a batch is ready to classify.
 
-Replaces v1's hourly matches-digest. Reuses the SMTP send helper from `digest`.
+Replaces v1's hourly matches-digest. Reuses the shared SMTP send helper from `mailer`.
 """
 
 from __future__ import annotations
 
-from internshelper import digest
+from internshelper import mailer
 from internshelper.config import Settings
 
 
@@ -28,7 +28,7 @@ def send_nudge(
     pending_count: int,
     candidate_count: int,
     password: str | None,
-    send_fn=digest.send,
+    send_fn=mailer.send,
 ) -> None:
     """Render + send the nudge. Raises on missing password or SMTP failure."""
     if not password:

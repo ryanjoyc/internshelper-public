@@ -70,3 +70,68 @@ def test_health_returns_latest_run_per_source(tmp_path):
     assert rows["greenhouse:stripe"]["ok"] == 0  # the later (failed) run
     assert rows["greenhouse:stripe"]["error"] == "boom"
     assert rows["lever:netflix"]["count"] == 2
+
+
+# ---------- source_health: 'went quiet' detection ----------
+
+def _runs(c, source_key, counts, ok=True):
+    """Record successful runs with the given counts in chronological order."""
+    for i, n in enumerate(counts):
+        store.record_run(c, source_key, ok=ok, count=n, error=None,
+                         now=f"2026-06-18T10:{i:02d}:00+00:00")
+
+
+def _by_key(rows):
+    return {r["source_key"]: r for r in rows}
+
+
+def test_source_health_flags_zero_after_nonzero(tmp_path):
+    c = _conn(tmp_path)
+    _runs(c, "greenhouse:stripe", [5, 5, 5, 5, 0])  # was producing, now silent
+    row = _by_key(store.source_health(c))["greenhouse:stripe"]
+    assert row["quiet"] is True
+    assert "went quiet" in row["quiet_reason"]
+
+
+def test_source_health_flags_sharp_drop(tmp_path):
+    c = _conn(tmp_path)
+    _runs(c, "greenhouse:stripe", [10, 10, 10, 10, 3])  # 3 < 0.5 * baseline(10)
+    row = _by_key(store.source_health(c))["greenhouse:stripe"]
+    assert row["quiet"] is True
+    assert "sharp drop" in row["quiet_reason"]
+
+
+def test_source_health_steady_source_not_flagged(tmp_path):
+    c = _conn(tmp_path)
+    _runs(c, "greenhouse:stripe", [5, 5, 5, 5, 5])
+    row = _by_key(store.source_health(c))["greenhouse:stripe"]
+    assert row["quiet"] is False and row["quiet_reason"] == ""
+
+
+def test_source_health_low_volume_not_flagged(tmp_path):
+    c = _conn(tmp_path)
+    _runs(c, "greenhouse:stripe", [2, 2, 2, 0])  # baseline 2 < floor 3 -> no false positive
+    row = _by_key(store.source_health(c))["greenhouse:stripe"]
+    assert row["quiet"] is False
+
+
+def test_source_health_pseudo_rows_never_flagged(tmp_path):
+    c = _conn(tmp_path)
+    _runs(c, "run", [5, 5, 5, 0])  # heartbeat 'run' has no ':' -> not a board
+    row = _by_key(store.source_health(c))["run"]
+    assert row["quiet"] is False
+
+
+def test_source_health_insufficient_history_not_flagged(tmp_path):
+    c = _conn(tmp_path)
+    _runs(c, "greenhouse:stripe", [0])  # single run, nothing to compare against
+    row = _by_key(store.source_health(c))["greenhouse:stripe"]
+    assert row["quiet"] is False
+
+
+def test_source_health_surfaces_dropped_and_error(tmp_path):
+    c = _conn(tmp_path)
+    store.record_run(c, "greenhouse:stripe", ok=True, count=4, error=None,
+                     now="2026-06-18T10:00:00+00:00", dropped=6)
+    row = _by_key(store.source_health(c))["greenhouse:stripe"]
+    assert row["count"] == 4 and row["dropped"] == 6

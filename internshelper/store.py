@@ -1,5 +1,5 @@
-"""Persistence: upsert postings, per-source close-detection, digest selection,
-run logging, and application tracking. All timestamps are UTC ISO-8601 strings.
+"""Persistence: upsert postings, per-source close-detection, run logging + health,
+and application tracking. All timestamps are UTC ISO-8601 strings.
 """
 
 from __future__ import annotations
@@ -129,29 +129,6 @@ def apply_close_detection(
     return cur.rowcount
 
 
-def select_for_digest(
-    conn: sqlite3.Connection,
-    last_digest_at: str | None,
-    require_cs: bool,
-    require_intern_or_newgrad: bool,
-) -> list[sqlite3.Row]:
-    """Active postings first seen after the watermark that pass the filter, newest first."""
-    clauses = ["is_active = 1"]
-    params: list[object] = []
-    if last_digest_at is not None:
-        clauses.append("first_seen > ?")
-        params.append(last_digest_at)
-    if require_cs:
-        clauses.append("is_cs_relevant = 1")
-    if require_intern_or_newgrad:
-        clauses.append("(is_internship = 1 OR is_newgrad = 1)")
-    where = " AND ".join(clauses)
-    return conn.execute(
-        f"SELECT * FROM postings WHERE {where} ORDER BY first_seen DESC, posting_id",
-        params,
-    ).fetchall()
-
-
 def _feed_where(
     require_cs: bool,
     require_intern_or_newgrad: bool,
@@ -243,39 +220,69 @@ def health(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
-# Synthetic run rows that aren't real sources (heartbeat / nudge / digest / config errors).
-_META_SOURCE_KEYS = ("run", "notify", "config", "digest")
+def source_health(
+    conn: sqlite3.Connection,
+    *,
+    window: int = 5,
+    drop_ratio: float = 0.5,
+    baseline_floor: int = 3,
+) -> list[dict]:
+    """Latest run per source (like `health`), enriched with a 'went quiet' signal.
 
-
-def source_baselines(conn: sqlite3.Connection, window: int = 5) -> dict[str, dict]:
-    """Per real source, compare its latest fetch to a recent baseline ("went quiet").
-
-    The baseline is the average `count` of up to `window` prior *successful* runs (excluding
-    the latest). A source is flagged `quiet` when it had a real baseline (>0) and its latest
-    successful run dropped to 0 OR sharply below baseline (<50%) — the classic "the board
-    changed and we silently stopped seeing jobs" failure. Latest runs that errored are not
-    flagged (they already render ❌ in Health). Keyed by source_key.
+    A real source (source_key shaped `type:token`) is flagged `quiet` when its most recent
+    successful fetch collapsed versus its own recent baseline — either it returned 0 after a
+    nonzero history (the classic "the board changed and we silently stopped seeing jobs"), or
+    it fell far below the trailing average. Thresholds are parameters so the rule is testable:
+      - `window`         — how many prior successful runs form the baseline.
+      - `drop_ratio`     — "sharp drop" fires when latest < drop_ratio * baseline.
+      - `baseline_floor` — ignore low-volume noise: no flag unless baseline >= this.
+    Pseudo rows (run/notify/config) and sources without enough history are never flagged.
     """
-    rows = conn.execute(
-        "SELECT source_key, ok, count FROM runs "
-        "WHERE source_key NOT IN (?,?,?,?) ORDER BY id DESC",
-        _META_SOURCE_KEYS,
-    ).fetchall()
-    by_source: dict[str, list[sqlite3.Row]] = {}
-    for r in rows:
-        by_source.setdefault(r["source_key"], []).append(r)
+    latest = {r["source_key"]: r for r in health(conn)}
 
-    out: dict[str, dict] = {}
-    for key, runs in by_source.items():
-        latest = runs[0]
-        prior_ok = [r["count"] for r in runs[1:] if r["ok"]][:window]
-        baseline = sum(prior_ok) / len(prior_ok) if prior_ok else 0.0
-        quiet = bool(
-            latest["ok"] and baseline > 0
-            and (latest["count"] == 0 or latest["count"] < 0.5 * baseline)
+    # Successful per-source counts, newest first, for the baseline comparison.
+    ok_counts: dict[str, list[int]] = {}
+    for r in conn.execute("SELECT source_key, count FROM runs WHERE ok = 1 ORDER BY id DESC"):
+        ok_counts.setdefault(r["source_key"], []).append(r["count"])
+
+    out: list[dict] = []
+    for key in sorted(latest):
+        row = latest[key]
+        quiet, reason = _quiet_signal(
+            key, ok_counts.get(key, []),
+            window=window, drop_ratio=drop_ratio, baseline_floor=baseline_floor,
         )
-        out[key] = {"baseline": baseline, "latest": latest["count"], "quiet": quiet}
+        out.append({
+            "source_key": key, "started_at": row["started_at"], "ok": row["ok"],
+            "count": row["count"], "dropped": row["dropped"], "error": row["error"],
+            "quiet": quiet, "quiet_reason": reason,
+        })
     return out
+
+
+def _quiet_signal(
+    source_key: str,
+    ok_counts: list[int],
+    *,
+    window: int,
+    drop_ratio: float,
+    baseline_floor: int,
+) -> tuple[bool, str]:
+    """(quiet, reason) for one source from its successful run counts (newest first)."""
+    if ":" not in source_key:  # pseudo row (run/notify/config) — not a fetched board
+        return False, ""
+    if len(ok_counts) < 2:  # need a latest + at least one prior to compare
+        return False, ""
+    latest = ok_counts[0]
+    prior = ok_counts[1:1 + window]
+    baseline = sum(prior) / len(prior)
+    if baseline < baseline_floor:  # too small to tell breakage from normal churn
+        return False, ""
+    if latest == 0:
+        return True, f"went quiet — 0 vs recent ~{baseline:.0f}/run"
+    if latest < drop_ratio * baseline:
+        return True, f"sharp drop — {latest} vs recent ~{baseline:.0f}/run"
+    return False, ""
 
 
 def pending_counts(conn: sqlite3.Connection) -> tuple[int, int]:
@@ -298,10 +305,12 @@ def record_run(
     now: str,
     dropped: int = 0,
 ) -> None:
+    """Log one run row. `dropped` = titles the source's flood guard rejected before storing
+    (0 for the heartbeat/notify/config pseudo-rows that don't fetch)."""
     conn.execute(
-        "INSERT INTO runs (started_at, source_key, ok, count, dropped, error) "
+        "INSERT INTO runs (started_at, source_key, ok, count, error, dropped) "
         "VALUES (?,?,?,?,?,?)",
-        (now, source_key, int(ok), count, dropped, error),
+        (now, source_key, int(ok), count, error, dropped),
     )
     conn.commit()
 

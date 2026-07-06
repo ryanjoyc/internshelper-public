@@ -14,14 +14,13 @@
 {% if runs %}
 <div class="health-list">
   {% for r in runs %}
-  {% set b = baselines.get(r.source_key) %}
-  {% set kind = 'err' if not r.ok else ('quiet' if b and b.quiet else 'ok') %}
+  {% set kind = 'err' if not r.ok else ('quiet' if r.quiet else 'ok') %}
   <div class="card health-card health-card--{{ kind }}">
     <span class="dot dot--{{ kind }}"></span>
     <span class="health-key">{{ r.source_key }}</span>
     {% if kind == 'quiet' %}{{ m.pill('quiet', 'pending') }}{% elif kind == 'err' %}{{ m.pill('error', 'rejected') }}{% endif %}
     <span class="health-count cell-num">
-      {% if r.ok %}{{ r.count }} posting{{ '' if r.count == 1 else 's' }}{% if b and b.baseline %} vs ~{{ b.baseline | round | int }} baseline{% endif %}
+      {% if r.ok %}{{ r.count }} posting{{ '' if r.count == 1 else 's' }}{% if r.dropped %} · {{ r.dropped }} dropped by title filter{% endif %}{% if r.quiet_reason %} — {{ r.quiet_reason }}{% endif %}
       {% else %}<span class="health-error" title="{{ r.error }}">{{ r.error | truncate(80) }}</span>{% endif %}
     </span>
     <span class="health-age">{{ r.started_at | release }}</span>
