@@ -1,0 +1,22 @@
+<h2 class="wizard-title">Add a source</h2>
+<form class="wizard-form">
+  <label class="field">
+    <span class="field-label">Board URL</span>
+    <input class="input" type="url" name="url" placeholder="https://boards.greenhouse.io/…" required>
+  </label>
+  <label class="field">
+    <span class="field-label">Label (optional)</span>
+    <input class="input" type="text" name="label">
+  </label>
+  <label class="field">
+    <span class="field-label">Title must match (optional, comma-separated)</span>
+    <input class="input" type="text" name="tmm" placeholder="intern, new grad">
+  </label>
+  <label class="field">
+    <span class="field-label">Columns (optional, k=v pairs)</span>
+    <input class="input" type="text" name="cols" placeholder="company=Org, title=Position">
+  </label>
+  <div class="wizard-actions">
+    <button class="btn btn-primary" type="submit" disabled>Detect &amp; test</button>
+  </div>
+</form>

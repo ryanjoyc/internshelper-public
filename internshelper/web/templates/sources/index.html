@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% import "partials/_macros.html" as m %}
+{% block content %}
+<header class="page-head">
+  <div class="page-head-row">
+    <h1>Sources</h1>
+  </div>
+</header>
+
+{% if cfg_error %}
+<div class="notice notice--err">Could not read sources config: {{ cfg_error }}</div>
+{% endif %}
+{% for err in errors %}
+<div class="notice notice--warn">Skipped a malformed entry: {{ err }}</div>
+{% endfor %}
+
+<div id="source-list" class="source-list">
+  {% include "sources/_list.html" %}
+</div>
+
+<section class="card wizard" id="source-wizard">
+  {% include "sources/_add_form.html" %}
+</section>
+{% endblock %}

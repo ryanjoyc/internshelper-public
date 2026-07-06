@@ -1,0 +1,26 @@
+{% macro pill(text, kind='neutral') -%}
+<span class="pill pill--{{ kind }}">{{ text }}</span>
+{%- endmacro %}
+
+{% macro status_pill(status) -%}
+{% set s = status or 'Untracked' %}<span class="pill pill--status-{{ s | lower }}">{{ s }}</span>
+{%- endmacro %}
+
+{% macro verdict_pill(row) -%}
+{% if not row.is_active %}<span class="pill pill--nomatch">closed</span>
+{%- elif row.verdict == 'match' %}<span class="pill pill--match">match</span>
+{%- elif row.verdict == 'no_match' %}<span class="pill pill--nomatch">archived</span>
+{%- else %}<span class="pill pill--pending">pending</span>{% endif %}
+{%- endmacro %}
+
+{% macro stat_tile(label, value) -%}
+<div class="tile"><div class="tile-label">{{ label }}</div><div class="tile-value">{{ value }}</div></div>
+{%- endmacro %}
+
+{% macro empty_state(title, sub='', href='', label='') -%}
+<div class="empty-state">
+  <p class="empty-title">{{ title }}</p>
+  {% if sub %}<p class="empty-sub">{{ sub }}</p>{% endif %}
+  {% if href %}<a class="btn btn-primary" href="{{ href }}">{{ label }}</a>{% endif %}
+</div>
+{%- endmacro %}

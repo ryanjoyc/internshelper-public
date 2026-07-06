@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% import "partials/_macros.html" as m %}
+{% block content %}
+<header class="page-head">
+  <div class="page-head-row">
+    <h1>Health</h1>
+  </div>
+  <p class="page-sub">{{ runs | length }} source{{ '' if runs | length == 1 else 's' }} reporting{% if nav.last_collect %} · last collect {{ nav.last_collect | release }}{% endif %}</p>
+  {% if quiet %}
+  <div class="notice notice--warn">{{ quiet | length }} source{{ '' if quiet | length == 1 else 's' }} went quiet: {{ quiet | join(', ') }}</div>
+  {% endif %}
+</header>
+
+{% if runs %}
+<div class="health-list">
+  {% for r in runs %}
+  {% set b = baselines.get(r.source_key) %}
+  {% set kind = 'err' if not r.ok else ('quiet' if b and b.quiet else 'ok') %}
+  <div class="card health-card health-card--{{ kind }}">
+    <span class="dot dot--{{ kind }}"></span>
+    <span class="health-key">{{ r.source_key }}</span>
+    {% if kind == 'quiet' %}{{ m.pill('quiet', 'pending') }}{% elif kind == 'err' %}{{ m.pill('error', 'rejected') }}{% endif %}
+    <span class="health-count cell-num">
+      {% if r.ok %}{{ r.count }} posting{{ '' if r.count == 1 else 's' }}{% if b and b.baseline %} vs ~{{ b.baseline | round | int }} baseline{% endif %}
+      {% else %}<span class="health-error" title="{{ r.error }}">{{ r.error | truncate(80) }}</span>{% endif %}
+    </span>
+    <span class="health-age">{{ r.started_at | release }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+{{ m.empty_state("No runs recorded yet.", "The collector will report here after its first run.") }}
+{% endif %}
+{% endblock %}

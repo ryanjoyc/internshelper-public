@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% import "partials/_macros.html" as m %}
+{% block content %}
+<header class="page-head">
+  <div class="page-head-row">
+    <h1>Postings</h1>
+  </div>
+  <form class="toolbar" method="get" action="/postings">
+    <input class="input" type="search" name="q" value="{{ q }}" placeholder="Search title or company…">
+    <select class="input" name="state">
+      {% for s in states %}<option value="{{ s }}"{% if s == state %} selected{% endif %}>{{ s | capitalize }}</option>{% endfor %}
+    </select>
+    <select class="input" name="source">
+      <option value="">All sources</option>
+      {% for s in sources_seen %}<option value="{{ s }}"{% if s == source %} selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-secondary" type="submit">Apply</button>
+    <span class="toolbar-count">{{ total }} posting{{ '' if total == 1 else 's' }}</span>
+  </form>
+</header>
+
+{% if rows %}
+<div class="table-wrap">
+  <table class="table">
+    <thead>
+      <tr><th>Posted</th><th>Company</th><th>Title</th><th>Location</th><th>Source</th><th>State</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="{% if r.verdict == 'no_match' or not r.is_active %}is-archived{% endif %}">
+        <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
+        <td>{{ r.company }}</td>
+        <td class="cell-strong">{{ r.title }}</td>
+        <td>{{ r.location or "—" }}</td>
+        <td>{{ m.pill(r.source_key) }}</td>
+        <td>{{ m.verdict_pill(r) }}</td>
+        <td><a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if pages > 1 %}
+<nav class="pager">
+  {% if page > 1 %}<a class="btn btn-secondary btn-sm" href="/postings?q={{ q | urlencode }}&state={{ state }}&source={{ source | urlencode }}&page={{ page - 1 }}">‹ Prev</a>{% endif %}
+  <span class="pager-label">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn btn-secondary btn-sm" href="/postings?q={{ q | urlencode }}&state={{ state }}&source={{ source | urlencode }}&page={{ page + 1 }}">Next ›</a>{% endif %}
+</nav>
+{% endif %}
+{% elif q or source or state != 'active' %}
+{{ m.empty_state("No postings match.", "Try clearing the search or filters.", "/postings", "Clear filters") }}
+{% else %}
+{{ m.empty_state("Nothing collected yet.", "Add a source and the hourly collector will fill this in.", "/sources", "Add a source") }}
+{% endif %}
+{% endblock %}

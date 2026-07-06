@@ -1,0 +1,18 @@
+{% import "partials/_macros.html" as m %}
+{% if entries %}
+{% for e in entries %}
+<div class="card source-card" id="source-{{ e.source_key | replace(':', '-') }}">
+  <div class="source-main">
+    <div class="source-label">{{ e.label or e.source_key }}</div>
+    <div class="source-key">{{ e.source_key }}</div>
+  </div>
+  <div class="source-side">
+    {{ m.pill(e.type) }}
+    {% if e.title_must_match %}{% for t in e.title_must_match %}{{ m.pill(t) }}{% endfor %}{% endif %}
+    <button class="btn btn-ghost btn-sm btn-danger-text" disabled>Remove</button>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<p class="page-sub">No sources configured yet — add a job board below.</p>
+{% endif %}

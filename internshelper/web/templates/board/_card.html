@@ -1,0 +1,13 @@
+<li class="card board-card" id="card-{{ r.posting_id }}" data-id="{{ r.posting_id }}">
+  <div class="card-company">{{ r.company }}</div>
+  <div class="card-title">{{ r.title }}</div>
+  <div class="card-meta">{% if r.location %}{{ r.location }} · {% endif %}{{ r.posted_at | release(r.first_seen) }}</div>
+  {% if r.applied_date or r.notes or (not r.is_active) or r.status == 'Interested' %}
+  <div class="card-foot">
+    {% if r.status == 'Interested' %}<span class="star" title="interested">★</span>{% endif %}
+    {% if r.applied_date %}<span class="pill pill--neutral">applied {{ r.applied_date }}</span>{% endif %}
+    {% if not r.is_active %}<span class="pill pill--nomatch">closed</span>{% endif %}
+    {% if r.notes %}<span class="card-note" title="{{ r.notes }}">✎</span>{% endif %}
+  </div>
+  {% endif %}
+</li>
