@@ -6,7 +6,7 @@ This repo ships its own onboarding skills. Use them rather than re-deriving the 
   first — it's the living dashboard (current focus, git/VCS status, planning-doc index). Keep it
   current with **`update-project-state`**, and run **`session-state-check`** before wrapping up.
 - **Starting work here?** Invoke the **`internshelper-guide`** skill first — it's the orientation
-  map (module layout, data flow, the four CLIs, config/data, conventions). It points you to the
+  map (module layout, data flow, the CLIs, config/data, conventions). It points you to the
   right source file instead of scanning the whole tree.
 - **Made a structural change?** Before finishing, invoke the **`update-internshelper-guide`** skill
   if you added/renamed a module, connector, or CLI subcommand, or changed the data flow, schema, or

@@ -34,7 +34,8 @@ def ensure_gitignore_has_env(gitignore_path: str | Path) -> bool:
 
 
 def render_env(sender: str = "", recipient: str = "", password: str = "", *,
-               email: bool = True, schedule: bool = True, dashboard: bool = True) -> str:
+               email: bool = True, schedule: bool = True, dashboard: bool = True,
+               app: bool = True) -> str:
     """Render the per-machine `.env` (secrets + feature toggles)."""
     flag = lambda b: "1" if b else "0"  # noqa: E731
     return "\n".join([
@@ -51,18 +52,21 @@ def render_env(sender: str = "", recipient: str = "", password: str = "", *,
         f"INTERNSHELPER_FEATURE_EMAIL={flag(email)}",
         f"INTERNSHELPER_FEATURE_SCHEDULE={flag(schedule)}",
         f"INTERNSHELPER_FEATURE_DASHBOARD={flag(dashboard)}",
+        f"INTERNSHELPER_FEATURE_APP={flag(app)}",
         "",
     ])
 
 
 def scaffold_env(path: str | Path, sender: str = "", recipient: str = "", password: str = "", *,
-                 email: bool = True, schedule: bool = True, dashboard: bool = True) -> bool:
+                 email: bool = True, schedule: bool = True, dashboard: bool = True,
+                 app: bool = True) -> bool:
     """Write `.env` only if absent (never clobber existing secrets). Returns whether written."""
     p = Path(path)
     if p.exists():
         return False
     p.write_text(render_env(sender, recipient, password,
-                            email=email, schedule=schedule, dashboard=dashboard), encoding="utf-8")
+                            email=email, schedule=schedule, dashboard=dashboard, app=app),
+                 encoding="utf-8")
     return True
 
 
@@ -86,7 +90,13 @@ def _install_schedule(repo_dir: Path) -> None:
     print("launchd schedule loaded (hourly + on wake).")
 
 
-def _prompt() -> tuple[bool, bool, bool, str, str, str]:
+def _install_app(repo_dir: Path) -> None:
+    from internshelper import appbundle
+
+    appbundle.main(["--install", "--repo-dir", str(repo_dir)])
+
+
+def _prompt() -> tuple[bool, bool, bool, bool, str, str, str]:
     def ask(q: str, default: bool) -> bool:
         ans = input(f"{q} [{'Y/n' if default else 'y/N'}] ").strip().lower()
         return default if not ans else ans in ("y", "yes")
@@ -99,7 +109,9 @@ def _prompt() -> tuple[bool, bool, bool, str, str, str]:
         password = getpass.getpass("  SMTP app password (input hidden): ").strip()
     schedule = ask("Schedule the hourly collector via launchd (macOS)?", sys.platform == "darwin")
     dashboard = ask("Use the Streamlit dashboard?", True)
-    return email, schedule, dashboard, sender, recipient, password
+    app = dashboard and ask("Install the Dock app (InternsHELPer.app → ~/Applications)?",
+                            sys.platform == "darwin")
+    return email, schedule, dashboard, app, sender, recipient, password
 
 
 def main(argv=None) -> int:
@@ -119,14 +131,15 @@ def main(argv=None) -> int:
         email = feature_enabled("EMAIL")
         schedule = feature_enabled("SCHEDULE")
         dashboard = feature_enabled("DASHBOARD")
+        app = dashboard and feature_enabled("APP")
         sender = os.environ.get("INTERNSHELPER_SMTP_SENDER", "") if email else ""
         recipient = os.environ.get("INTERNSHELPER_SMTP_RECIPIENT", "") if email else ""
         password = os.environ.get("INTERNSHELPER_SMTP_PASSWORD", "") if email else ""
     else:
-        email, schedule, dashboard, sender, recipient, password = _prompt()
+        email, schedule, dashboard, app, sender, recipient, password = _prompt()
 
     wrote = scaffold_env(repo_dir / ".env", sender, recipient, password,
-                         email=email, schedule=schedule, dashboard=dashboard)
+                         email=email, schedule=schedule, dashboard=dashboard, app=app)
     print(f".env {'written' if wrote else 'already exists (left untouched)'}: {repo_dir / '.env'}")
 
     if schedule and sys.platform == "darwin":
@@ -136,6 +149,9 @@ def main(argv=None) -> int:
         print("schedule requested but launchd is macOS-only — skipping. For cron/systemd, run:")
         print(f"  {venv_py} -m internshelper.run")
         print("  (config + data paths resolve off the repo automatically, so cwd doesn't matter.)")
+
+    if app and sys.platform == "darwin":
+        _install_app(repo_dir)
     return 0
 
 

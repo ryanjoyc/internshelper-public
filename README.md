@@ -172,6 +172,31 @@ Manual CLI (what the skill drives) if you want it without the skill:
 - **Tracker** — everything you've given a status (Interested → Offer) + notes + applied date.
 - **Health** — last run per source, pending count, and the last nudge.
 
+### Dock app (macOS)
+
+Run the dashboard like a real app — its own Dock icon, a native window, no browser:
+
+```bash
+.venv/bin/python -m internshelper.appbundle --install
+```
+
+That builds `InternsHELPer.app` (into the gitignored `build/`) and copies it to
+`~/Applications`; drag it onto the Dock from there. Clicking it starts the Streamlit server
+headless on port 8510 and opens a native window; quitting the window stops the server.
+`bash scripts/bootstrap.sh` offers to do all of this (toggle: `INTERNSHELPER_FEATURE_APP`).
+Needs the `app` extra (`pip install -e ".[app]"` — pywebview + the pyobjc frameworks, macOS only).
+
+Notes:
+
+- If a previous window crashed and left its server running, the next launch re-attaches to it
+  (and still cleans it up on quit). A server *you* started by hand on 8510 is attached to but
+  never killed.
+- The repo path is baked into the bundle at build time — if you move the repo, re-run
+  `--install` (same as the launchd plist).
+- The bundle is unsigned. Built locally it runs without prompts; if you ever copy it to another
+  Mac via AirDrop/zip, clear quarantine first: `xattr -dr com.apple.quarantine InternsHELPer.app`.
+- Server logs land in `data/app.log` if the window comes up blank.
+
 ## 7. Schedule the collector (launchd)
 
 `bash scripts/bootstrap.sh` already offers to do this. To (re)install it yourself, let the setup
@@ -222,6 +247,7 @@ INTERNSHELPER_FEATURE_COLLECT=1     # run the hourly collector on this machine
 INTERNSHELPER_FEATURE_EMAIL=1       # send review nudges (needs the SMTP creds above)
 INTERNSHELPER_FEATURE_SCHEDULE=1    # install the launchd schedule (macOS)
 INTERNSHELPER_FEATURE_DASHBOARD=1   # install the Streamlit extra
+INTERNSHELPER_FEATURE_APP=1         # install the Dock app (macOS; needs DASHBOARD)
 ```
 
 Set any `INTERNSHELPER_FEATURE_*` to `0` to turn that part off — e.g. a second machine that only

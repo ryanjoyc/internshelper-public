@@ -1,6 +1,6 @@
 ---
 name: internshelper-guide
-description: Orientation map for the internsHELPer codebase. Use FIRST when starting work in this repo, or when the user says "how does internsHELPer work", "where is X", "navigate this codebase", "what does <module> do", or you need to find where to make a change. Gives the module map, data flow, the four CLIs, config/data layout, and conventions — so you can locate the right file without scanning everything.
+description: Orientation map for the internsHELPer codebase. Use FIRST when starting work in this repo, or when the user says "how does internsHELPer work", "where is X", "navigate this codebase", "what does <module> do", or you need to find where to make a change. Gives the module map, data flow, the CLIs, config/data layout, and conventions — so you can locate the right file without scanning everything.
 ---
 
 # internsHELPer: project guide
@@ -17,7 +17,8 @@ A local, $0 tool that **collects** internship / new-grad postings from boards li
 nudge** when a batch piles up. Classification is **on-demand and free**: triage the pending queue
 right in the dashboard (mark match/no-match, peek payloads), or open the repo in Claude Code and run
 `/review-internships` for the agent-assisted pass — same verdicts either way. A Streamlit dashboard
-shows confirmed matches, the (interactive) pending queue, source health, and source management. The
+shows confirmed matches, the (interactive) pending queue, source health, and source management —
+in the browser, or as a Dock-launchable native macOS app (`InternsHELPer.app`). The
 hourly cron is a dumb free collector; review is the classifier step — accurate, no API key, $0 ongoing.
 
 ## Architecture & data flow
@@ -44,7 +45,9 @@ collected or shown.
 | `run` | Scheduled collector: fetch all sources, store new payloads as pending, compute priority hints, email the nudge. One invocation = one cycle. |
 | `review` | On-demand review CLI: list pending, set verdicts, finish the queue, summarize confirmed matches. Driven by the `review-internships` skill. |
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the dashboard Sources tab. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`). |
-| `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the launchd plist on macOS. Idempotent. |
+| `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the launchd plist and install the Dock app on macOS. Idempotent. |
+| `app` | Dock-app runtime launcher: start the dashboard's Streamlit server headless on port 8510 (under a pipe-watchdog that reaps it if the launcher dies), show it in a native pywebview window, stop it on quit. Pidfile (`data/app.pid`) decides attach vs own for a pre-existing server. |
+| `appbundle` | Build `InternsHELPer.app` into `build/` (Info.plist, launcher script execing `app`, `.icns` from `assets/icon-1024.png` via sips/iconutil); `--install` copies it to `~/Applications`. macOS-only. |
 
 **Libraries:**
 
@@ -81,7 +84,7 @@ a type = adding a connector that registers itself + a `sourceurl` detection rule
 | `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns, handles `↳` continuation rows + `🔒` closed markers. |
 | `base` | Base `Connector` class, shared HTTP helpers (httpx, timeouts, headers), and the type→connector registry. |
 
-## The four CLIs
+## The CLIs
 
 Always run from the repo root with the project venv: `.venv/bin/python -m internshelper.<x>`.
 Subcommands below; use `--help` (or read the module's argparse) for full flags.
@@ -90,6 +93,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary`
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
 - **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.
+- **`app`** — no subcommands; what the Dock app runs. Needs the `app` extra (pywebview).
+- **`appbundle`** — `[--install] [--repo-dir ...] [--target-dir ...]`; rebuild/reinstall the Dock app (e.g. after moving the repo).
 
 ## Config & data
 
@@ -98,8 +103,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - `config/settings.toml` — neutral, committed settings (e.g. `[smtp] host`/`port`,
   `[review] notify_threshold`, classification keywords/filters).
 - `.env` — **gitignored, per-machine**: SMTP secrets + `INTERNSHELPER_FEATURE_*` toggles
-  (`COLLECT`/`EMAIL`/`SCHEDULE`/`DASHBOARD`) and path overrides (`INTERNSHELPER_DB`/`_SOURCES`/
-  `_SETTINGS`). A real exported env var always overrides the file.
+  (`COLLECT`/`EMAIL`/`SCHEDULE`/`DASHBOARD`/`APP`) and path overrides (`INTERNSHELPER_DB`/
+  `_SOURCES`/`_SETTINGS`). A real exported env var always overrides the file.
 - `data/` — **gitignored**: `data/internshelper.db` (SQLite) and `data/payloads/{id}.json` (raw
   payloads). Paths resolve off the repo root, so the scheduler's working directory doesn't matter.
 
@@ -113,7 +118,8 @@ bash scripts/bootstrap.sh
 
 .venv/bin/python -m pytest                              # tests (fixtures, no live calls)
 .venv/bin/python -m internshelper.run                  # one collection cycle
-.venv/bin/streamlit run internshelper/dashboard.py     # dashboard
+.venv/bin/streamlit run internshelper/dashboard.py     # dashboard (browser)
+.venv/bin/python -m internshelper.appbundle --install  # Dock app → ~/Applications (macOS)
 ```
 
 ## Conventions & gotchas

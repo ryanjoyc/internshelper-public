@@ -49,5 +49,17 @@ else
   echo "             .venv/bin/python -m pip install -e \".[dashboard]\"" >&2
 fi
 
+# Dock app is macOS-only and best-effort: pywebview pulls the heavy pyobjc wheels.
+# Failure must NOT abort the bootstrap (dashboard still works in a browser).
+if [ "$(uname)" = "Darwin" ]; then
+  echo "==> installing Dock app extra (best-effort)"
+  if .venv/bin/python -m pip install -e ".[app]"; then
+    echo "    Dock app deps ready"
+  else
+    echo "    WARNING: pywebview (Dock app) failed to install — continuing without it." >&2
+    echo "             Install later with: .venv/bin/python -m pip install -e \".[app]\"" >&2
+  fi
+fi
+
 echo "==> configuring this machine"
 exec .venv/bin/python -m internshelper.setup --repo-dir "$REPO_DIR" "$@"
