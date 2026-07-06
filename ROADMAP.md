@@ -135,12 +135,41 @@ long tail.** Same codebase, same accuracy floor for everyone.
   job that vanished after you saved it is flagged, not silently stale.
 - **Export.** CSV/JSON of matches and applications for use elsewhere.
 
+## Phase 5 — Distributable app (ship it to non-technical users)
+
+*Goal: a friend with zero technical skill can download one file, open it, and be running.*
+
+> **HARD GATE: internsHELPer must NOT be distributed to anyone — friends included — until
+> this phase is complete, unless the user explicitly approves an exception.** Today's "app" is
+> a launcher shim over a cloned repo + venv: handing it out means handing out a broken
+> Gatekeeper-blocked bundle and a developer setup. The architecture (local FastAPI server
+> in a native window) is a proven shippable format; the packaging is the whole gap.
+
+In rough order of necessity:
+
+- **Freeze into a self-contained bundle.** PyInstaller or Briefcase: Python runtime +
+  deps + `web/` templates/static baked into `InternsHELPer.app`. No repo, no venv, no
+  terminal. (The `appbundle.py` shim is replaced by this.)
+- **Move data out of the repo.** DB, payloads, `sources.yaml`, settings → per-user app
+  dirs (`~/Library/Application Support/internsHELPer/`). `config.default_path` is the
+  seam; keep the `INTERNSHELPER_*` env overrides working for dev.
+- **First-run setup inside the app.** The `.env` / SMTP / schedule questions become a
+  settings page in the web UI; `bootstrap.sh` stays dev-only.
+- **Scheduling without the repo.** launchd agent pointing at the bundled binary, or the
+  app collects on a timer while running (simplest honest v1: collect on launch + hourly
+  while open).
+- **Sign + notarize.** Apple Developer ID ($99/yr), codesign + notarytool in the build;
+  distribute as a DMG/zip that opens without Gatekeeper scare screens.
+- **Later / optional:** auto-update (e.g. Sparkle), a Windows build (pywebview via Edge
+  WebView2 — a second packaging pipeline), default source packs for first-run value.
+
 ---
 
 ## Open questions
 
-- **Distribution:** pip package, Docker, or a one-click bundle? Who is the least
-  technical user we want to support?
+- **Distribution:** answered in Phase 5 — a signed, self-contained one-click bundle for
+  fully non-technical users (pip/Docker stay dev-only paths). Remaining sub-question:
+  how much to invest in Windows.
 - **Scope:** strictly single-user/local forever, or eventually shareable source packs?
 - **AI-assist economics:** where does a BYO API key live, and what does a user pay?
 - **LinkedIn stance:** manual import only, or invest in fragile integration?
