@@ -7,7 +7,7 @@
                  "New postings land here after each collect run.",
                  "/board", "Go to board") }}
 {% endif %}
-{% if oob %}{% include "review/_oob.html" %}{% endif %}
+{% if oob %}{% include "partials/_nav_oob.html" %}{% endif %}
 {% if bulk_toast %}
 <div hx-swap-oob="beforeend:#toast-region">
   <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 8000) }"

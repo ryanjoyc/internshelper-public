@@ -284,6 +284,21 @@ def test_set_application_status_preserves_notes_and_date(tmp_path):
     assert row["applied_date"] == "2026-06-18"
 
 
+def test_set_application_status_fills_date_only_when_empty(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("greenhouse:1"), now="t")
+    # No row yet: the fill-in date lands.
+    store.set_application_status(c, "greenhouse:1", "Applied",
+                                 applied_date_if_empty="2026-07-01")
+    assert store.get_application(c, "greenhouse:1")["applied_date"] == "2026-07-01"
+    # Existing date: a later status change with a fill-in never overwrites it.
+    store.set_application_status(c, "greenhouse:1", "Interviewing",
+                                 applied_date_if_empty="2026-07-04")
+    row = store.get_application(c, "greenhouse:1")
+    assert row["status"] == "Interviewing"
+    assert row["applied_date"] == "2026-07-01"
+
+
 def test_set_application_status_creates_row_and_validates(tmp_path):
     c = _conn(tmp_path)
     store.upsert(c, _p("greenhouse:1"), now="t")

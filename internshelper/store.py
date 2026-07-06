@@ -334,16 +334,27 @@ def set_application(
     conn.commit()
 
 
-def set_application_status(conn: sqlite3.Connection, posting_id: str, status: str) -> None:
-    """Status-only upsert: existing notes/applied_date are left untouched."""
+def set_application_status(
+    conn: sqlite3.Connection,
+    posting_id: str,
+    status: str,
+    applied_date_if_empty: str | None = None,
+) -> None:
+    """Status-only upsert: existing notes/applied_date are left untouched.
+
+    `applied_date_if_empty` fills the applied date ONLY when none is recorded yet
+    (a board drag into Applied stamps today without clobbering a hand-set date).
+    """
     if status not in STATUS_OPTIONS:
         raise ValueError(f"status must be one of {STATUS_OPTIONS}, got {status!r}")
     conn.execute(
         """
-        INSERT INTO applications (posting_id, status) VALUES (?,?)
-        ON CONFLICT(posting_id) DO UPDATE SET status = excluded.status
+        INSERT INTO applications (posting_id, status, applied_date) VALUES (?,?,?)
+        ON CONFLICT(posting_id) DO UPDATE SET
+            status = excluded.status,
+            applied_date = COALESCE(NULLIF(applications.applied_date, ''), excluded.applied_date)
         """,
-        (posting_id, status),
+        (posting_id, status, applied_date_if_empty),
     )
     conn.commit()
 

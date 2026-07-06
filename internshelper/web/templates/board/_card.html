@@ -1,4 +1,5 @@
-<li class="card board-card" id="card-{{ r.posting_id }}" data-id="{{ r.posting_id }}">
+<li class="card board-card" id="card-{{ r.posting_id | dom_id }}" data-id="{{ r.posting_id }}"
+    hx-get="/board/card/{{ r.posting_id }}?view=board" hx-target="#drawer-body" hx-swap="innerHTML">
   <div class="card-company">{{ r.company }}</div>
   <div class="card-title">{{ r.title }}</div>
   <div class="card-meta">{% if r.location %}{{ r.location }} · {% endif %}{{ r.posted_at | release(r.first_seen) }}</div>

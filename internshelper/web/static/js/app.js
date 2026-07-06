@@ -115,3 +115,53 @@ document.addEventListener("keydown", function (e) {
 document.body.addEventListener("htmx:afterSwap", function () {
   if (selected >= 0 && document.getElementById("review-list")) select(selected);
 });
+
+/* ---------- board: SortableJS drag -> POST /board/move ---------- */
+
+function domId(id) {
+  return id.replace(/[^A-Za-z0-9_-]/g, "-"); // mirror of the Jinja dom_id filter
+}
+
+var lastDragAt = 0;
+
+function initBoard() {
+  if (typeof Sortable === "undefined") return;
+  document.querySelectorAll(".board-cards").forEach(function (col) {
+    if (col._sortable) return;
+    col._sortable = new Sortable(col, {
+      group: "board",
+      animation: 150,
+      onEnd: function (evt) {
+        lastDragAt = Date.now();
+        if (evt.from === evt.to) return; // no intra-column persistence
+        htmx.ajax("POST", "/board/move", {
+          values: { posting_id: evt.item.dataset.id, status: evt.to.dataset.status },
+          target: "#card-" + domId(evt.item.dataset.id),
+          swap: "outerHTML",
+        });
+      },
+    });
+  });
+}
+
+// A drop shouldn't also open the card drawer: swallow the click that follows a drag.
+document.addEventListener(
+  "click",
+  function (e) {
+    if (Date.now() - lastDragAt < 200 && e.target.closest(".board-card")) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  },
+  true
+);
+
+document.addEventListener("DOMContentLoaded", initBoard);
+document.body.addEventListener("htmx:afterSwap", initBoard);
+document.body.addEventListener("htmx:oobAfterSwap", initBoard);
+
+// If a move fails server-side, the optimistic drag is stale — resync from the DB.
+document.body.addEventListener("htmx:responseError", function (evt) {
+  var path = evt.detail && evt.detail.pathInfo && evt.detail.pathInfo.requestPath;
+  if (path === "/board/move") window.location.reload();
+});

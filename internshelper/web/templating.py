@@ -5,11 +5,20 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
 from internshelper import display, store
+
+_DOM_UNSAFE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def dom_id(value: object) -> str:
+    """Posting ids contain ':' — unusable in CSS id selectors. DOM ids use this form;
+    the real id always rides in a data-id attribute / form field."""
+    return _DOM_UNSAFE.sub("-", str(value))
 
 
 def safe_url(url: object) -> str:
@@ -24,6 +33,7 @@ def _build() -> Jinja2Templates:
     env = templates.env
     env.filters["release"] = display.format_release
     env.filters["safe_url"] = safe_url
+    env.filters["dom_id"] = dom_id
     env.globals["STATUS_OPTIONS"] = store.STATUS_OPTIONS
     env.globals["is_candidate"] = store.is_candidate
     return templates

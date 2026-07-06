@@ -49,5 +49,14 @@
   </main>
 </div>
 <div id="toast-region" class="toast-region" aria-live="polite"></div>
+<div x-data="{ open: false }"
+     x-on:drawer-open.window="open = true"
+     x-on:drawer-close.window="open = false"
+     x-on:keydown.escape.window="open = false">
+  <div class="drawer-scrim" x-show="open" x-on:click="open = false" style="display: none"></div>
+  <aside class="drawer" x-show="open" x-transition style="display: none">
+    <div id="drawer-body"></div>
+  </aside>
+</div>
 </body>
 </html>

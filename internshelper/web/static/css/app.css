@@ -648,6 +648,11 @@ select.input { padding-right: 26px; }
   overflow-y: auto;
 }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.drawer-form { display: flex; flex-direction: column; gap: 12px; margin: 18px 0; }
+.drawer-context { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.drawer-danger { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+
+.table-row-click { cursor: pointer; }
 
 /* ---------- modal confirm ---------- */
 

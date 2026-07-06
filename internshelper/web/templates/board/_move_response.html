@@ -1,0 +1,18 @@
+{# Drag move: the dragged card re-renders in place; counts, badges, toast ride OOB. #}
+{% include "board/_card.html" %}
+{% for lane in lanes %}
+<span class="pill pill--neutral pill--count" id="col-count-{{ lane | lower }}" hx-swap-oob="outerHTML">{{ columns_counts[lane] | length }}</span>
+{% endfor %}
+{% include "partials/_nav_oob.html" %}
+<div hx-swap-oob="beforeend:#toast-region">
+  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 6000) }"
+       x-on:htmx:after-request="clearTimeout(t); $el.remove()">
+    <span class="toast-text">Moved to {{ move_toast.to }}{% if move_toast.to == 'Applied' and r.applied_date %} · applied {{ r.applied_date }}{% endif %}</span>
+    <form hx-post="/board/move" hx-target="#board-region" hx-swap="innerHTML">
+      <input type="hidden" name="posting_id" value="{{ move_toast.posting_id }}">
+      <input type="hidden" name="status" value="{{ move_toast.prev }}">
+      <input type="hidden" name="region" value="1">
+      <button class="btn btn-ghost btn-sm" type="submit">Undo</button>
+    </form>
+  </div>
+</div>

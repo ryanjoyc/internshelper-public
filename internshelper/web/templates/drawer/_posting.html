@@ -1,0 +1,65 @@
+{% import "partials/_macros.html" as m %}
+<div class="drawer-head">
+  {{ m.status_pill(r.status) }}
+  <button class="btn btn-ghost btn-sm" type="button" x-on:click="$dispatch('drawer-close')">✕</button>
+</div>
+
+<h2 class="focus-title">{{ r.title }}</h2>
+<p class="focus-meta">{{ r.company }}{% if r.location %} · {{ r.location }}{% endif %}
+  · <a href="{{ r.url | safe_url }}" target="_blank" rel="noopener">Open posting ↗</a></p>
+<p class="page-sub">{{ m.pill(r.source_key) }} <span class="row-age">{{ r.posted_at | release(r.first_seen) }}</span>
+  {% if not r.is_active %}{{ m.pill('closed', 'nomatch') }}{% endif %}</p>
+
+<form class="drawer-form"
+      hx-post="/board/card/{{ r.posting_id }}" hx-target="#drawer-body" hx-swap="innerHTML">
+  <input type="hidden" name="view" value="{{ view }}">
+  <label class="field">
+    <span class="field-label">Status</span>
+    <select class="input" name="status">
+      {% for s in STATUS_OPTIONS %}
+      <option value="{{ s }}"{% if s == (r.status or 'Untracked') %} selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field">
+    <span class="field-label">Applied date</span>
+    <input class="input" type="date" name="applied_date" value="{{ r.applied_date or '' }}">
+  </label>
+  <label class="field">
+    <span class="field-label">Notes</span>
+    <textarea class="input" name="notes" rows="4">{{ r.notes or '' }}</textarea>
+  </label>
+  <div class="wizard-actions">
+    {% if saved %}<span class="page-sub">Saved.</span>{% endif %}
+    <button class="btn btn-primary" type="submit">Save</button>
+  </div>
+</form>
+
+<div class="drawer-context">
+  {% if r.verdict_reason %}<p class="page-sub">Match reason: {{ r.verdict_reason }}</p>{% endif %}
+  {% if payload and payload.state == 'ok' and payload.description %}
+  <details class="focus-raw">
+    <summary>Description</summary>
+    <div class="peek-desc">{{ payload.description }}</div>
+  </details>
+  {% endif %}
+</div>
+
+<div class="drawer-danger" x-data="{ confirmBack: false }">
+  <button class="btn btn-ghost btn-sm btn-danger-text" x-show="!confirmBack"
+          x-on:click="confirmBack = true">Move back to review…</button>
+  <span x-show="confirmBack" style="display: none">
+    <span class="page-sub">Clears the match verdict — it returns to the pending queue.</span>
+    <button class="btn btn-secondary btn-sm" x-on:click="confirmBack = false">Cancel</button>
+    <button class="btn btn-danger btn-sm"
+            hx-post="/board/unmatch" hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "view": {{ view | tojson }}}'
+            hx-target="#board-region" hx-swap="innerHTML">Move back</button>
+  </span>
+</div>
+
+{% if oob_board %}
+<div id="board-region" hx-swap-oob="innerHTML">
+  {% include "board/_region.html" %}
+</div>
+{% include "partials/_nav_oob.html" %}
+{% endif %}

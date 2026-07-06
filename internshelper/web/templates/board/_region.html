@@ -1,0 +1,44 @@
+{% import "partials/_macros.html" as m %}
+{% if not rows %}
+{{ m.empty_state("No matches yet.",
+                 "Confirm matches in Review to populate the board.",
+                 "/review", "Go to Review") }}
+{% elif view == 'table' %}
+<div class="table-wrap">
+  <table class="table">
+    <thead>
+      <tr><th>Status</th><th>Company</th><th>Title</th><th>Location</th><th>Applied</th><th>Posted</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="table-row-click" hx-get="/board/card/{{ r.posting_id }}?view=table"
+          hx-target="#drawer-body" hx-swap="innerHTML">
+        <td>{{ m.status_pill(r.status) }}</td>
+        <td>{{ r.company }}</td>
+        <td class="cell-strong">{{ r.title }}</td>
+        <td>{{ r.location or "—" }}</td>
+        <td class="cell-num">{{ r.applied_date or "—" }}</td>
+        <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
+        <td><a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="board">
+  {% for lane in lanes %}
+  <section class="board-col">
+    <header class="board-col-head">
+      <span class="dot dot--lane-{{ lane | lower }}"></span>
+      <span>{{ lane }}</span>
+      <span class="pill pill--neutral pill--count" id="col-count-{{ lane | lower }}">{{ columns[lane] | length }}</span>
+    </header>
+    <ul class="board-cards" data-status="{{ 'Untracked' if lane == 'Matched' else lane }}">
+      {% for r in columns[lane] %}{% include "board/_card.html" %}{% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
+{% if oob_nav %}{% include "partials/_nav_oob.html" %}{% endif %}
