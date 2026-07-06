@@ -81,6 +81,36 @@ long tail.** Same codebase, same accuracy floor for everyone.
   HTML and detect an embedded Greenhouse/Lever/Ashby board, then resolve the slug.
   Covers a large share of "arbitrary URL" inputs deterministically.
 
+## Phase 1.5 — Learned ranking (learn what you like) — *pull forward: work on this soon*
+
+*Goal: the more you verdict, the better the queue gets — postings you'd match float to
+the top, without ever hiding anything.*
+
+Every review verdict is already a labeled training example we're not using: the
+`postings` row carries title, company, location, description, source, and posted_at;
+`verdict` / `verdict_reason` / `reviewed_at` record the decision; and the full raw
+payload sits on disk. No new capture is needed to start — the dataset grows every time
+you triage.
+
+- **v1: a transparent, local, deterministic scorer.** Learn per-term weights from your
+  match/no_match history over title + description tokens (a naive-Bayes-style
+  match-likelihood score), plus company and source priors and a recency signal. Pure
+  Python, no API key, retrained instantly (on `finish()` or nightly) — consistent with
+  Principle 2.
+- **Ranking only, never gating.** The learned score *orders* the review queue and can
+  badge cards ("likely match"), replacing today's binary candidates-first sort. It never
+  filters, auto-decides, or hides a posting — Principle 3 stays intact. Cold start falls
+  back to the current keyword-candidate heuristic.
+- **Explain every score.** Each ranked posting shows *why* — its top contributing
+  terms/priors ("↑ backend, ↑ Stripe-like sources, ↓ unpaid"). A score you can't
+  inspect erodes the trust the rest of the product is built on (Principle 5).
+- **Measure it before trusting it.** Backtest against the verdict history you already
+  have (does the score predict your past decisions? precision@k on a held-out slice) and
+  keep that eval running as the dataset grows — same eval-first discipline as Phase 2.
+- **Later, under the AI-assist layer:** optional embedding-based similarity ("more like
+  the ones you matched") via BYO key/Claude Code — an accelerator on top of the
+  deterministic scorer, never a replacement for it.
+
 ## Phase 2 — Coverage (parse more of the web reliably)
 
 *Goal: fewer sources hard-fail; the "both, balanced" coverage pillar.*
