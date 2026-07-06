@@ -1,22 +1,40 @@
 <h2 class="wizard-title">Add a source</h2>
-<form class="wizard-form">
+<form class="wizard-form" hx-post="/sources/detect" hx-target="#source-wizard" hx-swap="innerHTML">
   <label class="field">
     <span class="field-label">Board URL</span>
-    <input class="input" type="url" name="url" placeholder="https://boards.greenhouse.io/…" required>
+    <input class="input" type="url" name="url" value="{{ url or '' }}"
+           placeholder="https://boards.greenhouse.io/…" required>
+    {% if form_error %}<span class="field-error">{{ form_error }}</span>{% endif %}
   </label>
   <label class="field">
     <span class="field-label">Label (optional)</span>
-    <input class="input" type="text" name="label">
+    <input class="input" type="text" name="label" value="{{ label or '' }}">
   </label>
   <label class="field">
     <span class="field-label">Title must match (optional, comma-separated)</span>
-    <input class="input" type="text" name="tmm" placeholder="intern, new grad">
+    <input class="input" type="text" name="tmm" value="{{ tmm or '' }}" placeholder="intern, new grad">
   </label>
   <label class="field">
-    <span class="field-label">Columns (optional, k=v pairs)</span>
-    <input class="input" type="text" name="cols" placeholder="company=Org, title=Position">
+    <span class="field-label">Columns (markdown lists only — k=v pairs, optional)</span>
+    <input class="input" type="text" name="cols" value="{{ cols or '' }}" placeholder="company=Org, title=Position">
   </label>
   <div class="wizard-actions">
-    <button class="btn btn-primary" type="submit" disabled>Detect &amp; test</button>
+    <button class="btn btn-primary" type="submit">
+      Detect &amp; test
+      <span class="htmx-indicator">…</span>
+    </button>
   </div>
 </form>
+
+{% if oob_list %}
+<div id="source-list" class="source-list" hx-swap-oob="innerHTML">
+  {% include "sources/_list.html" %}
+</div>
+{% endif %}
+{% if flash %}
+<div hx-swap-oob="beforeend:#toast-region">
+  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
+    <span class="toast-text">{{ flash }}</span>
+  </div>
+</div>
+{% endif %}

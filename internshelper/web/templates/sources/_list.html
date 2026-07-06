@@ -1,18 +1,40 @@
 {% import "partials/_macros.html" as m %}
 {% if entries %}
 {% for e in entries %}
-<div class="card source-card" id="source-{{ e.source_key | replace(':', '-') }}">
+<div class="card source-card" id="source-{{ e.source_key | dom_id }}">
   <div class="source-main">
     <div class="source-label">{{ e.label or e.source_key }}</div>
     <div class="source-key">{{ e.source_key }}</div>
   </div>
-  <div class="source-side">
+  <div class="source-side" x-data="{ confirmRm: false }">
     {{ m.pill(e.type) }}
     {% if e.title_must_match %}{% for t in e.title_must_match %}{{ m.pill(t) }}{% endfor %}{% endif %}
-    <button class="btn btn-ghost btn-sm btn-danger-text" disabled>Remove</button>
+    <button class="btn btn-ghost btn-sm btn-danger-text" x-show="!confirmRm"
+            x-on:click="confirmRm = true">Remove</button>
+    <span x-show="confirmRm" style="display: none">
+      <button class="btn btn-secondary btn-sm" x-on:click="confirmRm = false">Cancel</button>
+      <button class="btn btn-danger btn-sm"
+              hx-post="/sources/remove" hx-vals='{"source_key": {{ e.source_key | tojson }}}'
+              hx-target="#source-list" hx-swap="innerHTML">Remove {{ e.source_key }}</button>
+    </span>
   </div>
 </div>
 {% endfor %}
 {% else %}
 <p class="page-sub">No sources configured yet — add a job board below.</p>
+{% endif %}
+
+{% if flash %}
+<div hx-swap-oob="beforeend:#toast-region">
+  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
+    <span class="toast-text">{{ flash }}</span>
+  </div>
+</div>
+{% endif %}
+{% if flash_error %}
+<div hx-swap-oob="beforeend:#toast-region">
+  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
+    <span class="toast-text">{{ flash_error }}</span>
+  </div>
+</div>
 {% endif %}

@@ -1,0 +1,21 @@
+<h2 class="wizard-title">Add a source</h2>
+<p class="page-sub">No direct match — found {{ candidates | length }} embedded board{{ '' if candidates | length == 1 else 's' }} on that page.</p>
+<form class="wizard-form" hx-post="/sources/candidate" hx-target="#source-wizard" hx-swap="innerHTML">
+  <input type="hidden" name="label" value="{{ label }}">
+  <input type="hidden" name="tmm" value="{{ tmm }}">
+  <input type="hidden" name="cols" value="{{ cols }}">
+  <div class="field">
+    <span class="field-label">Use which board?</span>
+    {% for c in candidates %}
+    <label class="radio-row">
+      <input type="radio" name="choice" value="{{ c.source_key }}"{% if loop.first %} checked{% endif %}>
+      <span class="source-key">{{ c.source_key }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="wizard-actions">
+    <button class="btn btn-secondary" type="button"
+            hx-get="/sources/add-form" hx-target="#source-wizard" hx-swap="innerHTML">Cancel</button>
+    <button class="btn btn-primary" type="submit">Use this board <span class="htmx-indicator">…</span></button>
+  </div>
+</form>

@@ -1,0 +1,36 @@
+<h2 class="wizard-title">Add a source</h2>
+<p>Detected: <span class="source-key">{{ entry.source_key }}</span></p>
+
+{% if fetch_error %}
+<div class="notice notice--err">Fetch failed: {{ fetch_error }}</div>
+{% else %}
+<p class="page-sub">Fetched <strong>{{ count }}</strong> posting{{ '' if count == 1 else 's' }}.</p>
+{% if titles %}
+<ul class="wizard-titles">
+  {% for t in titles %}<li>{{ t }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endif %}
+{% for w in warnings %}
+<div class="notice notice--warn">{{ w }}</div>
+{% endfor %}
+
+<form class="wizard-form" hx-post="/sources/add" hx-target="#source-wizard" hx-swap="innerHTML">
+  <input type="hidden" name="type" value="{{ entry.type }}">
+  <input type="hidden" name="token" value="{{ entry.token }}">
+  <input type="hidden" name="label" value="{{ label }}">
+  <input type="hidden" name="tmm" value="{{ tmm }}">
+  <input type="hidden" name="cols" value="{{ cols }}">
+  <input type="hidden" name="force" value="{{ '1' if needs_force else '0' }}">
+  <div class="wizard-actions">
+    <button class="btn btn-secondary" type="button"
+            hx-get="/sources/add-form" hx-target="#source-wizard" hx-swap="innerHTML">Cancel</button>
+    {% if fetch_error %}
+    <button class="btn btn-primary" type="submit" disabled>Confirm &amp; add</button>
+    {% elif needs_force %}
+    <button class="btn btn-danger" type="submit">Add anyway</button>
+    {% else %}
+    <button class="btn btn-primary" type="submit">Confirm &amp; add</button>
+    {% endif %}
+  </div>
+</form>
