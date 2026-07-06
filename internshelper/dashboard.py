@@ -7,18 +7,17 @@ this file is UI only.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import streamlit as st
 
-from internshelper import clock, config, db, display, review, sniffer, sources, store, text
+from internshelper import clock, config, db, display, review, sniffer, sources, store
 from internshelper.dotenv import load_dotenv
 from internshelper.sourceurl import SourceDetectionError
 
 load_dotenv()  # pick up INTERNSHELPER_* from the gitignored .env (real env still wins)
 
-STATUS_OPTIONS = ["Untracked", "Interested", "Applied", "Interviewing", "Rejected", "Offer"]
+STATUS_OPTIONS = list(store.STATUS_OPTIONS)
 
 _CSS_PATH = Path(__file__).parent / "assets" / "dashboard.css"
 
@@ -39,10 +38,7 @@ def _open_conn():
 
 
 def _apply_form(conn, posting_id: str) -> None:
-    app = conn.execute(
-        "SELECT status, notes, applied_date FROM applications WHERE posting_id = ?",
-        (posting_id,),
-    ).fetchone()
+    app = store.get_application(conn, posting_id)
     cur = (app["status"] if app else None) or "Untracked"
     with st.form(f"app-{posting_id}"):
         status = st.selectbox("Status", STATUS_OPTIONS,
@@ -58,23 +54,16 @@ def _apply_form(conn, posting_id: str) -> None:
 
 def _payload_peek(payload_path) -> None:
     """Render the archived raw payload so the user can judge a pending posting."""
-    if not payload_path:
+    summary = review.payload_summary(payload_path)
+    if summary["state"] == "missing":
         st.caption("No saved payload — judging by title only.")
         return
-    try:
-        raw = json.loads(Path(payload_path).read_text(encoding="utf-8"))
-    except Exception:
+    if summary["state"] == "unreadable":
         st.caption("Payload file unreadable.")
         return
-    desc = ""
-    if isinstance(raw, dict):
-        for k in ("content", "description", "descriptionPlain", "descriptionHtml", "plain"):
-            if raw.get(k):
-                desc = text.strip_html(str(raw[k]))
-                break
-    if desc:
-        st.write(desc[:2000])
-    st.json(raw, expanded=False)  # full payload — nothing hidden
+    if summary["description"]:
+        st.write(summary["description"])
+    st.json(summary["raw"], expanded=False)  # full payload — nothing hidden
 
 
 def _record_verdict(conn, posting_id: str, verdict: str) -> None:
@@ -85,17 +74,14 @@ def _record_verdict(conn, posting_id: str, verdict: str) -> None:
 
 
 def _bulk_clear_non_candidates(conn) -> None:
-    now = clock.now_iso()
-    for r in review.list_pending(conn):
-        if not (r["is_cs_relevant"] or r["is_internship"] or r["is_newgrad"]):
-            review.set_verdict(conn, r["posting_id"], "no_match", "bulk: non-candidate", now=now)
+    review.clear_non_candidate_pending(conn, now=clock.now_iso())
     review.finish(conn)
 
 
 def _pending_row(conn, r) -> None:
     pid = r["posting_id"]
     released = display.format_release(r["posted_at"], r["first_seen"])
-    is_cand = bool(r["is_cs_relevant"] or r["is_internship"] or r["is_newgrad"])
+    is_cand = store.is_candidate(r)
     badge = "⭐ " if is_cand else ""
     st.markdown(f"{badge}**{released}** · {r['company']} — {r['title']} · {r['location'] or '—'}")
     c1, c2, c3, c4 = st.columns([1, 1, 3, 1])
@@ -136,8 +122,7 @@ def _pending_review(conn) -> None:
     page_size = st.selectbox("Per page", [25, 50, 100], index=0, key="review-pagesize")
     total_pages = (total + page_size - 1) // page_size
     page = min(st.session_state.get("review_page", 0), total_pages - 1)
-    rows = review.list_pending(conn, limit=page_size * (page + 1))
-    for r in rows[page * page_size:(page + 1) * page_size]:
+    for r in review.list_pending(conn, limit=page_size, offset=page * page_size):
         _pending_row(conn, r)
 
     if total_pages > 1:
@@ -264,7 +249,7 @@ def _add_source_form(path: str) -> None:
         return
 
     tmm = [s.strip() for s in tmm_raw.split(",") if s.strip()] or None
-    cols = sources._parse_kv(cols_raw) or None
+    cols = sources.parse_kv(cols_raw) or None
     try:
         entry = sources.resolve_entry(url, label=label or None, title_must_match=tmm, columns=cols)
     except SourceDetectionError as e:

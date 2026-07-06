@@ -14,6 +14,18 @@ from internshelper.models import Posting
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
 
+# Canonical application-status enum (was UI-only). `applications.status` is free text in
+# the schema; this is the validated vocabulary every writer must use.
+STATUS_OPTIONS = ("Untracked", "Interested", "Applied", "Interviewing", "Rejected", "Offer")
+
+# The "keyword-candidate" rule, single source of truth. SQL fragment for queries;
+# `is_candidate` is the same predicate for a fetched row (sqlite3.Row or dict).
+CANDIDATE_SQL = "(is_cs_relevant = 1 OR is_internship = 1 OR is_newgrad = 1)"
+
+
+def is_candidate(row) -> bool:
+    return bool(row["is_cs_relevant"] or row["is_internship"] or row["is_newgrad"])
+
 
 def payload_path_for(payloads_dir: str | Path, posting_id: str) -> Path:
     """Filesystem-safe path for a posting's raw payload file."""
@@ -140,20 +152,13 @@ def select_for_digest(
     ).fetchall()
 
 
-def feed(
-    conn: sqlite3.Connection,
-    *,
+def _feed_where(
     require_cs: bool,
     require_intern_or_newgrad: bool,
-    include_all: bool = False,
-    include_closed: bool = False,
-    search: str = "",
-) -> list[sqlite3.Row]:
-    """Active postings for the Feed, newest first.
-
-    `include_all` ignores the filter booleans (view everything); `include_closed` also
-    shows archived/closed roles; `search` matches title or company (case-insensitive).
-    """
+    include_all: bool,
+    include_closed: bool,
+    search: str,
+) -> tuple[str, list[object]]:
     clauses: list[str] = []
     params: list[object] = []
     if not include_closed:
@@ -168,9 +173,50 @@ def feed(
         like = f"%{search.lower()}%"
         params += [like, like]
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-    return conn.execute(
-        f"SELECT * FROM postings{where} ORDER BY first_seen DESC, posting_id", params
-    ).fetchall()
+    return where, params
+
+
+def feed(
+    conn: sqlite3.Connection,
+    *,
+    require_cs: bool,
+    require_intern_or_newgrad: bool,
+    include_all: bool = False,
+    include_closed: bool = False,
+    search: str = "",
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[sqlite3.Row]:
+    """Active postings for the Feed, newest first.
+
+    `include_all` ignores the filter booleans (view everything); `include_closed` also
+    shows archived/closed roles; `search` matches title or company (case-insensitive).
+    `limit`/`offset` page the result (the ORDER BY's posting_id tiebreak keeps pages stable).
+    """
+    where, params = _feed_where(
+        require_cs, require_intern_or_newgrad, include_all, include_closed, search
+    )
+    sql = f"SELECT * FROM postings{where} ORDER BY first_seen DESC, posting_id"
+    if limit is not None or offset:
+        sql += " LIMIT ? OFFSET ?"
+        params += [-1 if limit is None else limit, offset]
+    return conn.execute(sql, params).fetchall()
+
+
+def feed_count(
+    conn: sqlite3.Connection,
+    *,
+    require_cs: bool,
+    require_intern_or_newgrad: bool,
+    include_all: bool = False,
+    include_closed: bool = False,
+    search: str = "",
+) -> int:
+    """Total rows `feed` would return for the same filters (for pagination math)."""
+    where, params = _feed_where(
+        require_cs, require_intern_or_newgrad, include_all, include_closed, search
+    )
+    return conn.execute(f"SELECT COUNT(*) FROM postings{where}", params).fetchone()[0]
 
 
 def tracker(conn: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -238,8 +284,7 @@ def pending_counts(conn: sqlite3.Connection) -> tuple[int, int]:
         "SELECT COUNT(*) FROM postings WHERE review_status = 'pending'"
     ).fetchone()[0]
     candidates = conn.execute(
-        "SELECT COUNT(*) FROM postings WHERE review_status = 'pending' "
-        "AND (is_cs_relevant = 1 OR is_internship = 1 OR is_newgrad = 1)"
+        f"SELECT COUNT(*) FROM postings WHERE review_status = 'pending' AND {CANDIDATE_SQL}"
     ).fetchone()[0]
     return total, candidates
 
@@ -268,6 +313,13 @@ def set_application(
     notes: str | None = None,
     applied_date: str | None = None,
 ) -> None:
+    """Full upsert of an application row — sets all three columns.
+
+    For a status-only change (e.g. a board drag) use `set_application_status`, which
+    preserves existing notes/applied_date instead of overwriting them.
+    """
+    if status is not None and status not in STATUS_OPTIONS:
+        raise ValueError(f"status must be one of {STATUS_OPTIONS}, got {status!r}")
     conn.execute(
         """
         INSERT INTO applications (posting_id, status, notes, applied_date)
@@ -280,3 +332,37 @@ def set_application(
         (posting_id, status, notes, applied_date),
     )
     conn.commit()
+
+
+def set_application_status(conn: sqlite3.Connection, posting_id: str, status: str) -> None:
+    """Status-only upsert: existing notes/applied_date are left untouched."""
+    if status not in STATUS_OPTIONS:
+        raise ValueError(f"status must be one of {STATUS_OPTIONS}, got {status!r}")
+    conn.execute(
+        """
+        INSERT INTO applications (posting_id, status) VALUES (?,?)
+        ON CONFLICT(posting_id) DO UPDATE SET status = excluded.status
+        """,
+        (posting_id, status),
+    )
+    conn.commit()
+
+
+def get_application(conn: sqlite3.Connection, posting_id: str) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT status, notes, applied_date FROM applications WHERE posting_id = ?",
+        (posting_id,),
+    ).fetchone()
+
+
+def matches_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Confirmed matches with their application state (NULL status = untracked), for the board."""
+    return conn.execute(
+        """
+        SELECT p.*, a.status, a.notes, a.applied_date
+        FROM postings p
+        LEFT JOIN applications a ON a.posting_id = p.posting_id
+        WHERE p.verdict = 'match'
+        ORDER BY p.reviewed_at DESC, p.posting_id
+        """
+    ).fetchall()

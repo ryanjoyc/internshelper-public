@@ -213,7 +213,11 @@ def test_add_with_columns_flag(srcfile, monkeypatch):
 
 
 def test_parse_kv_drops_segments_without_equals():
-    assert sources._parse_kv("a=1, b=2 , bad") == {"a": "1", "b": "2"}
+    assert sources.parse_kv("a=1, b=2 , bad") == {"a": "1", "b": "2"}
+
+
+def test_parse_kv_private_alias_kept_for_compat():
+    assert sources._parse_kv is sources.parse_kv
 
 
 # ---------- reusable add-source core (resolve_entry / is_duplicate) ----------

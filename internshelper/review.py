@@ -11,11 +11,17 @@ import argparse
 import json
 import sqlite3
 import sys
+from pathlib import Path
 
-from internshelper import clock, config, db
+from internshelper import clock, config, db, store, text
 from internshelper.dotenv import load_dotenv
 
 VERDICTS = ("match", "no_match")
+
+BULK_CLEAR_REASON = "bulk: non-candidate"
+
+# Payload keys tried (in order) for a human-readable description, across connector shapes.
+_DESCRIPTION_KEYS = ("content", "description", "descriptionPlain", "descriptionHtml", "plain")
 
 _FIELDS = (
     "posting_id, title, company, location, url, payload_path, posted_at, first_seen, "
@@ -23,21 +29,24 @@ _FIELDS = (
 )
 
 
-def list_pending(conn: sqlite3.Connection, limit: int | None = None) -> list[dict]:
+def list_pending(
+    conn: sqlite3.Connection, limit: int | None = None, offset: int = 0
+) -> list[dict]:
     """Pending postings: keyword-candidates first, then most-recently-posted first.
 
     Within a candidate tier, rows with a known `posted_at` come before NULLs, newest first,
-    then `first_seen` as a tiebreak — so the freshest roles surface at the top.
+    then `first_seen` as a tiebreak — so the freshest roles surface at the top. The final
+    `posting_id` tiebreak makes `limit`/`offset` paging stable.
     """
     sql = (
         f"SELECT {_FIELDS} FROM postings WHERE review_status = 'pending' "
-        "ORDER BY (is_cs_relevant = 1 OR is_internship = 1 OR is_newgrad = 1) DESC, "
+        f"ORDER BY {store.CANDIDATE_SQL} DESC, "
         "(posted_at IS NULL), posted_at DESC, first_seen DESC, posting_id"
     )
     params: list[object] = []
-    if limit is not None:
-        sql += " LIMIT ?"
-        params.append(limit)
+    if limit is not None or offset:
+        sql += " LIMIT ? OFFSET ?"
+        params += [-1 if limit is None else limit, offset]
     return [dict(r) for r in conn.execute(sql, params)]
 
 
@@ -52,6 +61,74 @@ def set_verdict(
         (verdict, reason, now, posting_id),
     )
     conn.commit()
+
+
+def reset_verdict(conn: sqlite3.Connection, posting_id: str) -> None:
+    """Undo a verdict: the posting returns to the pending queue as if never reviewed.
+
+    Never touches meta. If the undone verdict was the one that emptied the queue,
+    `finish()` already reset `pending_notified` — that's fine: the nudge only re-fires
+    when pending reaches the notify threshold again, so a lone undone item can't
+    trigger a duplicate email by itself.
+    """
+    conn.execute(
+        "UPDATE postings SET verdict = NULL, verdict_reason = NULL, reviewed_at = NULL, "
+        "review_status = 'pending' WHERE posting_id = ?",
+        (posting_id,),
+    )
+    conn.commit()
+
+
+def clear_non_candidate_pending(
+    conn: sqlite3.Connection, now: str, reason: str = BULK_CLEAR_REASON
+) -> int:
+    """Mark every non-candidate pending posting no_match in one statement.
+
+    The shared `now` stamp + `reason` identify the batch, so `undo_bulk_clear` can
+    revert exactly these rows. Returns the number cleared. Callers must still call
+    `finish()` afterwards (same contract as every verdict path).
+    """
+    cur = conn.execute(
+        "UPDATE postings SET verdict = 'no_match', verdict_reason = ?, reviewed_at = ?, "
+        f"review_status = 'reviewed' WHERE review_status = 'pending' AND NOT {store.CANDIDATE_SQL}",
+        (reason, now),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def undo_bulk_clear(conn: sqlite3.Connection, reviewed_at: str, reason: str) -> int:
+    """Revert one bulk-clear batch (matched by its shared stamp + reason) to pending."""
+    cur = conn.execute(
+        "UPDATE postings SET verdict = NULL, verdict_reason = NULL, reviewed_at = NULL, "
+        "review_status = 'pending' "
+        "WHERE verdict = 'no_match' AND reviewed_at = ? AND verdict_reason = ?",
+        (reviewed_at, reason),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def payload_summary(payload_path: str | None, *, max_chars: int = 2000) -> dict:
+    """Human-readable summary of an archived raw payload, for judging a pending posting.
+
+    Returns {"state": "missing"|"unreadable"|"ok", "description": str, "raw": object|None}.
+    The description is the first present key in `_DESCRIPTION_KEYS`, HTML-stripped and
+    truncated to `max_chars`; `raw` is the full parsed payload (nothing hidden).
+    """
+    if not payload_path:
+        return {"state": "missing", "description": "", "raw": None}
+    try:
+        raw = json.loads(Path(payload_path).read_text(encoding="utf-8"))
+    except Exception:
+        return {"state": "unreadable", "description": "", "raw": None}
+    desc = ""
+    if isinstance(raw, dict):
+        for k in _DESCRIPTION_KEYS:
+            if raw.get(k):
+                desc = text.strip_html(str(raw[k]))[:max_chars]
+                break
+    return {"state": "ok", "description": desc, "raw": raw}
 
 
 def finish(conn: sqlite3.Connection) -> bool:

@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from internshelper import db, store
 from internshelper.models import Posting
 
@@ -245,3 +247,88 @@ def test_set_application_upserts(tmp_path):
                           applied_date="2026-06-18")
     r = c.execute("SELECT status, notes FROM applications WHERE posting_id='greenhouse:1'").fetchone()
     assert (r["status"], r["notes"]) == ("Interviewing", "round 1")
+
+
+def test_set_application_rejects_unknown_status(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("greenhouse:1"), now="t")
+    with pytest.raises(ValueError):
+        store.set_application(c, "greenhouse:1", status="Ghosted")
+
+
+def test_status_options_is_the_canonical_enum():
+    assert store.STATUS_OPTIONS == (
+        "Untracked", "Interested", "Applied", "Interviewing", "Rejected", "Offer"
+    )
+
+
+def test_get_application_returns_row_or_none(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("greenhouse:1"), now="t")
+    assert store.get_application(c, "greenhouse:1") is None
+    store.set_application(c, "greenhouse:1", status="Applied", notes="n",
+                          applied_date="2026-06-18")
+    row = store.get_application(c, "greenhouse:1")
+    assert (row["status"], row["notes"], row["applied_date"]) == ("Applied", "n", "2026-06-18")
+
+
+def test_set_application_status_preserves_notes_and_date(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("greenhouse:1"), now="t")
+    store.set_application(c, "greenhouse:1", status="Applied", notes="ref X",
+                          applied_date="2026-06-18")
+    store.set_application_status(c, "greenhouse:1", "Interviewing")
+    row = store.get_application(c, "greenhouse:1")
+    assert row["status"] == "Interviewing"
+    assert row["notes"] == "ref X"  # NOT clobbered by the status-only update
+    assert row["applied_date"] == "2026-06-18"
+
+
+def test_set_application_status_creates_row_and_validates(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("greenhouse:1"), now="t")
+    store.set_application_status(c, "greenhouse:1", "Applied")  # no prior row
+    assert store.get_application(c, "greenhouse:1")["status"] == "Applied"
+    with pytest.raises(ValueError):
+        store.set_application_status(c, "greenhouse:1", "Ghosted")
+
+
+def test_is_candidate_predicate():
+    assert store.is_candidate({"is_cs_relevant": 1, "is_internship": 0, "is_newgrad": 0})
+    assert store.is_candidate({"is_cs_relevant": 0, "is_internship": 1, "is_newgrad": 0})
+    assert not store.is_candidate({"is_cs_relevant": 0, "is_internship": 0, "is_newgrad": 0})
+
+
+def test_matches_with_status_left_joins_applications(tmp_path):
+    from internshelper import review
+
+    c = _conn(tmp_path)
+    store.upsert(c, _p("greenhouse:1"), now="t1")
+    store.upsert(c, _p("greenhouse:2"), now="t2")
+    store.upsert(c, _p("greenhouse:3"), now="t3")
+    review.set_verdict(c, "greenhouse:1", "match", "", now="2026-06-18T10:00:00+00:00")
+    review.set_verdict(c, "greenhouse:2", "match", "", now="2026-06-18T11:00:00+00:00")
+    review.set_verdict(c, "greenhouse:3", "no_match", "", now="2026-06-18T12:00:00+00:00")
+    store.set_application(c, "greenhouse:2", status="Applied", notes="n",
+                          applied_date="2026-06-18")
+
+    rows = store.matches_with_status(c)
+    by_id = {r["posting_id"]: r for r in rows}
+    assert set(by_id) == {"greenhouse:1", "greenhouse:2"}  # no_match excluded
+    assert by_id["greenhouse:1"]["status"] is None  # no application row -> NULL status
+    assert by_id["greenhouse:2"]["status"] == "Applied"
+    # Newest reviewed first
+    assert [r["posting_id"] for r in rows] == ["greenhouse:2", "greenhouse:1"]
+
+
+def test_feed_limit_offset_and_count(tmp_path):
+    c = _conn(tmp_path)
+    for i in range(5):
+        store.upsert(c, _p(f"greenhouse:{i}"), now=f"2026-06-18T10:0{i}:00+00:00")
+    kwargs = dict(require_cs=False, require_intern_or_newgrad=False,
+                  include_all=True, include_closed=True)
+    page = store.feed(c, **kwargs, limit=2, offset=1)
+    # Newest first overall is greenhouse:4; offset 1 skips it.
+    assert [r["posting_id"] for r in page] == ["greenhouse:3", "greenhouse:2"]
+    assert store.feed_count(c, **kwargs) == 5
+    assert store.feed_count(c, **kwargs, search="zzz") == 0

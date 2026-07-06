@@ -111,6 +111,101 @@ def test_list_pending_exposes_first_seen(tmp_path):
     assert review.list_pending(c)[0]["first_seen"] == "2026-06-18T10:00:00+00:00"
 
 
+def test_list_pending_offset_windows(tmp_path):
+    c = _conn(tmp_path)
+    for i in range(5):
+        store.upsert(c, _p(f"g:{i}", cs=True), now=f"2026-06-18T10:0{i}:00+00:00")
+    all_ids = [r["posting_id"] for r in review.list_pending(c)]
+    assert [r["posting_id"] for r in review.list_pending(c, limit=2, offset=2)] == all_ids[2:4]
+    # Offset without limit reaches the tail
+    assert [r["posting_id"] for r in review.list_pending(c, offset=3)] == all_ids[3:]
+
+
+def test_reset_verdict_restores_pending(tmp_path):
+    c = _conn(tmp_path)
+    db.set_meta(c, "pending_notified", "0")
+    store.upsert(c, _p("g:1", cs=True), now="2026-06-18T10:00:00+00:00")
+    review.set_verdict(c, "g:1", "no_match", "oops", now="2026-06-18T11:00:00+00:00")
+
+    review.reset_verdict(c, "g:1")
+
+    row = c.execute("SELECT review_status, verdict, verdict_reason, reviewed_at "
+                    "FROM postings WHERE posting_id='g:1'").fetchone()
+    assert row["review_status"] == "pending"
+    assert row["verdict"] is None
+    assert row["verdict_reason"] is None
+    assert row["reviewed_at"] is None
+    # Undo never touches the nudge flag.
+    assert db.get_meta(c, "pending_notified") == "0"
+
+
+def test_clear_non_candidate_pending_is_atomic_and_scoped(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:cand", cs=True), now="2026-06-18T10:00:00+00:00")
+    store.upsert(c, _p("g:plain1"), now="2026-06-18T10:01:00+00:00")
+    store.upsert(c, _p("g:plain2"), now="2026-06-18T10:02:00+00:00")
+    store.upsert(c, _p("g:done"), now="2026-06-18T10:03:00+00:00")
+    review.set_verdict(c, "g:done", "match", "", now="2026-06-18T10:30:00+00:00")
+
+    n = review.clear_non_candidate_pending(c, now="2026-06-18T11:00:00+00:00")
+
+    assert n == 2
+    rows = {r["posting_id"]: r for r in c.execute(
+        "SELECT posting_id, review_status, verdict, verdict_reason, reviewed_at FROM postings"
+    )}
+    assert rows["g:cand"]["review_status"] == "pending"  # candidates untouched
+    assert rows["g:done"]["verdict"] == "match"  # already-reviewed untouched
+    for pid in ("g:plain1", "g:plain2"):
+        assert rows[pid]["verdict"] == "no_match"
+        assert rows[pid]["verdict_reason"] == "bulk: non-candidate"
+        assert rows[pid]["reviewed_at"] == "2026-06-18T11:00:00+00:00"  # shared batch stamp
+
+
+def test_undo_bulk_clear_reverts_only_the_batch(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:plain1"), now="2026-06-18T10:00:00+00:00")
+    store.upsert(c, _p("g:plain2"), now="2026-06-18T10:01:00+00:00")
+    store.upsert(c, _p("g:manual"), now="2026-06-18T10:02:00+00:00")
+    review.set_verdict(c, "g:manual", "no_match", "read it", now="2026-06-18T10:30:00+00:00")
+    n = review.clear_non_candidate_pending(c, now="2026-06-18T11:00:00+00:00")
+    assert n == 2
+
+    reverted = review.undo_bulk_clear(
+        c, reviewed_at="2026-06-18T11:00:00+00:00", reason="bulk: non-candidate"
+    )
+
+    assert reverted == 2
+    pending = {r["posting_id"] for r in review.list_pending(c)}
+    assert pending == {"g:plain1", "g:plain2"}
+    manual = c.execute(
+        "SELECT verdict FROM postings WHERE posting_id='g:manual'"
+    ).fetchone()
+    assert manual["verdict"] == "no_match"  # individually-reviewed row untouched
+
+
+def test_payload_summary_extracts_and_strips_description(tmp_path):
+    p = tmp_path / "pay.json"
+    p.write_text(json.dumps({"content": "<p>Build <b>backend</b> systems</p>", "id": 7}))
+    out = review.payload_summary(str(p))
+    assert out["state"] == "ok"
+    assert out["description"] == "Build backend systems"
+    assert out["raw"] == {"content": "<p>Build <b>backend</b> systems</p>", "id": 7}
+
+
+def test_payload_summary_truncates_to_max_chars(tmp_path):
+    p = tmp_path / "pay.json"
+    p.write_text(json.dumps({"description": "x" * 5000}))
+    out = review.payload_summary(str(p), max_chars=100)
+    assert len(out["description"]) == 100
+
+
+def test_payload_summary_missing_and_unreadable(tmp_path):
+    assert review.payload_summary(None)["state"] == "missing"
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    assert review.payload_summary(str(bad))["state"] == "unreadable"
+
+
 def test_cli_list_pending_emits_json(tmp_path, capsys, monkeypatch):
     c = _conn(tmp_path)
     store.upsert(c, _p("g:1", cs=True), now="2026-06-18T10:00:00+00:00")

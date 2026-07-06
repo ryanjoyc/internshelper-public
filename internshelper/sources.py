@@ -167,7 +167,8 @@ def fetch_test(entry: SourceEntry, limit: int = 5) -> tuple[int, list[str], list
     return len(postings), [p.title for p in postings[:limit]], warnings
 
 
-def _parse_kv(spec: str) -> dict[str, str]:
+def parse_kv(spec: str) -> dict[str, str]:
+    """Parse a 'k=v,k2=v2' spec (the --columns flag / Sources-form field) into a dict."""
     out: dict[str, str] = {}
     for part in spec.split(","):
         part = part.strip()
@@ -176,6 +177,9 @@ def _parse_kv(spec: str) -> dict[str, str]:
         k, v = part.split("=", 1)
         out[k.strip()] = v.strip()
     return out
+
+
+_parse_kv = parse_kv  # deprecated alias (was private; the dashboard reached for it)
 
 
 def _confirm(prompt: str) -> bool:
@@ -200,7 +204,7 @@ def _cmd_add(args) -> int:
     path = _sources_path()
     tmm = ([s.strip() for s in args.title_must_match.split(",") if s.strip()]
            if args.title_must_match else None)
-    cols = _parse_kv(args.columns) if args.columns else None
+    cols = parse_kv(args.columns) if args.columns else None
     try:
         entry = resolve_entry(args.url, label=args.label, title_must_match=tmm, columns=cols)
     except SourceDetectionError as e:
