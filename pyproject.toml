@@ -13,16 +13,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Streamlit kept out of core deps so the engine installs cleanly even where
-# Streamlit lags a new Python release. Install with `.[dashboard]` for the UI.
-# Pinned to 1.58.* because the dashboard's Layer-2 CSS targets that release's DOM.
-dashboard = ["streamlit==1.58.*"]
 # The web UI: FastAPI + Jinja2 server-rendered pages. HTMX/Alpine/Sortable are vendored
 # static files (no Node, no build step). Kept out of core so the cron collector stays lean.
 web = ["fastapi>=0.115,<1", "uvicorn>=0.30", "jinja2>=3.1"]
-# The Dock app wraps the dashboard in a native WKWebView window. Separate extra because
+# The Dock app wraps the web UI in a native WKWebView window. Separate extra because
 # pywebview pulls the heavy pyobjc framework wheels (~100MB) on macOS.
-app = ["internshelper[dashboard]", "pywebview>=5.1"]
+app = ["internshelper[web]", "pywebview>=5.1"]
 dev = ["pytest>=8.0"]
 
 [tool.setuptools.packages.find]

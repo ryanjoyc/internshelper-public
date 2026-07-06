@@ -108,7 +108,7 @@ def _prompt() -> tuple[bool, bool, bool, bool, str, str, str]:
         recipient = input("  SMTP recipient email: ").strip()
         password = getpass.getpass("  SMTP app password (input hidden): ").strip()
     schedule = ask("Schedule the hourly collector via launchd (macOS)?", sys.platform == "darwin")
-    dashboard = ask("Use the Streamlit dashboard?", True)
+    dashboard = ask("Use the web dashboard?", True)
     app = dashboard and ask("Install the Dock app (InternsHELPer.app → ~/Applications)?",
                             sys.platform == "darwin")
     return email, schedule, dashboard, app, sender, recipient, password

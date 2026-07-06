@@ -1,10 +1,10 @@
-"""Dock-app runtime launcher: Streamlit server + native macOS window (pywebview).
+"""Dock-app runtime launcher: web-UI server + native macOS window (pywebview).
 
 Run as `python -m internshelper.app` (the InternsHELPer.app bundle does exactly this).
-Starts the dashboard's Streamlit server headless on a dedicated port, waits for it to
-come up, and shows it in a native WKWebView window. Closing the window stops the server
-— unless we merely attached to one we didn't start (e.g. a manual dev run), which is
-left alone.
+Starts the FastAPI web UI (`python -m internshelper.web`) on a dedicated port, waits
+for it to come up, and shows it in a native WKWebView window. Closing the window stops
+the server — unless we merely attached to one we didn't start (e.g. a manual dev run),
+which is left alone.
 
 The server runs under a pipe-watchdog (see _WATCHDOG_SRC) that kills it whenever the
 launcher dies, however it dies — Cmd-Q terminates the launcher through the Cocoa runtime
@@ -27,12 +27,13 @@ import urllib.request
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-APP_PORT = 8510  # dedicated port so a manual `streamlit run` on 8501 never collides
+APP_PORT = 8510  # dedicated port so a manual dev run on another port never collides
 PIDFILE = _REPO_ROOT / "data" / "app.pid"
+LOG_MAX_BYTES = 1_000_000  # cap data/app.log at launch so it can't grow unbounded
 
 WINDOW_TITLE = "internsHELPer"
-WINDOW_SIZE = (1280, 860)  # dashboard is layout="wide"
-WINDOW_MIN_SIZE = (980, 640)
+WINDOW_SIZE = (1280, 860)
+WINDOW_MIN_SIZE = (980, 640)  # app.css sets the matching body min-width: 980px
 
 # Ownership modes for an already-healthy server on APP_PORT.
 SPAWN = "spawn"          # no server: start one and own it
@@ -43,9 +44,9 @@ ATTACH_FOREIGN = "attach_foreign"  # someone else's server: attach, leave runnin
 # --- probes -------------------------------------------------------------------------
 
 def probe_health(port: int, timeout: float = 1.0) -> bool:
-    """True iff a Streamlit server answers its health endpoint on the port."""
+    """True iff the web UI answers its /healthz endpoint on the port."""
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/_stcore/health", timeout=timeout) as resp:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=timeout) as resp:
             return resp.status == 200 and resp.read().strip().lower() == b"ok"
     except (urllib.error.URLError, OSError, ValueError):
         return False
@@ -55,12 +56,6 @@ def port_in_use(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
         return s.connect_ex(("127.0.0.1", port)) == 0
-
-
-def free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 # --- pidfile ------------------------------------------------------------------------
@@ -88,7 +83,9 @@ def pid_alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True
+        # A live pid we can't signal belongs to another user — pids get recycled, and a
+        # server we could never reap must not be claimed as ours (shutdown would crash).
+        return False
     return True
 
 
@@ -106,16 +103,10 @@ def decide(healthy: bool, pidfile_pid: int | None, alive) -> str:
     return ATTACH_FOREIGN
 
 
-def streamlit_command(port: int, repo_root: str | Path) -> list[str]:
-    """The headless server command (pure; no side effects)."""
-    return [
-        sys.executable, "-m", "streamlit", "run",
-        str(Path(repo_root) / "internshelper" / "dashboard.py"),
-        "--server.headless=true",
-        "--browser.gatherUsageStats=false",
-        "--server.address=127.0.0.1",
-        f"--server.port={port}",
-    ]
+def server_command(port: int, repo_root: str | Path) -> list[str]:
+    """The web-server command (pure; no side effects). The 127.0.0.1 bind and quiet
+    logging live inside internshelper.web.__main__, not in flags."""
+    return [sys.executable, "-m", "internshelper.web", "--port", str(port)]
 
 
 def wait_for_server(probe, timeout: float = 30.0, interval: float = 0.25,
@@ -131,7 +122,7 @@ def wait_for_server(probe, timeout: float = 30.0, interval: float = 0.25,
 
 # --- process management -------------------------------------------------------------
 
-# Streamlit runs under this tiny watchdog, which holds a pipe from the launcher and kills
+# The server runs under this tiny watchdog, which holds a pipe from the launcher and kills
 # the server the moment the pipe closes. Cmd-Q terminates the launcher straight through the
 # Cocoa runtime (webview.start() never returns), so post-window cleanup alone can't be
 # trusted — this covers quit, crash, and kill alike. SIGTERM is translated to a clean exit
@@ -153,14 +144,25 @@ finally:
 
 def watchdog_command(port: int, repo_root: str | Path) -> list[str]:
     """The watchdog-wrapped server command (pure; no side effects)."""
-    return [sys.executable, "-c", _WATCHDOG_SRC, *streamlit_command(port, repo_root)]
+    return [sys.executable, "-c", _WATCHDOG_SRC, *server_command(port, repo_root)]
 
 
-def launch_streamlit(port: int, repo_root: Path = _REPO_ROOT) -> subprocess.Popen:
-    """Start the server under the watchdog. cwd must be the repo root so
-    `.streamlit/config.toml` (theme, static serving) is picked up."""
+def trim_log(path: str | Path, max_bytes: int = LOG_MAX_BYTES) -> None:
+    """Truncate the launch log once it outgrows the cap (append mode, no rotation)."""
+    p = Path(path)
+    try:
+        if p.stat().st_size > max_bytes:
+            p.write_text("", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def launch_server(port: int, repo_root: Path = _REPO_ROOT) -> subprocess.Popen:
+    """Start the server under the watchdog. cwd stays the repo root so relative
+    data/config paths and the log land in the right place."""
     log_path = repo_root / "data" / "app.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    trim_log(log_path)
     log = open(log_path, "a", encoding="utf-8")
     return subprocess.Popen(
         watchdog_command(port, repo_root),
@@ -210,7 +212,7 @@ def _osascript_quote(s: str) -> str:
 # --- entry point --------------------------------------------------------------------
 
 def main() -> int:
-    for mod, hint in (("streamlit", ".[dashboard]"), ("webview", ".[app]")):
+    for mod, hint in (("fastapi", ".[web]"), ("uvicorn", ".[web]"), ("webview", ".[app]")):
         if importlib.util.find_spec(mod) is None:
             return fail(f"The '{mod}' package is missing. "
                         f"Run: .venv/bin/python -m pip install -e '{hint}'")
@@ -221,13 +223,22 @@ def main() -> int:
     owned_pid = None
 
     if mode == SPAWN:
-        if port_in_use(port):  # something non-Streamlit squats on 8510
-            port = free_port()
-        proc = launch_streamlit(port)
+        if port_in_use(port):
+            # Something answers on 8510 but fails /healthz. If the pidfile says it's
+            # ours (e.g. a pre-upgrade Streamlit server from before the web-UI cutover),
+            # reap it and take the port back; otherwise fail loudly rather than hide the
+            # app on a random port no future launch would find.
+            stale = read_pidfile()
+            if stale is not None and pid_alive(stale):
+                shutdown(stale)
+            if port_in_use(port):
+                return fail(f"Port {port} is in use by another process. "
+                            "Quit it (or reboot) and relaunch internsHELPer.")
+        proc = launch_server(port)
         write_pidfile(proc.pid)
         if not wait_for_server(lambda: probe_health(port)):
             shutdown(proc)
-            return fail("The dashboard server did not start in time. "
+            return fail("The app server did not start in time. "
                         f"See {_REPO_ROOT / 'data' / 'app.log'} for details.")
     elif mode == ATTACH_OWN:
         owned_pid = read_pidfile()

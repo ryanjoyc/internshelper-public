@@ -138,7 +138,7 @@ def resolve_entry(
 ) -> SourceEntry:
     """Detect a SourceEntry from a URL and apply the optional extras.
 
-    The reusable add-source core shared by the CLI (`_cmd_add`) and the dashboard UI:
+    The reusable add-source core shared by the CLI (`_cmd_add`) and the web UI:
     wraps `detect_source` (propagating `SourceDetectionError` on an unknown host) and layers
     on a `title_must_match` flood guard and/or markdown `columns` override when given.
     """
@@ -179,7 +179,7 @@ def parse_kv(spec: str) -> dict[str, str]:
     return out
 
 
-_parse_kv = parse_kv  # deprecated alias (was private; the dashboard reached for it)
+_parse_kv = parse_kv  # deprecated alias for the old private name
 
 
 def _confirm(prompt: str) -> bool:

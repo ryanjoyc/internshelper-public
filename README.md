@@ -4,8 +4,9 @@ A local, $0 tool that **collects** internship / new-grad postings from the board
 keeps a de-duplicated archive (full raw payloads saved to disk), and — when a batch piles up —
 **emails you a nudge**. You then classify the batch **on demand**, for free, by opening this repo
 in Claude Code and running **`/review-internships`** (the agent reads each posting and records a
-match/no-match verdict). A Streamlit dashboard shows confirmed matches, the pending queue, and
-source health, and lets you track applications.
+match/no-match verdict). A local web dashboard (FastAPI + HTMX, no build step) gives you a
+keyboard-driven review queue with undo, a kanban board for tracking applications, the full
+postings archive, and source health.
 
 **Why this shape:** keyword matching alone is too noisy to trust (it flags full-time roles whose
 JDs merely mention "interns", and misses real ones), and a paid LLM-API classifier adds a key +
@@ -49,7 +50,7 @@ Requires Python ≥ 3.11.
 ```bash
 cd internsHELPer
 python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev,dashboard]"
+.venv/bin/python -m pip install -e ".[dev,web]"
 ```
 
 ## 2. Configure sources
@@ -163,14 +164,25 @@ Manual CLI (what the skill drives) if you want it without the skill:
 ## 6. Dashboard
 
 ```bash
-.venv/bin/streamlit run internshelper/dashboard.py
+.venv/bin/python -m internshelper.web        # serves http://127.0.0.1:8510
 ```
 
-- **Feed** — *Confirmed matches* (your verdicts, with an apply-status form), *Pending review*
-  (queue awaiting the skill), or *All postings* (the full archive). A "Pending review" count shows
-  when a batch is waiting.
-- **Tracker** — everything you've given a status (Interested → Offer) + notes + applied date.
-- **Health** — last run per source, pending count, and the last nudge.
+A local web app (FastAPI + Jinja + HTMX/Alpine, all vendored — no Node, no build step),
+system-aware dark/light theme, served on 127.0.0.1 only:
+
+- **Review** — the pending queue. Triage inline (row buttons) or hit **Focus mode** for one
+  rich card at a time with keyboard shortcuts: `M` match, `X` no-match, `U` undo, `R` reason,
+  `O` open posting, arrows to skip, `Esc` back. Every verdict gets an undo toast; bulk-clear
+  non-candidates has a single confirm and a batch undo.
+- **Board** — confirmed matches as a kanban (Matched → Applied → Interviewing → Offer /
+  Rejected). Drag cards between columns (dropping into Applied stamps today's date); click a
+  card for the detail drawer — status, date picker, notes, and a "move back to review" escape
+  hatch. A table lens (`Board | Table`) shows the same data sortable.
+- **Postings** — the full archive with search and state filters; no-match verdicts are
+  archived (dimmed, reachable), never deleted.
+- **Sources** — add a board with a live fetch-test wizard (sniffer fallback for careers
+  pages, "Add anyway" gate on empty fetches), remove with confirm.
+- **Health** — per-source status cards: last run, count vs baseline, quiet/error flags.
 
 ### Dock app (macOS)
 
@@ -181,7 +193,7 @@ Run the dashboard like a real app — its own Dock icon, a native window, no bro
 ```
 
 That builds `InternsHELPer.app` (into the gitignored `build/`) and copies it to
-`~/Applications`; drag it onto the Dock from there. Clicking it starts the Streamlit server
+`~/Applications`; drag it onto the Dock from there. Clicking it starts the web server
 headless on port 8510 and opens a native window; quitting the window stops the server.
 `bash scripts/bootstrap.sh` offers to do all of this (toggle: `INTERNSHELPER_FEATURE_APP`).
 Needs the `app` extra (`pip install -e ".[app]"` — pywebview + the pyobjc frameworks, macOS only).
@@ -246,7 +258,7 @@ INTERNSHELPER_SMTP_PASSWORD=your-16-char-app-password
 INTERNSHELPER_FEATURE_COLLECT=1     # run the hourly collector on this machine
 INTERNSHELPER_FEATURE_EMAIL=1       # send review nudges (needs the SMTP creds above)
 INTERNSHELPER_FEATURE_SCHEDULE=1    # install the launchd schedule (macOS)
-INTERNSHELPER_FEATURE_DASHBOARD=1   # install the Streamlit extra
+INTERNSHELPER_FEATURE_DASHBOARD=1   # use the web dashboard
 INTERNSHELPER_FEATURE_APP=1         # install the Dock app (macOS; needs DASHBOARD)
 ```
 

@@ -1,4 +1,4 @@
-"""Pure display helpers for the dashboard Feed (no Streamlit import, fully unit-testable).
+"""Pure display helpers for the UI (framework-free, fully unit-testable).
 
 The collector stores dates in mixed shapes — full ISO (`2026-06-10T00:00:00+00:00`),
 date-only (`2026-06-16`), or NULL. `format_release` normalizes that into one human,

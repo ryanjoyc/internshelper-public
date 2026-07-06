@@ -53,10 +53,10 @@ long tail.** Same codebase, same accuracy floor for everyone.
 
 *Goal: make the current pipeline honest about what it did, before adding surface area.*
 
-- **Kill the silent display filter.** The dashboard default
-  (`require_cs AND require_intern_or_newgrad`) hides un-flagged pending postings.
-  Reframe filtered items as a visible, labeled "Filtered (N) — show" bucket rather
-  than an invisible drop. (`internshelper/filters.py`, `internshelper/dashboard.py`)
+- ~~**Kill the silent display filter.**~~ Resolved by the web-UI rework: the Postings
+  page defaults to an "active" view whose filters are explicit, labeled dropdowns, and
+  archived/no-match rows are dimmed-but-reachable, never invisibly dropped.
+  (`internshelper/web/routes/postings.py`)
 - **Make flood-guard drops visible.** When `title_must_match` rejects a row, count
   it and surface it in the Health tab instead of dropping silently. (`run.py`,
   `store.record_run`)
@@ -71,9 +71,9 @@ long tail.** Same codebase, same accuracy floor for everyone.
 
 *Goal: a general user can add supported sources and review the queue with no agent.*
 
-- **In-app review UI.** Streamlit screen replicating `/review-internships`:
-  per-posting match / no_match / notes, reading the archived payload. Wire to the
-  existing `internshelper/review.py` CLI — same accuracy, no skill needed.
+- ~~**In-app review UI.**~~ Done (and then rebuilt better): the FastAPI web UI's Review
+  page — inline verdicts + a keyboard-driven focus mode with undo, wired to
+  `internshelper/review.py` — same accuracy, no skill needed. (`internshelper/web/`)
 - **In-app add-source for supported boards.** Paste a Greenhouse/Lever/Ashby/GitHub/
   Markdown URL → `detect_source` → fetch-test → write to `sources.yaml`. The plumbing
   already exists (`sourceurl.py`, `sources.py`); this is a UI over it.

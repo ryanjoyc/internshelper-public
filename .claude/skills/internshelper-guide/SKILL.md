@@ -15,17 +15,20 @@ fit*, not every function signature. If you make a structural change, refresh thi
 A local, $0 tool that **collects** internship / new-grad postings from boards listed in
 `config/sources.yaml`, keeps a de-duplicated archive (raw payloads saved to disk), and **emails a
 nudge** when a batch piles up. Classification is **on-demand and free**: triage the pending queue
-right in the dashboard (mark match/no-match, peek payloads), or open the repo in Claude Code and run
-`/review-internships` for the agent-assisted pass — same verdicts either way. A Streamlit dashboard
-shows confirmed matches, the (interactive) pending queue, source health, and source management —
-in the browser, or as a Dock-launchable native macOS app (`InternsHELPer.app`). The
-hourly cron is a dumb free collector; review is the classifier step — accurate, no API key, $0 ongoing.
+right in the web UI (inline verdicts, or a keyboard-driven focus mode with undo), or open the repo
+in Claude Code and run `/review-internships` for the agent-assisted pass — same verdicts either
+way. The web UI (`internshelper/web/` — FastAPI + Jinja + HTMX/Alpine, vendored, no build step)
+has five pages: Review (triage), Board (kanban application tracker with a table lens), Postings
+(searchable archive), Sources (add/remove wizard), Health — in the browser, or as a
+Dock-launchable native macOS app (`InternsHELPer.app`). The hourly cron is a dumb free collector;
+review is the classifier step — accurate, no API key, $0 ongoing.
 
 ## Architecture & data flow
 
 ```
 collect (run.py) → store (store.py / db.py) → nudge (notify.py)
-    → review on demand (in-app dashboard, or review.py + the review-internships skill) → dashboard (dashboard.py)
+    → review on demand (web UI Review page, or review.py + the review-internships skill)
+    → track (web UI Board page → applications table)
 ```
 
 Each collect cycle: scrape every source → save each new posting's raw payload to
@@ -44,9 +47,10 @@ collected or shown.
 |--------|----------------|
 | `run` | Scheduled collector: fetch all sources, store new payloads as pending, compute priority hints, email the nudge. One invocation = one cycle. |
 | `review` | On-demand review CLI: list pending, set verdicts, finish the queue, summarize confirmed matches. Driven by the `review-internships` skill. |
-| `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the dashboard Sources tab. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`). |
+| `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
 | `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the launchd plist and install the Dock app on macOS. Idempotent. |
-| `app` | Dock-app runtime launcher: start the dashboard's Streamlit server headless on port 8510 (under a pipe-watchdog that reaps it if the launcher dies), show it in a native pywebview window, stop it on quit. Pidfile (`data/app.pid`) decides attach vs own for a pre-existing server. |
+| `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). A package, not a single file — `create_app()` factory in `__init__.py`, per-request DB connections in `deps.py`, routes/ (review, board, postings, health incl. `/healthz`, sources), templates/ (Jinja + HTMX partials), static/ (app.css design tokens, app.js, vendored htmx/alpine/sortable, Geist fonts). UI only; data logic lives in `store` / `review` / `sources`. |
+| `app` | Dock-app runtime launcher: start the web server headless on port 8510 (under a pipe-watchdog that reaps it if the launcher dies), probe `/healthz`, show it in a native pywebview window, stop it on quit. Pidfile (`data/app.pid`) decides attach vs own for a pre-existing server; caps `data/app.log` at launch. |
 | `appbundle` | Build `InternsHELPer.app` into `build/` (Info.plist, launcher script execing `app`, `.icns` from `assets/icon-1024.png` via sips/iconutil); `--install` copies it to `~/Applications`. macOS-only. |
 
 **Libraries:**
@@ -60,8 +64,7 @@ collected or shown.
 | `classify` | Keyword matcher (whole-word, case-insensitive) over title + HTML-stripped description → the three flag booleans. |
 | `clock` | Canonical UTC ISO-8601 helpers: parse mixed date formats, convert to UTC, diff. |
 | `notify` | Render + send the review-nudge email. |
-| `display` | Pure display helpers: humanize mixed date formats with relative-age hints (no Streamlit dependency). |
-| `dashboard` | Streamlit UI — Feed / Tracker / Health / Sources. Feed's "Pending review" is interactive (mark match/no_match, peek the raw payload, bulk-clear non-candidates); Sources adds/removes boards in-app. UI only; data logic lives in `store` / `review` / `sources`. |
+| `display` | Pure display helpers: humanize mixed date formats with relative-age hints (framework-free). |
 | `dotenv` | Stdlib `.env` loader; shell env vars win; silent no-op if the file is missing. |
 | `text` | HTML→plaintext stripper (stdlib `html.parser`) used before keyword matching. |
 | `sourceurl` | Pure URL→`SourceEntry` detection (no network): map a pasted board URL to a source by host + path. |
@@ -93,7 +96,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary`
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
 - **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.
-- **`app`** — no subcommands; what the Dock app runs. Needs the `app` extra (pywebview).
+- **`web`** — `[--port 8510]`; serves the web UI on 127.0.0.1. Needs the `web` extra.
+- **`app`** — no subcommands; what the Dock app runs (spawns `web` + native window). Needs the `app` extra (pywebview).
 - **`appbundle`** — `[--install] [--repo-dir ...] [--target-dir ...]`; rebuild/reinstall the Dock app (e.g. after moving the repo).
 
 ## Config & data
@@ -112,20 +116,20 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 
 ```bash
 # Setup (manual)
-python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev,dashboard]"
+python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev,web]"
 # Or one-shot, per-machine config:
 bash scripts/bootstrap.sh
 
 .venv/bin/python -m pytest                              # tests (fixtures, no live calls)
 .venv/bin/python -m internshelper.run                  # one collection cycle
-.venv/bin/streamlit run internshelper/dashboard.py     # dashboard (browser)
+.venv/bin/python -m internshelper.web                  # web UI → http://127.0.0.1:8510
 .venv/bin/python -m internshelper.appbundle --install  # Dock app → ~/Applications (macOS)
 ```
 
 ## Conventions & gotchas
 
 - **Always use `.venv/bin/python`** — not bare `python`.
-- **Prefer the `sources` CLI or the dashboard Sources tab** over editing `config/sources.yaml` by
+- **Prefer the `sources` CLI or the web UI's Sources page** over editing `config/sources.yaml` by
   hand; both validate + fetch-test + preserve comments.
 - **All persisted timestamps are UTC ISO-8601 strings** (sort-safe), via `clock`.
 - **Connectors self-register** through `base`'s registry — add the connector and a `sourceurl`
@@ -133,7 +137,10 @@ bash scripts/bootstrap.sh
 - **launchd doesn't fire while the Mac is asleep**; overnight postings land on the first cycle
   after wake (`RunAtLoad=true`).
 - The classification *judgment* (made in-app or by the agent) is the deliberate human-in-the-loop
-  step; the mechanics it drives are unit-tested — the `review` CLI, and the dashboard via `AppTest`.
+  step; the mechanics it drives are unit-tested — the `review` CLI, and the web UI via FastAPI
+  `TestClient` (`tests/test_web*.py`; fixtures in `tests/conftest.py`).
+- **The web UI must call `review.finish()` after every verdict path** (single + bulk) — it re-arms
+  the email nudge. Undo (`reset_verdict`) must never touch the flag.
 
 ## Related skills
 

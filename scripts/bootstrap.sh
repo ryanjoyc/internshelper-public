@@ -34,23 +34,12 @@ else
   "$PY" -m venv .venv
 fi
 
-echo "==> installing core engine + dev deps"
+echo "==> installing core engine + web UI + dev deps"
 .venv/bin/python -m pip install -q --upgrade pip
-.venv/bin/python -m pip install -e ".[dev]"
-
-# Dashboard is best-effort: streamlit is pinned and may lack a wheel on a brand-new Python.
-# Its failure must NOT abort the whole bootstrap (the collector + CLI don't need it).
-echo "==> installing dashboard extra (best-effort)"
-if .venv/bin/python -m pip install -e ".[dashboard]"; then
-  echo "    dashboard ready"
-else
-  echo "    WARNING: streamlit (dashboard) failed to install on this Python — continuing without it." >&2
-  echo "             Collector + CLI still work. Install later with:" >&2
-  echo "             .venv/bin/python -m pip install -e \".[dashboard]\"" >&2
-fi
+.venv/bin/python -m pip install -e ".[dev,web]"
 
 # Dock app is macOS-only and best-effort: pywebview pulls the heavy pyobjc wheels.
-# Failure must NOT abort the bootstrap (dashboard still works in a browser).
+# Failure must NOT abort the bootstrap (the web UI still works in a browser).
 if [ "$(uname)" = "Darwin" ]; then
   echo "==> installing Dock app extra (best-effort)"
   if .venv/bin/python -m pip install -e ".[app]"; then

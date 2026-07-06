@@ -13,7 +13,7 @@ notify_threshold = 10
 
 [filters]
 # Keyword flags are PRIORITY HINTS for the review queue (candidates first) — not a gate.
-# These booleans tune the dashboard's keyword-based "All postings" filtering only.
+# These booleans tune keyword-based feed filtering only.
 require_cs = true
 require_intern_or_newgrad = true
 

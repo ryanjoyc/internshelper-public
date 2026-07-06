@@ -59,7 +59,7 @@ all — pure sales, retail/food service, or non-technical operations/management.
    .venv/bin/python -m internshelper.review summary
    ```
    Present them as a short list (title — company — location — apply URL), with counts
-   (reviewed N, matched M). The Streamlit dashboard also reflects the verdicts.
+   (reviewed N, matched M). The web dashboard also reflects the verdicts.
 
 ## Notes
 - This is free — it runs in the current Claude Code session, no API key, no per-posting charge.
