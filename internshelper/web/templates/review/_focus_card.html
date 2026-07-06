@@ -1,0 +1,62 @@
+{% import "partials/_macros.html" as m %}
+<div id="focus-card">
+{% if card %}
+  <div class="focus-bar">
+    <a class="btn btn-ghost btn-sm" href="/review">‹ Back to list <kbd>Esc</kbd></a>
+    <span>{{ offset + 1 }} of {{ total }}</span>
+    <span>
+      {% if offset > 0 %}
+      <button class="btn btn-ghost btn-sm focus-prev" hx-get="/review/focus-card?offset={{ offset - 1 }}"
+              hx-target="#focus-card" hx-swap="outerHTML">‹ Prev</button>
+      {% endif %}
+      {% if offset + 1 < total %}
+      <button class="btn btn-ghost btn-sm focus-next" hx-get="/review/focus-card?offset={{ offset + 1 }}"
+              hx-target="#focus-card" hx-swap="outerHTML">Skip ›</button>
+      {% endif %}
+    </span>
+  </div>
+  <article class="card focus-card">
+    <div class="focus-flags">
+      {% if card.is_cs_relevant %}{{ m.pill('CS', 'match') }}{% endif %}
+      {% if card.is_internship %}{{ m.pill('Intern', 'match') }}{% endif %}
+      {% if card.is_newgrad %}{{ m.pill('New grad', 'match') }}{% endif %}
+      {{ m.pill(card.source_key) }}
+      <span class="row-age">{{ card.posted_at | release(card.first_seen) }}</span>
+    </div>
+    <h2 class="focus-title">{{ card.title }}</h2>
+    <p class="focus-meta">{{ card.company }}{% if card.location %} · {{ card.location }}{% endif %}
+      · <a href="{{ card.url | safe_url }}" target="_blank" rel="noopener">Open posting ↗</a></p>
+
+    {% if payload.state == 'ok' and payload.description %}
+    <div class="focus-desc">{{ payload.description }}</div>
+    {% elif payload.state == 'missing' %}
+    <p class="page-sub">No saved payload — judging by title only.</p>
+    {% elif payload.state == 'unreadable' %}
+    <p class="page-sub">Payload file unreadable.</p>
+    {% endif %}
+    {% if raw_json %}
+    <details class="focus-raw">
+      <summary>Raw payload</summary>
+      <pre>{{ raw_json }}</pre>
+    </details>
+    {% endif %}
+
+    <form class="focus-actions"
+          hx-post="/review/verdict" hx-target="#focus-card" hx-swap="outerHTML">
+      <input type="hidden" name="posting_id" value="{{ card.posting_id }}">
+      <input type="hidden" name="mode" value="focus">
+      <input type="hidden" name="offset" value="{{ offset }}">
+      <input class="input focus-reason" type="text" name="reason" placeholder="Reason (optional) — R">
+      <button class="btn btn-secondary btn-nomatch" type="submit" name="verdict" value="no_match">✕ No match <kbd>X</kbd></button>
+      <button class="btn btn-primary btn-match" type="submit" name="verdict" value="match">✓ Match <kbd>M</kbd></button>
+    </form>
+  </article>
+{% else %}
+  <div class="focus-bar"><a class="btn btn-ghost btn-sm" href="/review">‹ Back to list</a><span></span><span></span></div>
+  {{ m.empty_state("Queue clear — nothing left to review.",
+                   "New postings land here after each collect run.",
+                   "/board", "Go to board") }}
+{% endif %}
+</div>
+{% if oob %}{% include "review/_oob.html" %}{% endif %}
+{% if toast %}{% include "review/_toast.html" %}{% endif %}

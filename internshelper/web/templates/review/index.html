@@ -4,28 +4,36 @@
 <header class="page-head">
   <div class="page-head-row">
     <h1>Review</h1>
-    <div class="page-actions">
+    <div class="page-actions" x-data="{ confirmBulk: false }">
       {% if non_candidates %}
-      <button class="btn btn-secondary" disabled>Clear non-candidates ({{ non_candidates }})</button>
+      <button class="btn btn-secondary" x-on:click="confirmBulk = true">Clear non-candidates ({{ non_candidates }})</button>
+      <template x-teleport="body">
+        <div class="modal-scrim" x-show="confirmBulk" x-on:click.self="confirmBulk = false"
+             x-on:keydown.escape.window="confirmBulk = false" style="display: none">
+          <div class="modal">
+            <p class="modal-title">Clear {{ non_candidates }} non-candidate posting{{ '' if non_candidates == 1 else 's' }}?</p>
+            <p class="modal-body">They're marked no-match, not deleted — still reachable under Postings → Archived, and undoable from the toast.</p>
+            <div class="modal-actions">
+              <button class="btn btn-secondary" x-on:click="confirmBulk = false">Cancel</button>
+              <button class="btn btn-danger" x-on:click="confirmBulk = false"
+                      hx-post="/review/bulk-clear" hx-target="#review-region" hx-swap="innerHTML">Clear {{ non_candidates }}</button>
+            </div>
+          </div>
+        </div>
+      </template>
       {% endif %}
       {% if total %}
-      <button class="btn btn-primary" disabled>Focus mode</button>
+      <a class="btn btn-primary" href="/review?mode=focus">Focus mode</a>
       {% endif %}
     </div>
   </div>
-  <div class="tiles">
+  <div class="tiles" id="review-tiles">
     {{ m.stat_tile("Pending", total) }}
     {{ m.stat_tile("Candidates", candidates) }}
   </div>
 </header>
 
-{% if rows %}
-<div id="review-list" class="row-list">
-  {% for r in rows %}{% include "review/_row.html" %}{% endfor %}
+<div id="review-region">
+  {% include "review/_list_region.html" %}
 </div>
-{% else %}
-{{ m.empty_state("Nothing pending — the queue is clear.",
-                 "New postings land here after each collect run.",
-                 "/board", "Go to board") }}
-{% endif %}
 {% endblock %}

@@ -1,51 +1,12 @@
-"""Web UI: app factory, shared fixtures, page smoke tests, static assets.
+"""Web UI: app factory, page smoke tests, static assets.
 
-Interaction tests live in test_web_triage.py / test_web_board.py / test_web_sources.py;
-this file covers what Phase 2 ships: every page renders read-only, /healthz answers,
-and the vendored assets are served.
+Shared fixtures (seeded_db / sources_file / client) live in conftest.py. Interaction
+tests live in test_web_triage.py / test_web_board.py / test_web_sources.py; this file
+covers the skeleton: every page renders, /healthz answers, vendored assets are served.
 """
 
 import pytest
 from fastapi.testclient import TestClient
-
-from internshelper import db, store
-from internshelper.models import Posting
-from internshelper.review import set_verdict
-
-
-@pytest.fixture
-def seeded_db(tmp_path, monkeypatch):
-    path = tmp_path / "d.db"
-    monkeypatch.setenv("INTERNSHELPER_DB", str(path))
-    c = db.connect(path)
-    db.init_db(c)
-    for i in range(3):
-        store.upsert(
-            c,
-            Posting(posting_id=f"greenhouse:{i}", source_key="greenhouse:stripe",
-                    title="Software Engineer Intern", company="Stripe", url=f"https://x/{i}",
-                    is_cs_relevant=True, is_internship=True),
-            now="2026-06-18T10:00:00+00:00",
-        )
-    set_verdict(c, "greenhouse:0", "match", "looks good", now="2026-06-18T11:00:00+00:00")
-    c.close()
-    return path
-
-
-@pytest.fixture
-def sources_file(tmp_path, monkeypatch):
-    p = tmp_path / "sources.yaml"
-    p.write_text("sources:\n")
-    monkeypatch.setenv("INTERNSHELPER_SOURCES", str(p))
-    return p
-
-
-@pytest.fixture
-def client(seeded_db, sources_file):
-    from internshelper.web import create_app
-
-    with TestClient(create_app()) as c:  # context manager runs the lifespan (init_db)
-        yield c
 
 
 def test_healthz_returns_ok(client):

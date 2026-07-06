@@ -1,16 +1,30 @@
-<div class="row" id="row-{{ r.posting_id }}">
-  <div class="row-main">
-    {% if is_candidate(r) %}<span class="star" title="keyword candidate">★</span>{% else %}<span class="star star--off"></span>{% endif %}
-    <div class="row-text">
-      <div class="row-title">{{ r.title }}</div>
-      <div class="row-meta">{{ r.company }}{% if r.location %} · {{ r.location }}{% endif %}</div>
+<div class="row" id="row-{{ r.posting_id }}" data-offset="{{ row_offset | default(0) }}">
+  <div class="row-line">
+    <div class="row-main">
+      {% if is_candidate(r) %}<span class="star" title="keyword candidate">★</span>{% else %}<span class="star star--off"></span>{% endif %}
+      <div class="row-text">
+        <div class="row-title">{{ r.title }}</div>
+        <div class="row-meta">{{ r.company }}{% if r.location %} · {{ r.location }}{% endif %}</div>
+      </div>
+    </div>
+    <div class="row-side">
+      <span class="pill pill--neutral">{{ r.source_key }}</span>
+      <span class="row-age">{{ r.posted_at | release(r.first_seen) }}</span>
+      <a class="btn btn-ghost btn-sm row-open" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">open ↗</a>
+      <button class="btn btn-secondary btn-sm btn-match"
+              hx-post="/review/verdict"
+              hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "verdict": "match"}'
+              hx-target="closest .row" hx-swap="outerHTML swap:150ms">✓ Match</button>
+      <button class="btn btn-ghost btn-sm btn-nomatch"
+              hx-post="/review/verdict"
+              hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "verdict": "no_match"}'
+              hx-target="closest .row" hx-swap="outerHTML swap:150ms">✕ No match</button>
     </div>
   </div>
-  <div class="row-side">
-    <span class="pill pill--neutral">{{ r.source_key }}</span>
-    <span class="row-age">{{ r.posted_at | release(r.first_seen) }}</span>
-    <a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">open ↗</a>
-    <button class="btn btn-secondary btn-sm btn-match" disabled>✓ Match</button>
-    <button class="btn btn-ghost btn-sm btn-nomatch" disabled>✕ No match</button>
-  </div>
+  <details class="row-peek"
+           hx-get="/review/peek/{{ r.posting_id }}" hx-trigger="toggle once"
+           hx-target="find .peek-body" hx-swap="innerHTML">
+    <summary>Peek payload</summary>
+    <div class="peek-body">Loading…</div>
+  </details>
 </div>

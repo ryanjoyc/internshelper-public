@@ -1,0 +1,3 @@
+{# Out-of-band updates that ride along on every triage mutation. #}
+<span class="nav-badge" id="nav-badge-review" hx-swap-oob="outerHTML">{% if nav.pending %}<span class="pill pill--pending pill--count">{{ nav.pending }}</span>{% endif %}</span>
+<span class="nav-badge" id="nav-badge-board" hx-swap-oob="outerHTML">{% if nav.board_actionable %}<span class="pill pill--neutral pill--count">{{ nav.board_actionable }}</span>{% endif %}</span>
