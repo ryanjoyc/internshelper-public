@@ -23,10 +23,13 @@ from internshelper.text import strip_html
 
 # Column header aliases (case-insensitive). A per-source `columns` override wins.
 _HEADER_ALIASES = {
-    "company": ["company", "employer"],
-    "title": ["role", "position", "title", "job"],
+    # "org"/"program" name the entity; "opportunity"/"focus" describe the offering. These cover
+    # the sndsh404 "programs" sections, whose apply link sits inside the entity/offering cell
+    # rather than a dedicated Apply column (recovered by the whole-row URL fallback below).
+    "company": ["company", "employer", "org", "program"],
+    "title": ["role", "position", "title", "job", "opportunity", "focus"],
     "location": ["location", "locations", "loc"],
-    "url": ["application/link", "application", "apply", "apply link", "link"],
+    "url": ["application/link", "application", "apply", "apply link", "link", "posting"],
     "posted": ["added", "date posted", "date", "posted"],
 }
 _CONTINUATION_MARKS = {"↳", "⤷", "->", "<-"}
@@ -165,6 +168,8 @@ class MarkdownListConnector(Connector):
                 continue
             location = _clean(cells[idx["location"]]) if "location" in idx else ""
             url = _extract_url(cells[idx["url"]]) if "url" in idx else ""
+            if not url:
+                url = _extract_url(line)  # no Apply column (program tables) — link is in-row
             posted_at = (
                 to_iso(_clean(cells[idx["posted"]]), now=now) if "posted" in idx else None
             )

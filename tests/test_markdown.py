@@ -84,6 +84,38 @@ def test_parses_all_tables_not_just_the_first():
     assert sorted(p.company for p in posts) == ["A Co", "B Co"]
 
 
+def test_parses_alternate_header_program_tables():
+    """sndsh404 splits into 'programs' sections whose headers are org|opportunity or
+    program|focus, with the apply link *inside* the opportunity/program cell (no Apply
+    column). These must map to company/title and recover the link, not be silently dropped."""
+    md = (
+        "## programs open now\n\n"
+        "| org | opportunity | type | deadline |\n"
+        "| --- | --- | --- | --- |\n"
+        "| Schonfeld | [2027 Summer Internships, Express Your Interest]"
+        "(https://job-boards.greenhouse.io/schonfeld/jobs/7635430) | pipeline | rolling |\n"
+        "| Dexcom | [2027 US Summer Internship, Early Interest]"
+        "(https://careers.dexcom.com/careers/job/40100410) | early interest | rolling |\n\n"
+        "## research programs (cs / tech, us)\n\n"
+        "| program | focus |\n"
+        "| --- | --- |\n"
+        "| [CMU RISS](https://riss.ri.cmu.edu/) | robotics / CS research |\n"
+    )
+    c = _conn(SNDSH)
+    posts = c.parse(md)
+    assert c.diagnostics == []  # tables now map instead of being dropped
+    by_company = {p.company: p for p in posts}
+    assert set(by_company) == {"Schonfeld", "Dexcom", "CMU RISS"}
+    schonfeld = by_company["Schonfeld"]
+    assert "2027 Summer Internships" in schonfeld.title
+    assert schonfeld.url == "https://job-boards.greenhouse.io/schonfeld/jobs/7635430"
+    assert by_company["Dexcom"].url == "https://careers.dexcom.com/careers/job/40100410"
+    # program|focus: the linked cell is the entity (company), focus is the title
+    riss = by_company["CMU RISS"]
+    assert riss.url == "https://riss.ri.cmu.edu/"
+    assert riss.title == "robotics / CS research"
+
+
 def test_dedupes_same_posting_across_tables():
     row = "| A Co | SWE Intern | NYC | [apply](https://a.co/1) |"
     md = (
