@@ -301,6 +301,29 @@ def _cmd_test(args) -> int:
         except SourceDetectionError as e:
             print(f"could not detect a source from {target!r}: {e}")
             return 2
+
+    if args.json:
+        # Machine-readable full dump: EVERY parsed posting with its stable posting_id + url,
+        # so callers (the deep-scan-source skill) can enumerate links and map back to DB rows.
+        try:
+            connector = build_connector(entry)
+            postings = connector.fetch()
+        except Exception as e:
+            print(json.dumps({"source_key": entry.source_key,
+                              "error": f"{type(e).__name__}: {e}"}, indent=2))
+            return 1
+        print(json.dumps({
+            "source_key": entry.source_key,
+            "count": len(postings),
+            "postings": [
+                {"posting_id": p.posting_id, "company": p.company, "title": p.title,
+                 "location": p.location, "url": p.url, "posted_at": p.posted_at}
+                for p in postings
+            ],
+            "diagnostics": list(connector.diagnostics),
+        }, indent=2))
+        return 0
+
     try:
         count, titles, warnings = fetch_test(entry, limit=args.limit)
     except Exception as e:
@@ -337,6 +360,8 @@ def main(argv=None) -> int:
     t = sub.add_parser("test", help="fetch a URL or existing source_key and report (no write)")
     t.add_argument("target")
     t.add_argument("--limit", type=int, default=5)
+    t.add_argument("--json", action="store_true",
+                   help="dump EVERY parsed posting (posting_id, company, title, url, ...) as JSON")
 
     args = parser.parse_args(argv)
     return {

@@ -92,7 +92,8 @@ a type = adding a connector that registers itself + a `sourceurl` detection rule
 Always run from the repo root with the project venv: `.venv/bin/python -m internshelper.<x>`.
 Subcommands below; use `--help` (or read the module's argparse) for full flags.
 
-- **`sources`** — `add <url>` · `list` · `remove <type:token>` · `test <url|source_key>`
+- **`sources`** — `add <url>` · `list` · `remove <type:token>` · `test <url|source_key> [--json]`
+  (`--json` dumps every parsed posting with its `posting_id`+`url` — used by `deep-scan-source`)
 - **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary`
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
 - **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.
@@ -146,6 +147,10 @@ bash scripts/bootstrap.sh
 
 - **`add-source`** — turns messy input (company name, careers page, job link, GitHub list) into a
   clean board URL and adds it via the `sources` CLI. Use it to *add* boards.
-- **`review-internships`** — drives the `review` CLI to classify the pending queue. Use it to
-  *classify* what the collector found.
+- **`review-internships`** — drives the `review` CLI to classify the pending queue **generously**
+  for CS-relevance, from saved payloads. Use it to *classify* what the collector found.
+- **`deep-scan-source`** — exhaustively *verify* one source against a specific term (e.g. "Summer
+  2027") by opening **every** posting's live link with a subagent, sorting each into
+  match/uncertain/no_match, and writing verdicts for a registered source. The strict, per-link
+  counterpart to `review-internships`. Enumerates via `sources test --json`. Token-heavy by design.
 - **`update-internshelper-guide`** — refresh THIS guide after a structural change.

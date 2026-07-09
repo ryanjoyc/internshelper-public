@@ -385,3 +385,30 @@ def test_test_command_existing_source_key(srcfile, monkeypatch, capsys):
     rc = sources.main(["test", "greenhouse:stripe"])
     assert rc == 0
     assert "2 postings" in capsys.readouterr().out
+
+
+def test_test_command_json_dumps_full_list(srcfile, monkeypatch, capsys):
+    # --json emits EVERY parsed posting (not just sample titles) with the stable posting_id
+    # and url the deep-scan-source skill needs to enumerate links + map back to DB rows.
+    srcfile.write_text("sources:\n")
+    _wire(monkeypatch, posts=[_post("1", "SWE Intern"), _post("2", "Data Intern")],
+          warnings=["heads up: a table was degenerate"])
+    rc = sources.main(["test", "https://boards.greenhouse.io/stripe", "--json"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["source_key"] == "greenhouse:stripe"
+    assert out["count"] == 2
+    assert [p["posting_id"] for p in out["postings"]] == ["1", "2"]
+    assert all(p["url"] for p in out["postings"])  # every row carries its link
+    assert out["postings"][0]["title"] == "SWE Intern"
+    assert out["diagnostics"] == ["heads up: a table was degenerate"]
+    assert config.load_sources(srcfile)[0] == []  # still no write
+
+
+def test_test_command_json_fetch_error_exit_1(srcfile, monkeypatch, capsys):
+    srcfile.write_text("sources:\n")
+    _wire(monkeypatch, exc=RuntimeError("boom"))
+    rc = sources.main(["test", "https://boards.greenhouse.io/stripe", "--json"])
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["source_key"] == "greenhouse:stripe" and "boom" in out["error"]

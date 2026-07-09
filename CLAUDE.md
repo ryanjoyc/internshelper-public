@@ -11,7 +11,9 @@ This repo ships its own onboarding skills. Use them rather than re-deriving the 
 - **Made a structural change?** Before finishing, invoke the **`update-internshelper-guide`** skill
   if you added/renamed a module, connector, or CLI subcommand, or changed the data flow, schema, or
   config — so the guide stays accurate for the next agent.
-- **Task-specific skills:** `add-source` (add a job board from messy input) and
-  `review-internships` (classify the pending queue).
+- **Task-specific skills:** `add-source` (add a job board from messy input),
+  `review-internships` (classify the pending queue generously for CS-relevance), and
+  `deep-scan-source` (exhaustively verify one source against a specific term — e.g. Summer 2027 —
+  by opening every posting's live link).
 
 Always run Python via the project venv: `.venv/bin/python`.
