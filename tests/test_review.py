@@ -92,6 +92,31 @@ def test_summary_returns_only_matches(tmp_path):
     assert [m["posting_id"] for m in matches] == ["g:1"]
 
 
+def test_applied_lists_application_ids_with_names(tmp_path):
+    # The deep-scan-source guard needs the set of already-applied posting_ids so it never
+    # overwrites a verdict on a job the user has applied to.
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1", title="SWE Intern", cs=True), now="2026-06-18T10:00:00+00:00")
+    store.upsert(c, _p("g:2", title="Data Intern", cs=True), now="2026-06-18T10:01:00+00:00")
+    c.execute("INSERT INTO applications (posting_id, status, applied_date) VALUES (?,?,?)",
+              ("g:1", "Applied", "2026-07-01"))
+    c.commit()
+    rows = review.applied(c)
+    assert [r["posting_id"] for r in rows] == ["g:1"]  # only the applied one
+    assert rows[0]["company"] == "Stripe" and rows[0]["title"] == "SWE Intern"
+    assert rows[0]["status"] == "Applied"
+
+
+def test_applied_survives_missing_posting_row(tmp_path):
+    # An application whose posting has been pruned must still be reported (guard must still skip it).
+    c = _conn(tmp_path)
+    c.execute("INSERT INTO applications (posting_id, status) VALUES (?,?)", ("gone:x", "Applied"))
+    c.commit()
+    rows = review.applied(c)
+    assert [r["posting_id"] for r in rows] == ["gone:x"]
+    assert rows[0]["company"] is None  # left join — no posting row, still listed
+
+
 def test_summary_exposes_release_dates(tmp_path):
     # Confirmed matches must carry posted_at + first_seen so the dashboard can lead with a date.
     c = _conn(tmp_path)

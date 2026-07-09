@@ -157,6 +157,22 @@ def summary(conn: sqlite3.Connection) -> list[dict]:
     ]
 
 
+def applied(conn: sqlite3.Connection) -> list[dict]:
+    """Posting_ids the user has an application row for, with names when the posting still exists.
+
+    Left join so an application whose posting was pruned is still reported — the deep-scan-source
+    guard must skip it either way. `company`/`title` are None for a missing posting row.
+    """
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT a.posting_id, p.company, p.title, a.status, a.applied_date "
+            "FROM applications a LEFT JOIN postings p ON p.posting_id = a.posting_id "
+            "ORDER BY a.posting_id"
+        )
+    ]
+
+
 def _open() -> sqlite3.Connection:
     conn = db.connect(config.default_path("INTERNSHELPER_DB", "data/internshelper.db"))
     db.init_db(conn)
@@ -178,6 +194,7 @@ def main(argv=None) -> int:
 
     sub.add_parser("finish", help="reset the notify flag if the queue is empty")
     sub.add_parser("summary", help="confirmed matches (JSON)")
+    sub.add_parser("applied", help="posting_ids the user has applied to (JSON) — deep-scan guard")
 
     args = parser.parse_args(argv)
     conn = _open()
@@ -192,6 +209,8 @@ def main(argv=None) -> int:
         print("notify flag reset" if reset else "still pending — not reset")
     elif args.cmd == "summary":
         print(json.dumps(summary(conn), indent=2))
+    elif args.cmd == "applied":
+        print(json.dumps(applied(conn), indent=2))
     return 0
 
 

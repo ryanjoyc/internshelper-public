@@ -94,7 +94,7 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 
 - **`sources`** — `add <url>` · `list` · `remove <type:token>` · `test <url|source_key> [--json]`
   (`--json` dumps every parsed posting with its `posting_id`+`url` — used by `deep-scan-source`)
-- **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary`
+- **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary` · `applied` (applied posting_ids — the `deep-scan-source` guard)
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
 - **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.
 - **`web`** — `[--port 8510]`; serves the web UI on 127.0.0.1. Needs the `web` extra.

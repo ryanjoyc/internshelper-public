@@ -34,21 +34,32 @@ session scratchpad directory, not the repo.
    and tell the user how many links you're about to open and the rough agent count (~7 links/agent).
    Then proceed over the **whole source** — do not sample or cap.
 
-2. **Batch the postings** into groups of ~7. Write each batch to its own JSON file in the scratchpad
+2. **Guard already-applied jobs (default ON).** Fetch the user's applications:
+   ```bash
+   .venv/bin/python -m internshelper.review applied
+   ```
+   **Remove every returned `posting_id` from the set you're about to scan** — do NOT investigate or
+   write verdicts for a job the user has applied to, so a re-scan can never demote or overwrite it.
+   List the excluded applied jobs back to the user ("skipping N already-applied: …, left untouched").
+   **Only** include applied ids if the user **explicitly** said so this run (e.g. "scan everything,
+   even the ones I applied to" / "include applied"). When in doubt, exclude — this guard protects
+   the user's real applications.
+
+3. **Batch the postings** into groups of ~7. Write each batch to its own JSON file in the scratchpad
    (`amb_batch_0.json`, …) so each agent can `Read` its slice instead of you inlining 60+ rows.
 
-3. **Fan out one investigation agent per batch** — dispatch them **in a single message** (parallel),
+4. **Fan out one investigation agent per batch** — dispatch them **in a single message** (parallel),
    `run_in_background: false`, `subagent_type: general-purpose`. Use the prompt template below,
    substituting the real term(s) and batch file path. Each agent opens **every** link in its batch.
 
-4. **Aggregate** the pipe-delimited lines from all agents into three buckets and present a table:
+5. **Aggregate** the pipe-delimited lines from all agents into three buckets and present a table:
    - **MATCH** — on-page evidence of the term(s).
    - **UNCERTAIN** — page unreachable / undated / ambiguous (nothing dropped silently; the user
      eyeballs these).
    - **NO-MATCH** — positively a different term / clearly not the term.
    Each row: company — title — verdict — open/closed — one-line evidence. Give counts.
 
-5. **Write verdicts — only if the source is registered** (`source_key` appears in `sources list`):
+6. **Write verdicts — only if the source is registered** (`source_key` appears in `sources list`):
    ```bash
    .venv/bin/python -m internshelper.review set-verdict <posting_id> \
        --verdict match|no_match --reason "<term> — deep-scan <YYYY-MM-DD> (<open|closed>); <evidence>"
@@ -63,8 +74,11 @@ session scratchpad directory, not the repo.
    first (`INTERNSHELPER_FEATURE_EMAIL=false .venv/bin/python -m internshelper.run`), then apply.
    For an **unregistered raw URL**, skip this step entirely — deliver the report only and note the
    results weren't written (there are no DB rows to attach them to).
+   **Belt-and-suspenders:** the applied ids from step 2 were already dropped from the scan set, so
+   they can't appear here — but never `set-verdict` an applied `posting_id` regardless (unless the
+   user opted into scanning applied jobs).
 
-6. **Report.** Present the shortlist (MATCH first, then UNCERTAIN), note how many verdicts were written
+7. **Report.** Present the shortlist (MATCH first, then UNCERTAIN), note how many verdicts were written
    vs report-only, and — if you wrote to a registered source — remind the user the app's Review/Board
    pages now reflect it on reload.
 
