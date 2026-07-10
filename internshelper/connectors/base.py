@@ -62,6 +62,14 @@ class Connector:
         resp.raise_for_status()
         return resp.json()
 
+    def _post_json(self, url: str, body: dict):
+        """POST a JSON body, return the JSON response (for POST-only APIs like Workday CXS)."""
+        resp = httpx.post(
+            url, json=body, timeout=TIMEOUT, headers=HEADERS, follow_redirects=True
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def fetch(self) -> list[Posting]:  # pragma: no cover - thin HTTP wrapper
         raise NotImplementedError
 

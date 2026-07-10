@@ -40,6 +40,8 @@ def entry_to_block(entry: SourceEntry) -> str:
     d: dict[str, object] = {"type": entry.type, ID_FIELD[entry.type]: entry.token}
     if entry.label:
         d["label"] = entry.label
+    if entry.search:
+        d["search"] = entry.search
     if entry.title_must_match:
         d["title_must_match"] = list(entry.title_must_match)
     if entry.columns:
@@ -135,6 +137,7 @@ def resolve_entry(
     label: str | None = None,
     title_must_match: list[str] | None = None,
     columns: dict[str, str] | None = None,
+    search: str | None = None,
 ) -> SourceEntry:
     """Detect a SourceEntry from a URL and apply the optional extras.
 
@@ -147,6 +150,8 @@ def resolve_entry(
         entry.title_must_match = list(title_must_match)
     if columns:
         entry.columns = dict(columns)
+    if search:
+        entry.search = search.strip()
     return entry
 
 
@@ -206,7 +211,8 @@ def _cmd_add(args) -> int:
            if args.title_must_match else None)
     cols = parse_kv(args.columns) if args.columns else None
     try:
-        entry = resolve_entry(args.url, label=args.label, title_must_match=tmm, columns=cols)
+        entry = resolve_entry(args.url, label=args.label, title_must_match=tmm, columns=cols,
+                              search=args.search)
     except SourceDetectionError as e:
         # Not a clean board URL — sniff the page for an embedded Greenhouse/Lever/Ashby board.
         try:
@@ -229,6 +235,8 @@ def _cmd_add(args) -> int:
             entry.title_must_match = list(tmm)
         if cols:
             entry.columns = dict(cols)
+        if args.search:
+            entry.search = args.search.strip()
         print(f"sniffed a {entry.type} board: {entry.source_key}")
 
     if is_duplicate(path, entry):
@@ -359,6 +367,8 @@ def main(argv=None) -> int:
     a.add_argument("--label", default=None)
     a.add_argument("--title-must-match", default=None, help="comma-separated title substrings")
     a.add_argument("--columns", default=None, help="comma-separated k=v overrides (markdown only)")
+    a.add_argument("--search", default=None,
+                   help="server-side search filter (workday only); hides non-matching postings")
     a.add_argument("--yes", action="store_true", help="skip the confirm prompt")
     a.add_argument("--no-test", action="store_true", help="skip the live fetch-test")
     a.add_argument("--limit", type=int, default=5)

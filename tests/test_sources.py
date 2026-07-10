@@ -450,3 +450,21 @@ def test_test_command_unregistered_url_still_works_without_sources_file(monkeypa
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
     assert out["count"] == 1
+
+
+def test_entry_to_block_renders_workday_url_and_search():
+    block = sources.entry_to_block(SourceEntry(
+        type="workday", token="https://mastercard.wd1.myworkdayjobs.com/CorporateCareers",
+        label="Mastercard", search="intern"))
+    assert "type: workday" in block and "url: https://mastercard" in block
+    assert "search: intern" in block
+
+
+def test_add_search_flag_is_written(srcfile, monkeypatch):
+    srcfile.write_text("sources:\n")
+    _wire(monkeypatch, posts=[_post("1", "SWE Intern")])
+    rc = sources.main(["add", "https://mastercard.wd1.myworkdayjobs.com/CorporateCareers",
+                       "--search", "intern", "--yes"])
+    assert rc == 0
+    e = config.load_sources(srcfile)[0][0]
+    assert e.type == "workday" and e.search == "intern"

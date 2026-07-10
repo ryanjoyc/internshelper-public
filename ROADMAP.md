@@ -133,10 +133,12 @@ you triage.
 
 - **Generic structured-data connector.** Parse `schema.org/JobPosting` JSON-LD, which
   many job pages expose — deterministic and reliable, a strong generic fallback.
-- **More ATS connectors.** Workday, SmartRecruiters, iCIMS, etc., each a new module in
-  the existing `connectors/` registry pattern (`connectors/base.py`). Workday (`*.myworkdayjobs.com`,
-  CXS API) is the priority — it unlocks banks & card networks (Visa, Mastercard, Amex, Capital One,
-  Goldman, JPMorgan); spec + caveats in `docs/source-candidates.md`.
+- **More ATS connectors.** SmartRecruiters, iCIMS, etc., each a new module in the existing
+  `connectors/` registry pattern (`connectors/base.py`). **Workday: done (2026-07-09)** —
+  `connectors/workday.py` (CXS API, offset pagination, raise-on-partial-fetch so close-detection
+  can't be poisoned, per-source `search:`); Visa, Mastercard, Capital One registered.
+  Remaining gaps noted in `docs/source-candidates.md` (Amex not on public Workday;
+  `*.myworkdaysite.com` hosts out of scope).
 - ~~**`markdown` connector: company-as-heading tables.**~~ **Done (2026-07-09):** opt-in
   `columns: company=@heading` sentinel — the firm is the nearest heading above each table.
   The NUFT quant list (`northwesternfintech/2027QuantInternships`) is registered and collecting.

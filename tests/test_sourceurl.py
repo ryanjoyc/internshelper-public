@@ -1,7 +1,7 @@
 """Unit tests for pure URL -> SourceEntry detection (no network).
 
 `detect_source` maps a pasted job-board URL to a ready-to-write SourceEntry by hostname,
-or raises SourceDetectionError for anything it can't resolve from the URL alone (a bare
+or raises sourceurl.SourceDetectionError for anything it can't resolve from the URL alone (a bare
 company name / careers page / bare repo is the /add-source agent skill's job).
 """
 
@@ -134,3 +134,28 @@ def test_slugless_or_incomplete_urls_raise(url):
 def test_markdown_extension_blob_resolves_to_markdown():
     e = d("https://github.com/u/r/blob/main/list.markdown")
     assert e.type == "markdown"
+
+
+# ---------- workday ----------
+
+def test_detect_workday_board_url():
+    e = sourceurl.detect_source("https://mastercard.wd1.myworkdayjobs.com/CorporateCareers")
+    assert e.type == "workday"
+    assert e.token == "https://mastercard.wd1.myworkdayjobs.com/CorporateCareers"
+    assert e.label == "Mastercard"  # tenant-derived default label
+
+
+def test_detect_workday_normalizes_locale_and_job_links():
+    for u in (
+        "https://mastercard.wd1.myworkdayjobs.com/en-US/CorporateCareers",
+        "https://Mastercard.wd1.myworkdayjobs.com/CorporateCareers/",
+        "https://mastercard.wd1.myworkdayjobs.com/en-US/CorporateCareers/job/X_R-1",
+    ):
+        assert sourceurl.detect_source(u).token == (
+            "https://mastercard.wd1.myworkdayjobs.com/CorporateCareers"
+        )
+
+
+def test_detect_workday_missing_site_raises():
+    with pytest.raises(sourceurl.SourceDetectionError):
+        sourceurl.detect_source("https://mastercard.wd1.myworkdayjobs.com")

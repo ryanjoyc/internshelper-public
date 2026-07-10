@@ -18,6 +18,7 @@ import httpx
 
 from internshelper.config import SourceEntry
 from internshelper.connectors.base import HEADERS, TIMEOUT
+from internshelper.connectors.workday import parse_board_url
 
 
 class SnifferError(RuntimeError):
@@ -40,6 +41,11 @@ _PATTERNS: list[tuple[str, re.Pattern[str], bool]] = [
     ("ashby", re.compile(r"api\.ashbyhq\.com/posting-api/job-board/([A-Za-z0-9_-]+)", re.I), False),
 ]
 
+# Workday can't ride _PATTERNS: its token is the full canonical board URL, not a captured slug.
+# Matches are normalized via parse_board_url (locale variants collapse to one source_key);
+# anything unparseable (e.g. a siteless host) is skipped — conservative, per module contract.
+_WORKDAY_URL = re.compile(r"https?://[A-Za-z0-9-]+\.wd\d+\.myworkdayjobs\.com[^\s\"'<>)]*")
+
 
 def _label(text: str) -> str:
     return text.replace("-", " ").replace("_", " ").title()
@@ -60,6 +66,15 @@ def find_boards_in_html(html: str, *, label: str | None = None) -> list[SourceEn
                 token = token.lower()
             entry = SourceEntry(type=stype, token=token, label=label or _label(token))
             found.setdefault(entry.source_key, entry)
+    for m in _WORKDAY_URL.finditer(html):
+        try:
+            board = parse_board_url(m.group(0))
+        except ValueError:
+            continue
+        entry = SourceEntry(
+            type="workday", token=board.base_url, label=label or _label(board.tenant)
+        )
+        found.setdefault(entry.source_key, entry)
     return list(found.values())
 
 

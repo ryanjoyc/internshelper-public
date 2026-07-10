@@ -13,6 +13,7 @@ from internshelper.connectors import (  # noqa: E402,F401
     greenhouse,
     lever,
     markdown_list,
+    workday,
 )
 
 __all__ = ["Connector", "build_connector", "register"]

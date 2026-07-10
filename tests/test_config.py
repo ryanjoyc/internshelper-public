@@ -188,3 +188,34 @@ def test_default_path_falls_back_to_repo_root_absolute(monkeypatch):
     monkeypatch.delenv("INTERNSHELPER_DB", raising=False)
     p = config.default_path("INTERNSHELPER_DB", "data/x.db")
     assert Path(p).is_absolute() and p.endswith("/data/x.db")
+
+
+def test_workday_source_parses_url_and_search(tmp_path):
+    f = _write(tmp_path / "sources.yaml", """
+sources:
+  - type: workday
+    url: https://mastercard.wd1.myworkdayjobs.com/CorporateCareers
+    label: Mastercard
+    search: intern
+""")
+    entries, errors = config.load_sources(f)
+    assert errors == []
+    e = entries[0]
+    assert e.source_key == "workday:https://mastercard.wd1.myworkdayjobs.com/CorporateCareers"
+    assert e.search == "intern"
+
+
+def test_workday_source_search_defaults_empty(tmp_path):
+    f = _write(tmp_path / "sources.yaml", """
+sources:
+  - type: workday
+    url: https://blueorigin.wd5.myworkdayjobs.com/BlueOrigin
+""")
+    entries, errors = config.load_sources(f)
+    assert errors == [] and entries[0].search == ""
+
+
+def test_workday_source_requires_url(tmp_path):
+    f = _write(tmp_path / "sources.yaml", "sources:\n  - type: workday\n    label: X\n")
+    entries, errors = config.load_sources(f)
+    assert entries == [] and "url" in errors[0]["reason"]

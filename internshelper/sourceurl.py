@@ -12,16 +12,19 @@ from __future__ import annotations
 from urllib.parse import urlsplit
 
 from internshelper.config import SourceEntry
+from internshelper.connectors.workday import parse_board_url
 
 _GREENHOUSE_HOSTS = {"boards.greenhouse.io", "job-boards.greenhouse.io"}
 _LEVER_HOST = "jobs.lever.co"
 _ASHBY_HOST = "jobs.ashbyhq.com"
 _GITHUB_HOST = "github.com"
 _RAW_HOST = "raw.githubusercontent.com"
+_WORKDAY_HOST_SUFFIX = ".myworkdayjobs.com"
 
 _SUPPORTED = (
     "boards.greenhouse.io/<token>, job-boards.greenhouse.io/<token>, "
     "jobs.lever.co/<token>, jobs.ashbyhq.com/<org>, "
+    "<tenant>.wd<N>.myworkdayjobs.com/<site>, "
     "github.com/<u>/<r>/blob/<branch>/<file>, raw.githubusercontent.com/.../<file>"
 )
 
@@ -77,6 +80,17 @@ def detect_source(url: str, *, label: str | None = None) -> SourceEntry:
         if not segs:
             raise SourceDetectionError("ashby URL needs an org slug: jobs.ashbyhq.com/<org>")
         return _make("ashby", segs[0])  # Ashby orgs are case-sensitive: preserve case
+
+    if host.endswith(_WORKDAY_HOST_SUFFIX):
+        # Canonicalize any board / locale-variant / single-job link to the bare board URL,
+        # so duplicates collide on one source_key.
+        try:
+            board = parse_board_url(url)
+        except ValueError as e:
+            raise SourceDetectionError(str(e)) from e
+        return SourceEntry(
+            type="workday", token=board.base_url, label=label or _label(board.tenant)
+        )
 
     if host == _RAW_HOST:
         if len(segs) < 4:

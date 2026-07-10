@@ -68,7 +68,7 @@ collected or shown.
 | `dotenv` | Stdlib `.env` loader; shell env vars win; silent no-op if the file is missing. |
 | `text` | HTML→plaintext stripper (stdlib `html.parser`) used before keyword matching. |
 | `sourceurl` | Pure URL→`SourceEntry` detection (no network): map a pasted board URL to a source by host + path. |
-| `sniffer` | Heuristic, no-AI detection of embedded Greenhouse/Lever/Ashby boards on an arbitrary careers page (regex over the fetched HTML). The add-source fallback when `sourceurl` can't resolve a clean board URL. |
+| `sniffer` | Heuristic, no-AI detection of embedded Greenhouse/Lever/Ashby/Workday boards on an arbitrary careers page (regex over the fetched HTML). The add-source fallback when `sourceurl` can't resolve a clean board URL. |
 | `filters` | Apply user filter booleans (`require_cs`, `require_intern_or_newgrad`) to classified postings. Pure function. |
 | `mailer` | Shared SMTP send helper used by `notify` (the v1 digest emailer is gone). |
 | `__init__` | Package root (version). |
@@ -85,15 +85,18 @@ a type = adding a connector that registers itself + a `sourceurl` detection rule
 | `ashby` | Ashby public board API (`/posting-api/job-board/{org}`); keeps `isListed=true` only. |
 | `github_list` | Structured JSON internship lists (e.g. SimplifyJobs `listings.json`), active+visible rows. |
 | `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns, handles `↳` continuation rows + `🔒` closed markers. Per-source `columns:` override; the sentinel `columns: company=@heading` (opt-in) parses firm-per-section lists (`## Firm` heading + `\|Role\|Links\|` tables, e.g. the NUFT quant list). |
-| `base` | Base `Connector` class, shared HTTP helpers (httpx, timeouts, headers), and the type→connector registry. |
+| `workday` | Workday CXS board API (`POST …/wday/cxs/{tenant}/{site}/jobs`, paginated by offset; banks/card networks). A partial fetch **raises** (never returns partial — close-detection would falsely close live postings); refuses boards >2000 postings unless the per-source `search:` key (server-side CXS searchText, warned loudly) narrows them. `posted_at=None` on purpose: `postedOn` is relative prose and `startDate` is the posting date. |
+| `base` | Base `Connector` class, shared HTTP helpers (httpx `_get`/`_post_json`, timeouts, headers), and the type→connector registry. |
 
 ## The CLIs
 
 Always run from the repo root with the project venv: `.venv/bin/python -m internshelper.<x>`.
 Subcommands below; use `--help` (or read the module's argparse) for full flags.
 
-- **`sources`** — `add <url>` · `list` · `remove <type:token>` · `test <url|source_key> [--json]`
-  (`--json` dumps every parsed posting with its `posting_id`+`url` — used by `deep-scan-source`)
+- **`sources`** — `add <url> [--search …]` · `list` · `remove <type:token>` ·
+  `test <url|source_key> [--json]` (`--json` dumps every parsed posting with its
+  `posting_id`+`url` — used by `deep-scan-source`; `test` adopts the registered entry's extras
+  (e.g. markdown `columns`) when the target is registered, so it parses exactly as collect does)
 - **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary` · `applied` (applied posting_ids — the `deep-scan-source` guard)
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
 - **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.

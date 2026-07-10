@@ -18,6 +18,10 @@ Run everything from the repo root with the project venv: `.venv/bin/python`.
 - `https://boards.greenhouse.io/<token>` or `https://job-boards.greenhouse.io/<token>`
 - `https://jobs.lever.co/<token>`
 - `https://jobs.ashbyhq.com/<org>`
+- `https://<tenant>.wd<N>.myworkdayjobs.com/<Site>` → `workday` (locale segments and a single
+  job link resolve to the board). Big corporate tenants (banks, card networks) usually need
+  `--search intern` — the connector refuses boards >2000 postings without it — plus the usual
+  `--title-must-match` guard.
 - a GitHub **raw** or **blob** file URL: `…/blob/<branch>/listings.json` → `github`,
   `…/blob/<branch>/README.md` → `markdown`
 
@@ -34,9 +38,10 @@ Run everything from the repo root with the project venv: `.venv/bin/python`.
      the path to `listings.json` or `README.md`, then build the **raw** URL.
 
 2. **Research (only when needed).** Use `WebSearch` / `WebFetch` to find the ATS and slug:
-   - Search e.g. `"<company> greenhouse OR lever OR ashby careers"`, or fetch the careers page and
-     look at the apply links — the host (`boards.greenhouse.io`, `jobs.lever.co`,
-     `jobs.ashbyhq.com`) and the slug after it give you the board.
+   - Search e.g. `"<company> greenhouse OR lever OR ashby OR workday careers"`, or fetch the
+     careers page and look at the apply links — the host (`boards.greenhouse.io`,
+     `jobs.lever.co`, `jobs.ashbyhq.com`, `*.myworkdayjobs.com`) and the slug/site after it
+     give you the board.
    - For a GitHub list, use the repo's default branch + the file's path to construct
      `https://raw.githubusercontent.com/<u>/<r>/<branch>/<path>` (or the `…/blob/…` URL — the CLI
      normalizes blob→raw). **Confirm the resolved board URL with the user before writing.**

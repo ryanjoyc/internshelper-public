@@ -89,3 +89,19 @@ def test_sniff_careers_page_raises_on_http_error(monkeypatch):
     monkeypatch.setattr(sniffer.httpx, "get", _boom)
     with pytest.raises(sniffer.SnifferError):
         sniffer.sniff_careers_page("https://foo.com/careers")
+
+
+def test_finds_workday_board_and_dedupes_locale_variants():
+    # Real-shaped apply links (the md_vanshb03 fixture carries the same host style).
+    html = (
+        '<a href="https://blueorigin.wd5.myworkdayjobs.com/BlueOrigin/job/Seattle/X_R1">a</a>'
+        '<a href="https://blueorigin.wd5.myworkdayjobs.com/en-US/BlueOrigin">apply</a>'
+    )
+    boards = sniffer.find_boards_in_html(html)
+    assert [ (b.type, b.token) for b in boards ] == [
+        ("workday", "https://blueorigin.wd5.myworkdayjobs.com/BlueOrigin"),
+    ]
+
+
+def test_workday_sniff_skips_siteless_urls():
+    assert sniffer.find_boards_in_html('src="https://x.wd1.myworkdayjobs.com/"') == []

@@ -42,6 +42,7 @@ ID_FIELD = {
     "ashby": "org",
     "github": "url",
     "markdown": "url",  # raw README.md URL of a Markdown-table internship list
+    "workday": "url",  # canonical board URL, e.g. https://{tenant}.wd1.myworkdayjobs.com/{Site}
 }
 
 
@@ -55,6 +56,10 @@ class SourceEntry:
     title_must_match: list[str] = field(default_factory=list)
     # Markdown connector only: optional column override (field -> exact header name).
     columns: dict[str, str] = field(default_factory=dict)
+    # Workday connector only: optional server-side search (CXS `searchText`). Postings not
+    # matching it are invisible to this source — needed for bank-sized tenants, never silent
+    # (the connector emits a diagnostic whenever it's active).
+    search: str = ""
 
     @property
     def source_key(self) -> str:
@@ -132,12 +137,16 @@ def _parse_source(raw: object) -> SourceEntry:
     cols = raw.get("columns") or {}
     if not isinstance(cols, dict):
         raise ValueError("columns must be a mapping of field -> header name")
+    search = raw.get("search", "") or ""
+    if not isinstance(search, str):
+        raise ValueError("search must be a string")
     return SourceEntry(
         type=stype,
         token=str(token).strip(),
         label=str(raw.get("label", "") or ""),
         title_must_match=[str(s) for s in tmm],
         columns={str(k): str(v) for k, v in cols.items()},
+        search=search.strip(),
     )
 
 
