@@ -134,7 +134,13 @@ you triage.
 - **Generic structured-data connector.** Parse `schema.org/JobPosting` JSON-LD, which
   many job pages expose — deterministic and reliable, a strong generic fallback.
 - **More ATS connectors.** Workday, SmartRecruiters, iCIMS, etc., each a new module in
-  the existing `connectors/` registry pattern (`connectors/base.py`).
+  the existing `connectors/` registry pattern (`connectors/base.py`). Workday (`*.myworkdayjobs.com`,
+  CXS API) is the priority — it unlocks banks & card networks (Visa, Mastercard, Amex, Capital One,
+  Goldman, JPMorgan); spec + caveats in `docs/source-candidates.md`.
+- **`markdown` connector: company-as-heading tables.** Small tweak so a README whose tables are
+  `| Role | Links |` with the company in the section heading parses (inherit company from the nearest
+  heading). Unlocks curated quant/finance lists (e.g. `northwesternfintech/2027QuantInternships`).
+  See `docs/source-candidates.md` (do this before the Workday connector — cheap, high value).
 - **LinkedIn — set honest expectations.** LinkedIn is ToS-hostile and anti-bot;
   scraping is fragile and risky. Plan it as a **manual import / paste-a-job path**
   (and any sanctioned public endpoints) rather than promising live scraping.
