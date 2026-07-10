@@ -84,7 +84,7 @@ a type = adding a connector that registers itself + a `sourceurl` detection rule
 | `lever` | Lever public postings API (`/v0/postings/{token}`). |
 | `ashby` | Ashby public board API (`/posting-api/job-board/{org}`); keeps `isListed=true` only. |
 | `github_list` | Structured JSON internship lists (e.g. SimplifyJobs `listings.json`), active+visible rows. |
-| `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns, handles `↳` continuation rows + `🔒` closed markers. |
+| `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns, handles `↳` continuation rows + `🔒` closed markers. Per-source `columns:` override; the sentinel `columns: company=@heading` (opt-in) parses firm-per-section lists (`## Firm` heading + `\|Role\|Links\|` tables, e.g. the NUFT quant list). |
 | `base` | Base `Connector` class, shared HTTP helpers (httpx, timeouts, headers), and the type→connector registry. |
 
 ## The CLIs

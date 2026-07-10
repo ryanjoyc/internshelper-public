@@ -302,6 +302,18 @@ def _cmd_test(args) -> int:
             print(f"could not detect a source from {target!r}: {e}")
             return 2
 
+    # If the target is a registered source, adopt its entry — it carries the per-source extras
+    # (markdown `columns` override, label) without which the parse can differ from collect time.
+    # Best-effort: an unreadable/missing sources file must not break testing a plain URL.
+    try:
+        registered, _ = load_sources(_sources_path())
+    except ConfigError:
+        registered = []
+    for e in registered:
+        if e.source_key == entry.source_key:
+            entry = e
+            break
+
     if args.json:
         # Machine-readable full dump: EVERY parsed posting with its stable posting_id + url,
         # so callers (the deep-scan-source skill) can enumerate links and map back to DB rows.

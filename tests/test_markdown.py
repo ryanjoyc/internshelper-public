@@ -173,3 +173,62 @@ def test_diagnostics_reset_between_parses():
     assert c.diagnostics
     c.parse((FX / "md_sndsh404.md").read_text())  # clean parse must clear them
     assert c.diagnostics == []
+
+
+# --- company=@heading sentinel (NUFT-style firm-per-section lists) ---
+
+NUFT = "https://raw.githubusercontent.com/northwesternfintech/2027QuantInternships/main/README.md"
+
+
+def _heading_conn(url=NUFT):
+    return build_connector(
+        SourceEntry(type="markdown", token=url, label="L", columns={"company": "@heading"})
+    )
+
+
+def test_heading_sentinel_parses_company_per_section_tables():
+    posts = _heading_conn().parse((FX / "md_nuft.md").read_text())
+    assert len(posts) == 4  # 3 Citadel + 1 Jane Street; 🔒 row skipped; AQR table empty
+    by_company = {}
+    for p in posts:
+        by_company.setdefault(p.company, []).append(p)
+    assert sorted(by_company) == ["Citadel Securities", "Jane Street"]  # link heading stripped
+    assert sorted(p.title for p in by_company["Citadel Securities"]) == ["QR", "QT", "SWE"]
+    assert by_company["Jane Street"][0].title == "SWE"
+    assert by_company["Jane Street"][0].url == (
+        "https://www.janestreet.com/join-jane-street/position/7654321/"
+    )
+    ids = [p.posting_id for p in posts]
+    assert len(ids) == len(set(ids))  # same role abbrev at two firms -> distinct ids
+    assert all(i.startswith("markdown:") for i in ids)
+
+
+def test_heading_sentinel_is_opt_in_default_behavior_unchanged():
+    c = _conn(NUFT)  # no columns override
+    posts = c.parse((FX / "md_nuft.md").read_text())
+    assert posts == []  # company column still required without the sentinel
+    assert any("couldn't map required column" in d for d in c.diagnostics)
+
+
+def test_heading_sentinel_still_requires_a_title_column():
+    md = (
+        "## Some Firm\n\n"
+        "| Question | Answer |\n"
+        "| --- | --- |\n"
+        "| Why? | Because. |\n"
+    )
+    c = _heading_conn()
+    assert c.parse(md) == []
+    assert any("title" in d for d in c.diagnostics)
+
+
+def test_heading_sentinel_table_with_no_preceding_heading_falls_back():
+    md = (
+        "|Role|Links|\n"
+        "|---|---|\n"
+        "|SWE|[✅ ](https://x.co/j/1)|\n"
+    )
+    c = _heading_conn()
+    posts = c.parse(md)
+    assert len(posts) == 1
+    assert posts[0].company == "L"  # company_fallback (the source label), not empty

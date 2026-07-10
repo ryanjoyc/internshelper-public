@@ -34,6 +34,21 @@ _HEADER_ALIASES = {
 }
 _CONTINUATION_MARKS = {"↳", "⤷", "->", "<-"}
 _CLOSED_MARKERS = ["🔒"]
+# Sentinel for the per-source columns override: `columns: company=@heading` means the list has
+# no company column — the firm is the nearest Markdown heading above each table (the NUFT
+# quant-list shape: `## Citadel Securities` followed by a `|Role|Links|` table). Opt-in only,
+# so ordinary lists keep the loud can't-map-company diagnostic instead of guessing.
+COMPANY_FROM_HEADING = "@heading"
+_HEADING_RE = re.compile(r"^#{1,6}\s+(.*)")
+
+
+def _heading_company(lines: list[str], header_i: int) -> str:
+    """Nearest Markdown heading above the table — the firm name in per-section lists."""
+    for j in range(header_i - 1, -1, -1):
+        m = _HEADING_RE.match(lines[j].strip())
+        if m:
+            return _clean(m.group(1))
+    return ""
 
 
 def canonical_url(url: str) -> str:
@@ -127,9 +142,13 @@ class MarkdownListConnector(Connector):
     def _parse_table(
         self, lines: list[str], header_i: int, seen: set[str], now: datetime | None
     ) -> list[Posting]:
+        heading_mode = self.entry.columns.get("company") == COMPANY_FROM_HEADING
         idx = _map_columns(_cells(lines[header_i]), self.entry.columns)
-        if "company" not in idx or "title" not in idx:
-            missing = [f for f in ("company", "title") if f not in idx]
+        if heading_mode:
+            idx.pop("company", None)  # company comes from the section heading, never a column
+        required = ("title",) if heading_mode else ("company", "title")
+        missing = [f for f in required if f not in idx]
+        if missing:
             self._warn(
                 f"table at line {header_i + 1}: couldn't map required column(s) "
                 f"{', '.join(missing)} — headers were {_cells(lines[header_i])}. "
@@ -138,6 +157,7 @@ class MarkdownListConnector(Connector):
             )
             return []  # can't make a posting without these
         need = max(idx.values())
+        table_company = _heading_company(lines, header_i) if heading_mode else ""
 
         out: list[Posting] = []
         last_company = ""
@@ -156,12 +176,15 @@ class MarkdownListConnector(Connector):
             if len(cells) <= need:
                 continue  # malformed / short row
 
-            company_cell = _clean(cells[idx["company"]])
-            if not company_cell or company_cell in _CONTINUATION_MARKS:
-                company = last_company
+            if heading_mode:
+                company = table_company
             else:
-                company = company_cell
-                last_company = company
+                company_cell = _clean(cells[idx["company"]])
+                if not company_cell or company_cell in _CONTINUATION_MARKS:
+                    company = last_company
+                else:
+                    company = company_cell
+                    last_company = company
 
             title = _clean(cells[idx["title"]])
             if not title:

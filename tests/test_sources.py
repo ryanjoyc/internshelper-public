@@ -412,3 +412,41 @@ def test_test_command_json_fetch_error_exit_1(srcfile, monkeypatch, capsys):
     assert rc == 1
     out = json.loads(capsys.readouterr().out)
     assert out["source_key"] == "greenhouse:stripe" and "boom" in out["error"]
+
+
+def test_test_command_adopts_registered_entry_extras(srcfile, monkeypatch, capsys):
+    # A registered source's per-source extras (markdown `columns`) must apply when `test`
+    # targets it by URL or source_key — a list that NEEDS its override (e.g. company=@heading)
+    # would otherwise mis-parse in `test` while parsing fine at collect time.
+    srcfile.write_text(
+        "sources:\n"
+        "  - type: markdown\n"
+        "    url: https://raw.githubusercontent.com/x/y/main/README.md\n"
+        "    label: X\n"
+        "    columns:\n"
+        "      company: '@heading'\n"
+    )
+    built = []
+
+    def fake_build(entry):
+        built.append(entry)
+        return _FakeConnector(posts=[_post("1", "SWE")])
+
+    monkeypatch.setattr(sources, "build_connector", fake_build)
+    rc = sources.main(["test", "https://raw.githubusercontent.com/x/y/main/README.md", "--json"])
+    assert rc == 0
+    assert built[0].columns == {"company": "@heading"}  # adopted from the registered entry
+    rc = sources.main(  # and via the type:token source_key form too
+        ["test", "markdown:https://raw.githubusercontent.com/x/y/main/README.md", "--json"])
+    assert rc == 0
+    assert built[1].columns == {"company": "@heading"}
+
+
+def test_test_command_unregistered_url_still_works_without_sources_file(monkeypatch, capsys):
+    # Adoption is best-effort: no sources.yaml at all must not break plain URL testing.
+    monkeypatch.setenv("INTERNSHELPER_SOURCES", "/nonexistent/sources.yaml")
+    _wire(monkeypatch, posts=[_post("1", "SWE Intern")])
+    rc = sources.main(["test", "https://boards.greenhouse.io/stripe", "--json"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["count"] == 1

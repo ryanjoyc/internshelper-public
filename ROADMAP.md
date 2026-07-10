@@ -137,10 +137,9 @@ you triage.
   the existing `connectors/` registry pattern (`connectors/base.py`). Workday (`*.myworkdayjobs.com`,
   CXS API) is the priority — it unlocks banks & card networks (Visa, Mastercard, Amex, Capital One,
   Goldman, JPMorgan); spec + caveats in `docs/source-candidates.md`.
-- **`markdown` connector: company-as-heading tables.** Small tweak so a README whose tables are
-  `| Role | Links |` with the company in the section heading parses (inherit company from the nearest
-  heading). Unlocks curated quant/finance lists (e.g. `northwesternfintech/2027QuantInternships`).
-  See `docs/source-candidates.md` (do this before the Workday connector — cheap, high value).
+- ~~**`markdown` connector: company-as-heading tables.**~~ **Done (2026-07-09):** opt-in
+  `columns: company=@heading` sentinel — the firm is the nearest heading above each table.
+  The NUFT quant list (`northwesternfintech/2027QuantInternships`) is registered and collecting.
 - **LinkedIn — set honest expectations.** LinkedIn is ToS-hostile and anti-bot;
   scraping is fragile and risky. Plan it as a **manual import / paste-a-job path**
   (and any sanctioned public endpoints) rather than promising live scraping.
