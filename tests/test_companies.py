@@ -152,6 +152,37 @@ def test_resolve_write_validates_source_key(cfile, sfile):
     assert companies.load_companies(cfile)[0][0].status == "resolved"
 
 
+def test_tier_round_trips_through_regeneration(cfile):
+    companies.add_company(cfile, "Google")
+    companies.add_company(cfile, "Acme")
+    companies.set_tier(cfile, "Google", "dream")
+    companies.add_company(cfile, "Later Co")  # regenerating write must keep the tier
+    entries = companies.load_companies(cfile)[0]
+    assert companies.find(entries, "Google").tier == "dream"
+    assert companies.find(entries, "Acme").tier == ""
+    assert "tier: dream" in cfile.read_text()
+    companies.set_tier(cfile, "Google", "")
+    assert "tier" not in cfile.read_text()
+
+
+def test_tier_validation(cfile, tmp_path):
+    companies.add_company(cfile, "Google")
+    with pytest.raises(ValueError, match="tier"):
+        companies.set_tier(cfile, "Google", "mega")
+    f = tmp_path / "bad.yaml"
+    f.write_text("companies:\n  - name: Google\n    tier: mega\n")
+    entries, errors = companies.load_companies(f)
+    assert entries == [] and "tier" in errors[0]["reason"]
+
+
+def test_cli_set_tier(cfile, capsys):
+    companies.main(["add", "Google"])
+    assert companies.main(["set-tier", "Google", "dream"]) == 0
+    assert companies.load_companies(cfile)[0][0].tier == "dream"
+    assert companies.main(["set-tier", "Google", "default"]) == 0
+    assert companies.load_companies(cfile)[0][0].tier == ""
+
+
 def test_dangling_reports_broken_pointers():
     es = [CompanyEntry(name="A", status="resolved", board="greenhouse:gone"),
           CompanyEntry(name="B", status="resolved", board="greenhouse:ok")]
@@ -165,7 +196,7 @@ def test_cli_add_list_json(cfile, capsys):
     assert companies.main(["list", "--json"]) == 0
     out = json.loads(capsys.readouterr().out.splitlines()[-1])
     assert out == [{"name": "Goldman Sachs", "status": "pending", "board": "",
-                    "notes": "", "proposal": {}}]
+                    "notes": "", "proposal": {}, "tier": ""}]
 
 
 def test_cli_propose_approve_flow(cfile, sfile, capsys):

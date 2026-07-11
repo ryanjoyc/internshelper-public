@@ -40,6 +40,9 @@ _HEADER = (
 )
 
 
+COMPANY_TIERS = ("", "dream")  # "" = default (target tier); "dream" = apply-first
+
+
 @dataclass
 class CompanyEntry:
     name: str
@@ -47,6 +50,7 @@ class CompanyEntry:
     board: str = ""    # source_key in sources.yaml when resolved
     notes: str = ""
     proposal: dict = field(default_factory=dict)  # {url, count, evidence} awaiting approval
+    tier: str = ""     # "dream" promotes this company's postings to Apply first
 
 
 def companies_path() -> str:
@@ -94,8 +98,12 @@ def _parse_company(raw: object, seen: set[str]) -> CompanyEntry:
     proposal = raw.get("proposal") or {}
     if not isinstance(proposal, dict):
         raise ValueError(f"proposal for {name} must be a mapping")
+    tier = str(raw.get("tier") or "")
+    if tier not in COMPANY_TIERS:
+        raise ValueError(f"unknown tier {tier!r} for {name}")
     return CompanyEntry(name=name, status=status, board=board,
-                        notes=str(raw.get("notes") or ""), proposal=dict(proposal))
+                        notes=str(raw.get("notes") or ""), proposal=dict(proposal),
+                        tier=tier)
 
 
 def save_companies(path, entries: list[CompanyEntry]) -> None:
@@ -108,6 +116,8 @@ def save_companies(path, entries: list[CompanyEntry]) -> None:
             d["notes"] = e.notes
         if e.proposal:
             d["proposal"] = dict(e.proposal)
+        if e.tier:
+            d["tier"] = e.tier
         docs.append(d)
     body = yaml.safe_dump({"companies": docs}, sort_keys=False, allow_unicode=True,
                           default_flow_style=False)
@@ -194,6 +204,16 @@ def resolve_write(path, sources_path, name: str, source_key: str) -> None:
     save_companies(path, entries)
 
 
+def set_tier(path, name: str, tier: str) -> None:
+    """Mark a company dream-tier (postings land in Apply first) or back to default."""
+    if tier not in COMPANY_TIERS:
+        raise ValueError(f"tier must be one of {COMPANY_TIERS}, got {tier!r}")
+    entries = _load_or_raise(path)
+    e = _get(entries, name)
+    e.tier = tier
+    save_companies(path, entries)
+
+
 def mark_no_board(path, name: str, notes: str = "") -> None:
     reject(path, name, notes=notes)
 
@@ -210,13 +230,15 @@ def _cmd_list(args) -> int:
     entries, errors = load_companies(companies_path())
     if args.json:
         print(json.dumps([{"name": e.name, "status": e.status, "board": e.board,
-                           "notes": e.notes, "proposal": e.proposal} for e in entries]))
+                           "notes": e.notes, "proposal": e.proposal, "tier": e.tier}
+                          for e in entries]))
     else:
         if not entries:
             print("(no companies)")
         for e in entries:
             extra = f" -> {e.board}" if e.board else (" [proposal]" if e.proposal else "")
-            print(f"{e.name}  ({e.status}){extra}")
+            star = " ★dream" if e.tier == "dream" else ""
+            print(f"{e.name}  ({e.status}){star}{extra}")
     for err in errors:
         print(f"WARNING: skipped malformed entry: {err['reason']}")
     return 0
@@ -246,6 +268,9 @@ def main(argv=None) -> int:
     nb = sub.add_parser("mark-no-board", help="no public board found; remember that")
     nb.add_argument("name")
     nb.add_argument("--notes", default="")
+    st = sub.add_parser("set-tier", help="dream = postings go to Apply first; default = target")
+    st.add_argument("name")
+    st.add_argument("tier", choices=("dream", "default"))
 
     args = parser.parse_args(argv)
     cpath = companies_path()
@@ -273,6 +298,9 @@ def main(argv=None) -> int:
         elif args.cmd == "mark-no-board":
             mark_no_board(cpath, args.name, notes=args.notes)
             print(f"{args.name} -> no-board")
+        elif args.cmd == "set-tier":
+            set_tier(cpath, args.name, "" if args.tier == "default" else args.tier)
+            print(f"{args.name} tier -> {args.tier}")
     except (ValueError, ConfigError) as e:
         print(str(e))
         return 1

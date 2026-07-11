@@ -98,6 +98,17 @@ _POSTINGS_V3_COLUMNS = [
     ("rank_reasons", "TEXT"),
 ]
 
+# v4: tiered inbox — computed tier, sticky user pin (pinned_tier wins at read time,
+# tier_before_pin makes the pin a promotion/demotion training label), and the
+# apply-first digest watermark (notified_at: NULL = never emailed about this posting).
+_POSTINGS_V4_COLUMNS = [
+    ("tier", "TEXT"),
+    ("pinned_tier", "TEXT"),
+    ("tier_before_pin", "TEXT"),
+    ("pinned_at", "TEXT"),
+    ("notified_at", "TEXT"),
+]
+
 # Columns added to `runs` after its original v2 shape, for additive migration of older DBs.
 _RUNS_COLUMNS = [
     ("dropped", "INTEGER NOT NULL DEFAULT 0"),
@@ -109,6 +120,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     _migrate_columns(conn, "postings", _POSTINGS_V2_COLUMNS)
     _migrate_columns(conn, "postings", _POSTINGS_V3_COLUMNS)
+    _migrate_columns(conn, "postings", _POSTINGS_V4_COLUMNS)
     _migrate_columns(conn, "runs", _RUNS_COLUMNS)
     conn.commit()
 

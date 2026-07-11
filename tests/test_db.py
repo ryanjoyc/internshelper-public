@@ -179,3 +179,9 @@ def test_prune_runs_deletes_strictly_older_than_30_days(tmp_path):
 
     survivors = {r[0] for r in conn.execute("SELECT source_key FROM runs")}
     assert survivors == {"src29", "src30"}  # 31d deleted; 30d boundary kept
+
+
+def test_fresh_db_has_v4_tier_columns(tmp_path):
+    conn = _conn(tmp_path)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(postings)")}
+    assert {"tier", "pinned_tier", "tier_before_pin", "pinned_at", "notified_at"} <= cols
