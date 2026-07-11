@@ -53,18 +53,21 @@ session scratchpad directory, not the repo.
    substituting the real term(s) and batch file path. Each agent opens **every** link in its batch.
 
 5. **Aggregate** the pipe-delimited lines from all agents into three buckets and present a table:
-   - **MATCH** — on-page evidence of the term(s).
-   - **UNCERTAIN** — page unreachable / undated / ambiguous (nothing dropped silently; the user
-     eyeballs these).
-   - **NO-MATCH** — positively a different term / clearly not the term.
-   Each row: company — title — verdict — open/closed — one-line evidence. Give counts.
+   - **MATCH** — on-page evidence of the term(s) AND profile-fit (`fit`, or `unsure` — flag
+     `unsure` rows in the report for the user's eye).
+   - **UNCERTAIN** — page unreachable / undated / ambiguous term (nothing dropped silently; the
+     user eyeballs these).
+   - **NO-MATCH** — positively a different term, OR term-matched but `nofit` (a Summer-2027 role
+     that is clearly non-technical — say which of the two reasons applies).
+   Each row: company — title — verdict — open/closed — fit — one-line evidence. Give counts.
 
 6. **Write verdicts — only if the source is registered** (`source_key` appears in `sources list`):
    ```bash
    .venv/bin/python -m internshelper.review set-verdict <posting_id> \
        --verdict match|no_match --reason "<term> — deep-scan <YYYY-MM-DD> (<open|closed>); <evidence>"
    ```
-   Mapping: MATCH → `match`; NO-MATCH → `no_match`; **UNCERTAIN → `no_match` with the reason prefixed
+   Mapping: MATCH → `match`; NO-MATCH → `no_match` (term-matched-but-nofit rows get reason
+   `"<term> but not profile-fit; <evidence>"`); **UNCERTAIN → `no_match` with the reason prefixed
    `borderline:`** so it stays visible for a human pass. Then re-arm the nudge:
    ```bash
    .venv/bin/python -m internshelper.review finish
@@ -94,16 +97,22 @@ the SPA HTML is often empty — use the public JSON API instead (Lever v0/postin
 board API, Ashby posting-api, Workday CXS). CAVEAT: on Workday CXS do NOT trust the `startDate`
 field — it is the POSTING date, not the internship start; read the JD body for the term.
 
-Classify each posting:
+Also Read <REPO>/config/profile.md. For each posting judge PROFILE-FIT from the JD (generously —
+oddly-named roles like "Forward Deployed Engineer" fit if the work is CS/tech/quant/finance-relevant;
+pure sales/marketing/HR/recruiting/admin do not). Title keywords must never be the reason to
+reject fit.
+
+Classify each posting's TERM:
 - match     = the page shows evidence it is for {TERMS} (or an explicit early/express-interest
               pipeline feeding {TERMS}).
 - no_match  = the page shows it is positively a DIFFERENT term (e.g. a different season/year).
 - uncertain = page unreachable/removed/404, OR undated/rolling with no term evidence, OR genuinely
               ambiguous. If the TITLE alone explicitly states {TERMS} but the page is gone, use
               match with status=closed, confidence=med.
+And its FIT: fit | nofit | unsure (from the JD vs the profile; unreachable page -> unsure).
 
 Output EXACTLY one pipe-delimited line per posting, NO other prose:
-POSTING_ID | match|no_match|uncertain | <term found> | open|closed|unknown | high|med|low | <short evidence: quote a phrase from the page, or why unreachable>
+POSTING_ID | match|no_match|uncertain | <term found> | open|closed|unknown | fit|nofit|unsure | high|med|low | <short evidence: quote a phrase from the page, or why unreachable>
 ```
 
 ## Notes

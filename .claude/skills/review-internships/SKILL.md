@@ -28,6 +28,10 @@ co-ops, **and** new-grad/entry roles all qualify.
 all — pure sales, retail/food service, or non-technical operations/management. When in any doubt
 → `match`, and prefix the reason with "borderline:" so the user can eyeball it.
 
+Judge fit against **`config/profile.md`** (the user's role-fit profile — background, wants, revealed
+preference): generous, JD-over-title — title keywords must never be the reason to reject. The
+criteria above are the floor; the profile is the reference for what "relevant to the user" means.
+
 ## Steps
 
 1. **Pull the queue (candidates first, newest first):**
