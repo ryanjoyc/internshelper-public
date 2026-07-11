@@ -1,0 +1,48 @@
+{% import "partials/_macros.html" as m %}
+{% for err in errors %}
+<div class="notice notice--warn">Skipped a malformed entry: {{ err.reason }}</div>
+{% endfor %}
+{% for name in dangling %}
+<div class="notice notice--err">{{ name }} points at a board missing from sources.yaml</div>
+{% endfor %}
+
+{% for status, items in groups.items() %}
+{% if items %}
+<h2 class="section-title">{{ status }}</h2>
+{% for c in items %}
+<div class="card source-card" id="company-{{ c.name | dom_id }}">
+  <div class="source-main">
+    <div class="source-label">{{ c.name }}</div>
+    {% if c.board %}<div class="source-key">{{ c.board }}</div>{% endif %}
+    {% if c.notes %}<div class="source-key">{{ c.notes }}</div>{% endif %}
+    {% if c.proposal %}
+    <div class="source-key">proposed: {{ c.proposal.url }}
+      ({{ c.proposal.count }} postings) — {{ c.proposal.evidence }}</div>
+    {% endif %}
+  </div>
+  <div class="source-side">
+    {{ m.pill(c.status) }}
+    {% if c.proposal %}
+    <button class="btn btn-primary btn-sm" hx-post="/companies/approve"
+            hx-vals='{"name": {{ c.name | tojson }}}'
+            hx-target="#company-list" hx-swap="innerHTML">Approve</button>
+    <button class="btn btn-ghost btn-sm btn-danger-text" hx-post="/companies/reject"
+            hx-vals='{"name": {{ c.name | tojson }}}'
+            hx-target="#company-list" hx-swap="innerHTML">Reject</button>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% if not total %}
+<p class="page-sub">No companies yet — add one below, then run /resolve-companies.</p>
+{% endif %}
+
+{% if flash %}
+<div hx-swap-oob="beforeend:#toast-region">
+  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
+    <span class="toast-text">{{ flash }}</span>
+  </div>
+</div>
+{% endif %}

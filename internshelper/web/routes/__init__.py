@@ -1,4 +1,4 @@
-from internshelper.web.routes import board, health, postings, review, sources
+from internshelper.web.routes import board, companies, health, postings, review, sources
 
 all_routers = [
     review.router,
@@ -6,4 +6,5 @@ all_routers = [
     postings.router,
     health.router,
     sources.router,
+    companies.router,
 ]

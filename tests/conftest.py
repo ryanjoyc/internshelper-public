@@ -48,7 +48,14 @@ def sources_file(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(seeded_db, sources_file):
+def companies_file(tmp_path, monkeypatch):
+    p = tmp_path / "companies.yaml"
+    monkeypatch.setenv("INTERNSHELPER_COMPANIES", str(p))
+    return p
+
+
+@pytest.fixture
+def client(seeded_db, sources_file, companies_file):
     from fastapi.testclient import TestClient
 
     from internshelper.web import create_app

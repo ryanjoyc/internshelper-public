@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-head">
+  <div class="page-head-row">
+    <h1>Companies</h1>
+  </div>
+  <p class="page-sub">Your approved-companies index. Pending proposals are Approval A:
+  confirm each board is the right one — postings then flow to Review.</p>
+</header>
+
+<div id="company-list" class="source-list">
+  {% include "companies/_list.html" %}
+</div>
+
+<section class="card wizard" id="company-add">
+  <form hx-post="/companies/add" hx-target="#company-list" hx-swap="innerHTML">
+    <label class="field-label" for="company-name">Add a company</label>
+    <div class="page-head-row">
+      <input class="input" id="company-name" name="name" placeholder="e.g. Goldman Sachs" required>
+      <button class="btn btn-primary" type="submit">Add</button>
+    </div>
+  </form>
+</section>
+{% endblock %}
