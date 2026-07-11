@@ -11,8 +11,10 @@ Failure policy:
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -46,6 +48,16 @@ ID_FIELD = {
 }
 
 
+@lru_cache(maxsize=None)
+def _word_pattern(keyword: str) -> re.Pattern:
+    """Whole-word, whitespace-flexible pattern for one guard term (same shape as
+    classify._build_pattern; duplicated ~3 lines rather than importing the higher-level
+    classify module from here)."""
+    parts = [re.escape(p) for p in keyword.strip().lower().split()]
+    body = r"\s+".join(parts)
+    return re.compile(rf"\b{body}\b", re.IGNORECASE)
+
+
 @dataclass
 class SourceEntry:
     type: str
@@ -70,11 +82,14 @@ class SourceEntry:
         return self.label or self.source_key
 
     def accepts(self, title: str) -> bool:
-        """True if this source has no title filter, or `title` matches one of its substrings."""
+        """True if this source has no title filter, or the title contains one of its
+        terms as a whole word/phrase — `intern` matches "SWE Intern" but never
+        "International"/"Internal" (substring matching leaked senior roles).
+        NOTE: list `internship` separately from `intern` in guards."""
         if not self.title_must_match:
             return True
-        low = (title or "").lower()
-        return any(sub.lower() in low for sub in self.title_must_match)
+        text = title or ""
+        return any(_word_pattern(sub).search(text) for sub in self.title_must_match)
 
 
 @dataclass

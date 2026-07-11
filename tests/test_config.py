@@ -219,3 +219,24 @@ def test_workday_source_requires_url(tmp_path):
     f = _write(tmp_path / "sources.yaml", "sources:\n  - type: workday\n    label: X\n")
     entries, errors = config.load_sources(f)
     assert entries == [] and "url" in errors[0]["reason"]
+
+
+def test_title_guard_is_whole_word():
+    e = config.SourceEntry(type="greenhouse", token="x",
+                           title_must_match=["intern", "new grad"])
+    assert e.accepts("Software Engineering Intern") is True
+    assert e.accepts("INTERN - Data") is True            # case-insensitive
+    assert e.accepts("Senior Director, International Cards") is False  # the leak
+    assert e.accepts("Internal Tools Engineer") is False
+    assert e.accepts("New Grad 2027 SWE") is True        # multi-word still works
+    assert e.accepts("New  Grad SWE") is True            # whitespace-flexible
+    assert e.accepts("Renewed Gradle role") is False
+
+
+def test_title_guard_lists_internship_explicitly():
+    # Whole-word means `intern` no longer covers "Internship" — guards must list both.
+    e = config.SourceEntry(type="greenhouse", token="x", title_must_match=["intern"])
+    assert e.accepts("Summer Internship Program") is False
+    e2 = config.SourceEntry(type="greenhouse", token="x",
+                            title_must_match=["intern", "internship"])
+    assert e2.accepts("Summer Internship Program") is True
