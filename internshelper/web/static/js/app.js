@@ -101,7 +101,12 @@ document.addEventListener("keydown", function (e) {
       window.location.href = "/review?mode=focus"; break;
     case "Enter": {
       var row = selectedRow();
-      if (row) window.location.href = "/review?mode=focus&offset=" + (row.dataset.offset || 0);
+      // Under a filter, row offsets index the FILTERED list; focus mode walks the
+      // global queue, so jump to its head instead of a wrong card.
+      var filtered = document.getElementById("review-list").dataset.filtered;
+      if (row) window.location.href = filtered
+        ? "/review?mode=focus"
+        : "/review?mode=focus&offset=" + (row.dataset.offset || 0);
       break;
     }
     case "Escape":

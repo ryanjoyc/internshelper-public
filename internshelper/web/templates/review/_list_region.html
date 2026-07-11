@@ -1,11 +1,17 @@
 {% import "partials/_macros.html" as m %}
-<div id="review-list" class="row-list"{% if not rows %} hidden{% endif %}>
+<div id="review-list" class="row-list"{% if filtered %} data-filtered="1"{% endif %}{% if not rows %} hidden{% endif %}>
   {% include "review/_rows.html" %}
 </div>
 {% if not rows %}
+{% if filtered %}
+{{ m.empty_state("No pending postings match your filters.",
+                 "Try a different search or source.",
+                 "/review", "Clear filters") }}
+{% else %}
 {{ m.empty_state("Nothing pending — the queue is clear.",
                  "New postings land here after each collect run.",
                  "/board", "Go to board") }}
+{% endif %}
 {% endif %}
 {% if oob %}{% include "partials/_nav_oob.html" %}{% endif %}
 {% if bulk_toast %}
@@ -13,7 +19,7 @@
   <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 8000) }"
        x-on:htmx:after-request="clearTimeout(t); $el.remove()">
     <span class="toast-text">Cleared {{ bulk_toast.cleared }} {{ bulk_toast.noun | default('non-candidate') }}{{ '' if bulk_toast.cleared == 1 else 's' }}</span>
-    <form hx-post="/review/bulk-undo" hx-target="#review-region" hx-swap="innerHTML">
+    <form hx-post="/review/bulk-undo" hx-target="#review-region" hx-swap="innerHTML" hx-include="#queue-toolbar">
       <input type="hidden" name="reviewed_at" value="{{ bulk_toast.reviewed_at }}">
       <input type="hidden" name="reason" value="{{ bulk_toast.reason }}">
       <button class="btn btn-ghost btn-sm" type="submit">Undo</button>

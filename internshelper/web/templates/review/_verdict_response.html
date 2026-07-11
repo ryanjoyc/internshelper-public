@@ -6,4 +6,7 @@
   {{ m.stat_tile("Pending", total) }}
   {{ m.stat_tile("Candidates", candidates) }}
 </div>
+{% if filtered %}
+<span class="toolbar-count" id="queue-note" hx-swap-oob="outerHTML">{{ shown }} shown of {{ total }} pending</span>
+{% endif %}
 {% include "review/_toast.html" %}

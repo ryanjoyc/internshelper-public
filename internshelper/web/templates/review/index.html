@@ -16,7 +16,7 @@
             <div class="modal-actions">
               <button class="btn btn-secondary" x-on:click="confirmBulk = false">Cancel</button>
               <button class="btn btn-danger" x-on:click="confirmBulk = false"
-                      hx-post="/review/bulk-clear" hx-target="#review-region" hx-swap="innerHTML">Clear {{ non_candidates }}</button>
+                      hx-post="/review/bulk-clear" hx-target="#review-region" hx-swap="innerHTML" hx-include="#queue-toolbar">Clear {{ non_candidates }}</button>
             </div>
           </div>
         </div>
@@ -33,7 +33,7 @@
             <div class="modal-actions">
               <button class="btn btn-secondary" x-on:click="confirmLeaks = false">Cancel</button>
               <button class="btn btn-danger" x-on:click="confirmLeaks = false"
-                      hx-post="/review/bulk-clear-leaks" hx-target="#review-region" hx-swap="innerHTML">Clear {{ leak_count }}</button>
+                      hx-post="/review/bulk-clear-leaks" hx-target="#review-region" hx-swap="innerHTML" hx-include="#queue-toolbar">Clear {{ leak_count }}</button>
             </div>
           </div>
         </div>
@@ -50,7 +50,7 @@
             <div class="modal-actions">
               <button class="btn btn-secondary" x-on:click="confirmClosed = false">Cancel</button>
               <button class="btn btn-danger" x-on:click="confirmClosed = false"
-                      hx-post="/review/bulk-clear-closed" hx-target="#review-region" hx-swap="innerHTML">Clear {{ closed_count }}</button>
+                      hx-post="/review/bulk-clear-closed" hx-target="#review-region" hx-swap="innerHTML" hx-include="#queue-toolbar">Clear {{ closed_count }}</button>
             </div>
           </div>
         </div>
@@ -65,6 +65,23 @@
     {{ m.stat_tile("Pending", total) }}
     {{ m.stat_tile("Candidates", candidates) }}
   </div>
+  <form id="queue-toolbar" class="toolbar" method="get" action="/review">
+    <input class="input" type="search" name="q" value="{{ filters.q }}"
+           placeholder="Search title or company…">
+    <select class="input" name="source" x-data x-on:change="$el.form.submit()">
+      <option value="">All sources</option>
+      {% for s in source_options %}<option value="{{ s }}"{% if s == filters.source %} selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+    <select class="input" name="sort" x-data x-on:change="$el.form.submit()">
+      <option value="rank"{% if filters.sort == 'rank' %} selected{% endif %}>Best first</option>
+      <option value="newest"{% if filters.sort == 'newest' %} selected{% endif %}>Newest</option>
+    </select>
+    <button class="btn btn-secondary" type="submit">Apply</button>
+    {% if filtered %}
+    <a class="btn btn-ghost btn-sm" href="/review">Clear filters</a>
+    {% endif %}
+    <span class="toolbar-count" id="queue-note">{% if filtered %}{{ shown }} shown of {{ total }} pending{% endif %}</span>
+  </form>
 </header>
 
 <div id="review-region">

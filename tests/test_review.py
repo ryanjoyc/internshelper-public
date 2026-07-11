@@ -208,6 +208,48 @@ def test_undo_bulk_clear_reverts_only_the_batch(tmp_path):
     assert manual["verdict"] == "no_match"  # individually-reviewed row untouched
 
 
+def test_list_pending_search_filters_title_and_company(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1", title="Quant Developer Intern", cs=True),
+                 now="2026-06-18T10:00:00+00:00")
+    store.upsert(c, _p("g:2", title="SWE Intern", cs=True), now="2026-06-18T10:01:00+00:00")
+    c.execute("UPDATE postings SET company='Jane Street' WHERE posting_id='g:2'")
+    c.commit()
+
+    assert [r["posting_id"] for r in review.list_pending(c, q="QUANT")] == ["g:1"]  # title, ci
+    assert [r["posting_id"] for r in review.list_pending(c, q="jane")] == ["g:2"]   # company
+    assert review.list_pending(c, q="zzz") == []
+    assert review.count_pending_filtered(c, q="quant") == 1
+    assert review.count_pending_filtered(c) == 2
+
+
+def test_list_pending_source_filter_and_options(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1", cs=True), now="2026-06-18T10:00:00+00:00")
+    store.upsert(c, _p("l:1", cs=True), now="2026-06-18T10:01:00+00:00")
+    c.execute("UPDATE postings SET source_key='lever:x' WHERE posting_id='l:1'")
+    c.commit()
+
+    assert [r["posting_id"] for r in review.list_pending(c, source="lever:x")] == ["l:1"]
+    assert review.pending_source_keys(c) == ["greenhouse:stripe", "lever:x"]
+    # source_key is exposed on rows (the source pill needs it)
+    keys = {r["posting_id"]: r["source_key"] for r in review.list_pending(c)}
+    assert keys == {"g:1": "greenhouse:stripe", "l:1": "lever:x"}
+
+
+def test_list_pending_sort_newest_ignores_candidate_tier(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:cand", cs=True), now="2026-06-18T09:00:00+00:00")
+    store.upsert(c, _p("g:plain"), now="2026-06-18T10:00:00+00:00")
+    c.execute("UPDATE postings SET posted_at='2026-06-01' WHERE posting_id='g:cand'")
+    c.execute("UPDATE postings SET posted_at='2026-06-15' WHERE posting_id='g:plain'")
+    c.commit()
+
+    assert [r["posting_id"] for r in review.list_pending(c)] == ["g:cand", "g:plain"]
+    assert [r["posting_id"] for r in review.list_pending(c, sort="newest")] == \
+        ["g:plain", "g:cand"]
+
+
 def _guarded_entry(token="stripe", guard=("intern", "internship")):
     return config.SourceEntry(type="greenhouse", token=token, title_must_match=list(guard))
 

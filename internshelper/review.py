@@ -26,30 +26,72 @@ CLOSED_REASON = "bulk: closed on source"
 _DESCRIPTION_KEYS = ("content", "description", "descriptionPlain", "descriptionHtml", "plain")
 
 _FIELDS = (
-    "posting_id, title, company, location, url, payload_path, posted_at, first_seen, "
-    "is_internship, is_newgrad, is_cs_relevant"
+    "posting_id, source_key, title, company, location, url, payload_path, posted_at, "
+    "first_seen, is_internship, is_newgrad, is_cs_relevant"
 )
+
+SORTS = ("rank", "newest")
+
+_RECENCY_SQL = "(posted_at IS NULL), posted_at DESC, first_seen DESC, posting_id"
+
+
+def _pending_where(q: str = "", source: str = "") -> tuple[str, list[object]]:
+    clauses = ["review_status = 'pending'"]
+    params: list[object] = []
+    if q:
+        clauses.append("(LOWER(title) LIKE ? OR LOWER(company) LIKE ?)")
+        like = f"%{q.lower()}%"
+        params += [like, like]
+    if source:
+        clauses.append("source_key = ?")
+        params.append(source)
+    return " WHERE " + " AND ".join(clauses), params
 
 
 def list_pending(
-    conn: sqlite3.Connection, limit: int | None = None, offset: int = 0
+    conn: sqlite3.Connection,
+    limit: int | None = None,
+    offset: int = 0,
+    *,
+    q: str = "",
+    source: str = "",
+    sort: str = "rank",
 ) -> list[dict]:
-    """Pending postings: keyword-candidates first, then most-recently-posted first.
+    """Pending postings; `sort="rank"` = best-first (keyword-candidates first, then
+    most-recently-posted), `sort="newest"` = pure recency.
 
-    Within a candidate tier, rows with a known `posted_at` come before NULLs, newest first,
-    then `first_seen` as a tiebreak — so the freshest roles surface at the top. The final
-    `posting_id` tiebreak makes `limit`/`offset` paging stable.
+    Optional `q` searches title/company (case-insensitive substring); `source` filters
+    on an exact source_key. Within a tier, rows with a known `posted_at` come before
+    NULLs, newest first, then `first_seen` — so the freshest roles surface at the top.
+    The final `posting_id` tiebreak makes `limit`/`offset` paging stable.
     """
-    sql = (
-        f"SELECT {_FIELDS} FROM postings WHERE review_status = 'pending' "
-        f"ORDER BY {store.CANDIDATE_SQL} DESC, "
-        "(posted_at IS NULL), posted_at DESC, first_seen DESC, posting_id"
+    where, params = _pending_where(q, source)
+    order = (
+        _RECENCY_SQL
+        if sort == "newest"
+        else f"{store.CANDIDATE_SQL} DESC, {_RECENCY_SQL}"
     )
-    params: list[object] = []
+    sql = f"SELECT {_FIELDS} FROM postings{where} ORDER BY {order}"
     if limit is not None or offset:
         sql += " LIMIT ? OFFSET ?"
         params += [-1 if limit is None else limit, offset]
     return [dict(r) for r in conn.execute(sql, params)]
+
+
+def count_pending_filtered(conn: sqlite3.Connection, *, q: str = "", source: str = "") -> int:
+    where, params = _pending_where(q, source)
+    return conn.execute(f"SELECT COUNT(*) FROM postings{where}", params).fetchone()[0]
+
+
+def pending_source_keys(conn: sqlite3.Connection) -> list[str]:
+    """Distinct source_keys among pending rows — the Review source-filter options."""
+    return [
+        r["source_key"]
+        for r in conn.execute(
+            "SELECT DISTINCT source_key FROM postings WHERE review_status = 'pending' "
+            "ORDER BY source_key"
+        )
+    ]
 
 
 def set_verdict(

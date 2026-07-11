@@ -13,10 +13,12 @@
       <a class="btn btn-ghost btn-sm row-open" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">open ↗</a>
       <button class="btn btn-secondary btn-sm btn-match"
               hx-post="/review/verdict"
+              hx-include="#queue-toolbar"
               hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "verdict": "match"}'
               hx-target="closest .row" hx-swap="outerHTML swap:150ms">✓ Match</button>
       <button class="btn btn-ghost btn-sm btn-nomatch"
               hx-post="/review/verdict"
+              hx-include="#queue-toolbar"
               hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "verdict": "no_match"}'
               hx-target="closest .row" hx-swap="outerHTML swap:150ms">✕ No match</button>
     </div>

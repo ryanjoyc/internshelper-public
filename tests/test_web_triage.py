@@ -204,3 +204,53 @@ def test_bulk_clear_closed_skips_applied(client, seeded_db):
 def test_broken_sources_config_never_500s_review(client, seeded_db, sources_file):
     sources_file.write_text("sources: [this is: {not valid")
     assert client.get("/review").status_code == 200
+
+
+def test_review_search_filters_rows_and_shows_note(client):
+    r = client.get("/review", params={"q": "cook"})
+    assert r.status_code == 200
+    assert r.text.count('id="row-') == 1
+    assert "greenhouse:plain" in r.text
+    assert "1 shown of 3 pending" in r.text
+    assert 'id="queue-toolbar"' in r.text
+
+
+def test_review_filter_no_matches_shows_filtered_empty_state(client):
+    r = client.get("/review", params={"q": "zzz"})
+    assert r.status_code == 200
+    assert "No pending postings match" in r.text
+    assert "queue is clear" not in r.text
+
+
+def test_review_source_filter_and_bad_sort_are_safe(client):
+    r = client.get("/review", params={"source": "greenhouse:stripe", "sort": "bogus"})
+    assert r.status_code == 200
+    assert r.text.count('id="row-') == 3  # all seeded pending share the source
+
+
+def test_queue_partial_respects_filter_with_offset(client):
+    # 3 pending match "intern"? Only the two SWE Intern rows do.
+    r = client.get("/review/queue", params={"q": "intern", "offset": 1})
+    assert r.status_code == 200
+    assert r.text.count('id="row-') == 1
+    assert "greenhouse:2" in r.text
+
+
+def test_sentinel_carries_toolbar_include(client, monkeypatch):
+    from internshelper.web.routes import review as review_routes
+    monkeypatch.setattr(review_routes, "PAGE_SIZE", 1)
+    r = client.get("/review")
+    assert 'hx-include="#queue-toolbar"' in r.text  # sentinel threads the filters
+
+
+def test_bulk_clear_ignores_filter_scope(client, seeded_db):
+    # Filters narrow the VIEW, never the bulk action's population.
+    r = client.post("/review/bulk-clear", data={"q": "intern"})
+    assert r.status_code == 200
+    assert _row(seeded_db, "greenhouse:plain")["verdict"] == "no_match"  # didn't match q
+
+
+def test_focus_mode_ignores_filters(client):
+    r = client.get("/review", params={"mode": "focus", "q": "cook"})
+    assert r.status_code == 200
+    assert "1 of 3" in r.text  # global queue, not the filtered one

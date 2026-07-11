@@ -22,6 +22,28 @@ router = APIRouter()
 PAGE_SIZE = 50
 
 
+def _filters(q: str = "", source: str = "", sort: str = "rank") -> dict:
+    """Normalized filter state for the queue; bad sorts coerce to the default."""
+    return {
+        "q": q.strip(),
+        "source": source,
+        "sort": sort if sort in review.SORTS else "rank",
+    }
+
+
+def _filter_ctx(conn: sqlite3.Connection, filters: dict) -> dict:
+    """Filter-related template context shared by every _list_region renderer."""
+    filtered = bool(filters["q"] or filters["source"])
+    return {
+        "filters": filters,
+        "filtered": filtered,
+        "shown": review.count_pending_filtered(conn, q=filters["q"], source=filters["source"])
+        if filtered
+        else None,
+        "source_options": review.pending_source_keys(conn),
+    }
+
+
 def _hygiene_counts(request: Request, conn: sqlite3.Connection) -> dict:
     """Counts for the queue-hygiene buttons. A broken sources.yaml means no leak
     detection this render (count 0) — never a 500."""
@@ -85,21 +107,28 @@ def review_page(
     request: Request,
     mode: str = "list",
     offset: int = 0,
+    q: str = "",
+    source: str = "",
+    sort: str = "rank",
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     if mode == "focus":
+        # Focus mode deliberately ignores filters: it walks global pending offsets.
         ctx = _focus_ctx(conn, offset)
         ctx["active"] = "review"
         return templates.TemplateResponse(request, "review/focus.html", ctx)
     ctx = _counts_ctx(conn)
     ctx.update(_hygiene_counts(request, conn))
-    rows = review.list_pending(conn, limit=PAGE_SIZE)
+    f = _filters(q, source, sort)
+    ctx.update(_filter_ctx(conn, f))
+    rows = review.list_pending(conn, limit=PAGE_SIZE, q=f["q"], source=f["source"],
+                               sort=f["sort"])
     ctx.update(
         {
             "active": "review",
             "rows": rows,
             "offset": 0,
-            "more": len(rows) == PAGE_SIZE and ctx["total"] > PAGE_SIZE,
+            "more": len(rows) == PAGE_SIZE,
         }
     )
     return templates.TemplateResponse(request, "review/index.html", ctx)
@@ -107,11 +136,19 @@ def review_page(
 
 @router.get("/review/queue")
 def queue_partial(
-    request: Request, offset: int = 0, conn: sqlite3.Connection = Depends(get_conn)
+    request: Request,
+    offset: int = 0,
+    q: str = "",
+    source: str = "",
+    sort: str = "rank",
+    conn: sqlite3.Connection = Depends(get_conn),
 ):
     """Next slice for the infinite scroll; `offset` is the caller's rendered-row count."""
     ctx = _counts_ctx(conn)
-    rows = review.list_pending(conn, limit=PAGE_SIZE, offset=offset)
+    f = _filters(q, source, sort)
+    ctx.update(_filter_ctx(conn, f))
+    rows = review.list_pending(conn, limit=PAGE_SIZE, offset=offset, q=f["q"],
+                               source=f["source"], sort=f["sort"])
     ctx.update({"rows": rows, "offset": offset, "more": len(rows) == PAGE_SIZE})
     return templates.TemplateResponse(request, "review/_rows.html", ctx)
 
@@ -131,6 +168,9 @@ def post_verdict(
     reason: str = Form(""),
     mode: str = Form("list"),
     offset: int = Form(0),
+    q: str = Form(""),
+    source: str = Form(""),
+    sort: str = Form("rank"),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     if verdict not in review.VERDICTS:
@@ -151,6 +191,7 @@ def post_verdict(
         ctx.update({"toast": toast, "oob": True})
         return templates.TemplateResponse(request, "review/_focus_card.html", ctx)
     ctx = _counts_ctx(conn)
+    ctx.update(_filter_ctx(conn, _filters(q, source, sort)))
     ctx["toast"] = toast
     return templates.TemplateResponse(request, "review/_verdict_response.html", ctx)
 
@@ -160,6 +201,9 @@ def post_undo(
     request: Request,
     posting_id: str = Form(...),
     mode: str = Form("list"),
+    q: str = Form(""),
+    source: str = Form(""),
+    sort: str = Form("rank"),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     _posting(conn, posting_id)
@@ -172,55 +216,77 @@ def post_undo(
         ctx["oob"] = True
         return templates.TemplateResponse(request, "review/_focus_card.html", ctx)
     ctx = _counts_ctx(conn)
-    rows = review.list_pending(conn, limit=PAGE_SIZE)
+    f = _filters(q, source, sort)
+    ctx.update(_filter_ctx(conn, f))
+    rows = review.list_pending(conn, limit=PAGE_SIZE, q=f["q"], source=f["source"],
+                               sort=f["sort"])
     ctx.update(
         {"rows": rows, "offset": 0, "more": len(rows) == PAGE_SIZE, "oob": True}
     )
     return templates.TemplateResponse(request, "review/_list_region.html", ctx)
 
 
-def _bulk_response(request, conn, *, cleared: int, now: str, reason: str, noun: str):
+def _bulk_response(request, conn, *, filters: dict, cleared: int | None = None,
+                   now: str = "", reason: str = "", noun: str = ""):
+    """Re-render the (filter-respecting) list region after a bulk action.
+
+    Bulk actions are always GLOBAL in scope — filters only shape the redisplay.
+    """
     ctx = _counts_ctx(conn)
-    rows = review.list_pending(conn, limit=PAGE_SIZE)
-    ctx.update(
-        {
-            "rows": rows,
-            "offset": 0,
-            "more": len(rows) == PAGE_SIZE,
-            "oob": True,
-            "bulk_toast": {"cleared": cleared, "reviewed_at": now,
-                           "reason": reason, "noun": noun},
-        }
-    )
+    ctx.update(_filter_ctx(conn, filters))
+    rows = review.list_pending(conn, limit=PAGE_SIZE, q=filters["q"],
+                               source=filters["source"], sort=filters["sort"])
+    ctx.update({"rows": rows, "offset": 0, "more": len(rows) == PAGE_SIZE, "oob": True})
+    if cleared is not None:
+        ctx["bulk_toast"] = {"cleared": cleared, "reviewed_at": now,
+                             "reason": reason, "noun": noun}
     return templates.TemplateResponse(request, "review/_list_region.html", ctx)
 
 
 @router.post("/review/bulk-clear")
-def post_bulk_clear(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+def post_bulk_clear(
+    request: Request,
+    q: str = Form(""),
+    source: str = Form(""),
+    sort: str = Form("rank"),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
     now = clock.now_iso()
     cleared = review.clear_non_candidate_pending(conn, now=now)
     review.finish(conn)
-    return _bulk_response(request, conn, cleared=cleared, now=now,
-                          reason=review.BULK_CLEAR_REASON, noun="non-candidate")
+    return _bulk_response(request, conn, filters=_filters(q, source, sort), cleared=cleared,
+                          now=now, reason=review.BULK_CLEAR_REASON, noun="non-candidate")
 
 
 @router.post("/review/bulk-clear-leaks")
-def post_bulk_clear_leaks(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+def post_bulk_clear_leaks(
+    request: Request,
+    q: str = Form(""),
+    source: str = Form(""),
+    sort: str = Form("rank"),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
     entries, _, cfg_error = load_entries(request.app.state.sources_path)
     now = clock.now_iso()
     cleared = 0 if cfg_error else review.clear_guard_leaks(conn, entries, now=now)
     review.finish(conn)
-    return _bulk_response(request, conn, cleared=cleared, now=now,
-                          reason=review.GUARD_LEAK_REASON, noun="guard leak")
+    return _bulk_response(request, conn, filters=_filters(q, source, sort), cleared=cleared,
+                          now=now, reason=review.GUARD_LEAK_REASON, noun="guard leak")
 
 
 @router.post("/review/bulk-clear-closed")
-def post_bulk_clear_closed(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+def post_bulk_clear_closed(
+    request: Request,
+    q: str = Form(""),
+    source: str = Form(""),
+    sort: str = Form("rank"),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
     now = clock.now_iso()
     cleared = review.clear_closed_pending(conn, now=now)
     review.finish(conn)
-    return _bulk_response(request, conn, cleared=cleared, now=now,
-                          reason=review.CLOSED_REASON, noun="closed posting")
+    return _bulk_response(request, conn, filters=_filters(q, source, sort), cleared=cleared,
+                          now=now, reason=review.CLOSED_REASON, noun="closed posting")
 
 
 @router.post("/review/bulk-undo")
@@ -228,15 +294,13 @@ def post_bulk_undo(
     request: Request,
     reviewed_at: str = Form(...),
     reason: str = Form(...),
+    q: str = Form(""),
+    source: str = Form(""),
+    sort: str = Form("rank"),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     review.undo_bulk_clear(conn, reviewed_at=reviewed_at, reason=reason)
-    ctx = _counts_ctx(conn)
-    rows = review.list_pending(conn, limit=PAGE_SIZE)
-    ctx.update(
-        {"rows": rows, "offset": 0, "more": len(rows) == PAGE_SIZE, "oob": True}
-    )
-    return templates.TemplateResponse(request, "review/_list_region.html", ctx)
+    return _bulk_response(request, conn, filters=_filters(q, source, sort))
 
 
 @router.get("/review/peek/{posting_id}")
