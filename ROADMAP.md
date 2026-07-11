@@ -81,10 +81,18 @@ long tail.** Same codebase, same accuracy floor for everyone.
   HTML and detect an embedded Greenhouse/Lever/Ashby board, then resolve the slug.
   Covers a large share of "arbitrary URL" inputs deterministically.
 
-## Phase 1.5 — Learned ranking (learn what you like) — *pull forward: work on this soon*
+## Phase 1.5 — Learned ranking (learn what you like) — *v1 SHIPPED 2026-07-10*
 
 *Goal: the more you verdict, the better the queue gets — postings you'd match float to
 the top, without ever hiding anything.*
+
+> **v1 landed** (`internshelper/ranking.py`): weighted naive Bayes over title tokens +
+> company/source priors + recency, retrained on every collect cycle and verdict path;
+> scores persist on pending rows; "likely match" / numeric pills with hover explanations;
+> `ranking retrain|show|explain|eval` CLI. Backtest on the real history (2026-07-10):
+> precision@10 **0.90 vs 0.50** and AUC **0.894 vs 0.402** against the old
+> candidates-first heuristic. Remaining from this phase: only the optional
+> embedding-similarity accelerator below.
 
 Every review verdict is already a labeled training example we're not using: the
 `postings` row carries title, company, location, description, source, and posted_at;

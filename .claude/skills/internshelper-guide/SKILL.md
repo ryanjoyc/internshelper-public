@@ -37,8 +37,9 @@ Each collect cycle: scrape every source → save each new posting's raw payload 
 haven't been nudged yet), email a one-line nudge. **No classification happens at collect time.**
 
 Keyword flags (`is_internship` / `is_newgrad` / `is_cs_relevant`) are computed at collect time as
-**priority hints only** — they order the review queue (candidates first). They never gate what gets
-collected or shown.
+**priority hints only**. The review queue's best-first order is the **learned rank score**
+(`ranking.py`, retrained each cycle + each verdict; the flags are the tiebreak and the cold-start
+fallback). Neither flags nor score ever gate what gets collected or shown.
 
 ## Module map (`internshelper/`)
 
@@ -46,8 +47,9 @@ collected or shown.
 
 | Module | Responsibility |
 |--------|----------------|
-| `run` | Scheduled collector: fetch all sources, store new payloads as pending, compute priority hints, email the nudge. One invocation = one cycle. |
-| `review` | On-demand review CLI: list pending, set verdicts, finish the queue, summarize confirmed matches. Driven by the `review-internships` skill. |
+| `run` | Scheduled collector: fetch all sources, store new payloads as pending, compute priority hints, retrain+rescore the learned ranking, email the nudge. One invocation = one cycle. |
+| `review` | On-demand review CLI: list pending (searchable/sortable), set verdicts, finish the queue, summarize confirmed matches, list/clear guard leaks + closed-pending (undoable batches). Driven by the `review-internships` skill. |
+| `ranking` | Learned queue ranking (ROADMAP Phase 1.5 v1): weighted naive-Bayes match-likelihood over title tokens + company/source priors + a recency bonus, trained from verdict history. Scores persist on pending rows (`rank_score`/`rank_reasons`); ranking orders, never gates; cold start falls back to candidates-first. Retrained on every collect cycle and every verdict path. |
 | `companies` | The approved-companies index (`config/companies.yaml`, machine-managed): add/list companies, record board proposals, approve (→ writes the board into `sources.yaml` with the default guard) / reject / link / mark no-board. Driven by the `resolve-companies` skill + the web Companies page. |
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
 | `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the launchd plist and install the Dock app on macOS. Idempotent. |
@@ -99,7 +101,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
   `test <url|source_key> [--json]` (`--json` dumps every parsed posting with its
   `posting_id`+`url` — used by `deep-scan-source`; `test` adopts the registered entry's extras
   (e.g. markdown `columns`) when the target is registered, so it parses exactly as collect does)
-- **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary` · `applied` (applied posting_ids — the `deep-scan-source` guard)
+- **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary` · `applied` (applied posting_ids — the `deep-scan-source` guard) · `list-leaks` / `clear-leaks` (pending rows failing their source's *current* title guard)
+- **`ranking`** — `retrain` (rescore all pending) · `show` (stored model summary) · `explain <posting_id>` (score + per-feature contributions) · `eval [--holdout 0.25] [--k 10,25,50]` (time-ordered backtest: precision@k + AUC vs the old heuristic)
 - **`companies`** — `add <name>` · `list [--json]` · `propose <name> --url ... [--count N] [--evidence ...]` · `approve <name>` · `reject <name>` · `resolve-write <name> <source_key>` · `mark-no-board <name>`
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
 - **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.
