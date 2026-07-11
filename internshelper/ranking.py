@@ -1,14 +1,16 @@
-"""Learned ranking (Phase 1.5 v1): a transparent naive-Bayes match-likelihood scorer.
+"""Learned ranking: a transparent naive-Bayes fit-likelihood scorer.
 
-Ranking only, never gating — the score orders the pending queue and badges rows; it
-never hides, filters, or auto-decides. Every review verdict is a labeled example:
-per-term weights over title+description tokens, plus company and source priors, are
-learned from the match/no_match history (weighted Bernoulli NB), with a fixed
-deterministic recency bonus on top. Cold start (< MIN_STRONG_LABELS full-weight
-verdicts, or < MIN_CLASS_LABELS per class) leaves rank_score NULL and the queue
-falls back to the keyword candidates-first heuristic.
+Ranking only, never gating — the score orders the Inbox within its tiers; it never
+hides, filters, or auto-decides. Training labels come from what the user actually
+does (`gather_labels`, precedence application > tier pin > verdict): applying —
+including later rejections — is positive, dismissing or demoting is negative, and
+the historical match/no_match verdicts remain as seed data. Per-term weights over
+title+description tokens, plus company and source priors, are learned as a weighted
+Bernoulli NB, with a fixed deterministic recency bonus on top. Cold start
+(< MIN_STRONG_LABELS full-weight labels, or < MIN_CLASS_LABELS per class) leaves
+rank_score NULL and the Inbox falls back to the keyword candidates-first heuristic.
 
-Scores are persisted onto pending rows (`rank_score`, `rank_reasons`) at retrain
+Scores are persisted onto inbox rows (`rank_score`, `rank_reasons`) at retrain
 time so paging stays stable between requests; the model itself is stored in
 meta['rank_model'] for inspection (`show` / `explain`), never read on the hot path.
 """
@@ -23,7 +25,7 @@ import sqlite3
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
-from internshelper import clock, config, db, text
+from internshelper import clock, config, db, store, text
 from internshelper.dotenv import load_dotenv
 
 MIN_STRONG_LABELS = 30      # cold-start floor: full-weight verdicts needed to train
@@ -103,22 +105,71 @@ def _row_features(row) -> list[tuple[str, str]]:
     return feats
 
 
-def train_rows(rows: list, now: str) -> Model | None:
-    """Fit the weighted Bernoulli NB counts; None = cold start (too few strong labels)."""
-    strong_m = strong_n = 0
+# Tier order for pin direction: pinning to a LOWER index than the tier the card sat
+# in is a promotion (positive label); higher is a demotion (negative).
+_TIER_RANK = {"apply_first": 0, "target": 1, "everything_else": 2, "long_shots": 3}
+
+
+def _signal(r) -> tuple[int, float, str | None] | None:
+    """(label, weight, labeled_at) for one joined posting row, or None if unlabeled.
+
+    Precedence application > pin > verdict: a dismissed-then-applied posting counts
+    positive, and a pin overrides the seed verdict it contradicts.
+    """
+    if r["app_status"] in store.PIPELINE_STATUSES:
+        return 1, 1.0, r["applied_date"] or r["first_seen"]
+    pin = _TIER_RANK.get(r["pinned_tier"] or "")
+    before = _TIER_RANK.get(r["tier_before_pin"] or "")
+    if pin is not None and before is not None and pin != before:
+        return (1 if pin < before else 0), 1.0, r["pinned_at"]
+    if r["verdict"] in ("match", "no_match"):
+        return (
+            1 if r["verdict"] == "match" else 0,
+            label_weight(r["verdict_reason"]),
+            r["reviewed_at"],
+        )
+    return None
+
+
+def gather_labels(conn: sqlite3.Connection) -> list[dict]:
+    """The unified training set: one row per labeled posting, ordered by labeled_at.
+
+    Each row carries the posting's features plus `label` (1 = positive), `weight`,
+    and `labeled_at` — the single source of truth for train() and evaluate().
+    """
+    rows = conn.execute(
+        "SELECT p.posting_id, p.title, p.company, p.description, p.source_key, "
+        "p.posted_at, p.first_seen, p.is_cs_relevant, p.is_internship, p.is_newgrad, "
+        "p.verdict, p.verdict_reason, p.reviewed_at, "
+        "p.pinned_tier, p.tier_before_pin, p.pinned_at, "
+        "a.status AS app_status, a.applied_date "
+        "FROM postings p LEFT JOIN applications a ON a.posting_id = p.posting_id"
+    ).fetchall()
+    out = []
     for r in rows:
-        if label_weight(r["verdict_reason"]) == 1.0:
-            if r["verdict"] == "match":
-                strong_m += 1
-            else:
-                strong_n += 1
+        sig = _signal(r)
+        if sig is None:
+            continue
+        label, weight, at = sig
+        d = dict(r)
+        d.update(label=label, weight=weight, labeled_at=at or r["first_seen"])
+        out.append(d)
+    out.sort(key=lambda d: (d["labeled_at"] or "", d["posting_id"]))
+    return out
+
+
+def train_rows(rows: list, now: str) -> Model | None:
+    """Fit the weighted Bernoulli NB counts from `gather_labels`-shaped rows
+    (each has `label` and `weight`); None = cold start (too few strong labels)."""
+    strong_m = sum(1 for r in rows if r["weight"] == 1.0 and r["label"])
+    strong_n = sum(1 for r in rows if r["weight"] == 1.0 and not r["label"])
     if strong_m + strong_n < MIN_STRONG_LABELS or min(strong_m, strong_n) < MIN_CLASS_LABELS:
         return None
 
     model = Model(trained_at=now, n_strong=strong_m + strong_n)
     for r in rows:
-        w = label_weight(r["verdict_reason"])
-        cls = 0 if r["verdict"] == "match" else 1
+        w = r["weight"]
+        cls = 0 if r["label"] else 1
         if cls == 0:
             model.n_match += w
         else:
@@ -135,12 +186,7 @@ def train_rows(rows: list, now: str) -> Model | None:
 
 
 def train(conn: sqlite3.Connection, now: str) -> Model | None:
-    rows = conn.execute(
-        "SELECT posting_id, title, company, description, source_key, posted_at, first_seen, "
-        "verdict, verdict_reason FROM postings "
-        "WHERE verdict IN ('match', 'no_match') ORDER BY reviewed_at, posting_id"
-    ).fetchall()
-    return train_rows(rows, now)
+    return train_rows(gather_labels(conn), now)
 
 
 def _parse_ts(value: str | None) -> datetime | None:
@@ -198,10 +244,15 @@ def top_reasons(contribs: list, limit: int = TOP_REASONS) -> str:
     return json.dumps([[k, round(v, 3)] for k, v in contribs[:limit]])
 
 
-def rescore_pending(conn: sqlite3.Connection, now: str) -> int:
-    """Retrain from scratch and persist a score onto every pending row (one transaction).
+# Every non-dismissed posting gets a score (pipeline rows ride along — harmless, and
+# simpler than excluding them). Dismissed rows keep whatever score they had.
+_INBOX_SQL = "(verdict IS NULL OR verdict != 'no_match')"
 
-    Cold start NULLs both columns on all pending rows, so a DB that dips below the
+
+def rescore_inbox(conn: sqlite3.Connection, now: str) -> int:
+    """Retrain from scratch and persist a score onto every inbox row (one transaction).
+
+    Cold start NULLs both columns on all inbox rows, so a DB that dips below the
     training floor cleanly reverts to the candidates-first heuristic. Returns the
     number of rows touched. Idempotent for fixed DB contents + `now`.
     """
@@ -209,13 +260,13 @@ def rescore_pending(conn: sqlite3.Connection, now: str) -> int:
     if model is None:
         cur = conn.execute(
             "UPDATE postings SET rank_score = NULL, rank_reasons = NULL "
-            "WHERE review_status = 'pending'"
+            f"WHERE {_INBOX_SQL}"
         )
         conn.commit()
         return cur.rowcount
     rows = conn.execute(
         "SELECT posting_id, title, company, description, source_key, posted_at, first_seen "
-        "FROM postings WHERE review_status = 'pending'"
+        f"FROM postings WHERE {_INBOX_SQL}"
     ).fetchall()
     updates = []
     for r in rows:
@@ -277,30 +328,27 @@ def _precision_at(ordered_labels: list, ks) -> dict:
 
 
 def evaluate(conn: sqlite3.Connection, holdout: float = 0.25, ks=(10, 25, 50)) -> dict:
-    """Backtest: train on the older slice of verdict history, grade on the newer one.
+    """Backtest: train on the older slice of the label history, grade on the newer one.
 
-    Time-ordered split (simulates deployment); weak labels may train but never grade;
-    the recency bonus is disabled (evaluate the learned model, not the freshness
-    prior). Reports precision@k + AUC vs the pre-ranking heuristic order as baseline.
-    Deterministic: `now` is the max reviewed_at in the data.
+    Runs over the unified `gather_labels` set (applications + pins + verdicts), so
+    the seed verdict history and the new behavioral signals grade together in one
+    chronology. Time-ordered split (simulates deployment); weak labels may train but
+    never grade; the recency bonus is disabled (evaluate the learned model, not the
+    freshness prior). Reports precision@k + AUC vs the pre-ranking heuristic order
+    as baseline. Deterministic: `now` is the max labeled_at in the data.
     """
-    rows = conn.execute(
-        "SELECT posting_id, title, company, description, source_key, posted_at, first_seen, "
-        "is_cs_relevant, is_internship, is_newgrad, verdict, verdict_reason, reviewed_at "
-        "FROM postings WHERE verdict IN ('match', 'no_match') "
-        "ORDER BY reviewed_at, posting_id"
-    ).fetchall()
+    rows = gather_labels(conn)
     if not rows:
         return {"status": "no_data"}
-    now = max((r["reviewed_at"] for r in rows if r["reviewed_at"]), default=None) or clock.now_iso()
+    now = max((r["labeled_at"] for r in rows if r["labeled_at"]), default=None) or clock.now_iso()
     split = int(len(rows) * (1 - holdout))
     train_slice, test_slice = rows[:split], rows[split:]
-    test_strong = [r for r in test_slice if label_weight(r["verdict_reason"]) == 1.0]
+    test_strong = [r for r in test_slice if r["weight"] == 1.0]
     base = {
         "train_size": len(train_slice),
         "test_size": len(test_strong),
         "test_weak_dropped": len(test_slice) - len(test_strong),
-        "test_matches": sum(1 for r in test_strong if r["verdict"] == "match"),
+        "test_matches": sum(1 for r in test_strong if r["label"]),
     }
     model = train_rows(train_slice, now)
     if model is None:
@@ -310,9 +358,9 @@ def evaluate(conn: sqlite3.Connection, holdout: float = 0.25, ks=(10, 25, 50)) -
 
     scored = [(score(model, r, now, recency=False)[0], r) for r in test_strong]
     scored.sort(key=lambda sr: -sr[0])
-    labels = [1 if r["verdict"] == "match" else 0 for _, r in scored]
+    labels = [r["label"] for _, r in scored]
     baseline_rows = sorted(test_strong, key=_heuristic_key)
-    baseline_labels = [1 if r["verdict"] == "match" else 0 for r in baseline_rows]
+    baseline_labels = [r["label"] for r in baseline_rows]
     auc = _auc([(s, y) for (s, _), y in zip(scored, labels)])
     baseline_auc = _auc(
         [(-i, y) for i, y in enumerate(baseline_labels)]  # rank order as the "score"
@@ -340,8 +388,9 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="internshelper.ranking")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("retrain", help="retrain and rescore every pending posting")
+    sub.add_parser("retrain", help="retrain and rescore every inbox posting")
     sub.add_parser("show", help="print the stored model summary (JSON)")
+    sub.add_parser("labels", help="the unified training labels (JSON) — debugging")
     ex = sub.add_parser("explain", help="score one posting and print its contributions")
     ex.add_argument("posting_id")
     ev = sub.add_parser("eval", help="backtest against verdict history (JSON)")
@@ -352,8 +401,14 @@ def main(argv=None) -> int:
     conn = _open()
 
     if args.cmd == "retrain":
-        n = rescore_pending(conn, now=clock.now_iso())
-        print(f"rescored {n} pending posting(s)")
+        n = rescore_inbox(conn, now=clock.now_iso())
+        print(f"rescored {n} inbox posting(s)")
+    elif args.cmd == "labels":
+        print(json.dumps([
+            {"posting_id": r["posting_id"], "title": r["title"], "company": r["company"],
+             "label": r["label"], "weight": r["weight"], "labeled_at": r["labeled_at"]}
+            for r in gather_labels(conn)
+        ], indent=2))
     elif args.cmd == "show":
         raw = db.get_meta(conn, MODEL_META_KEY)
         if not raw:

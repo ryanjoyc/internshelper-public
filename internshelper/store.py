@@ -18,6 +18,11 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
 # the schema; this is the validated vocabulary every writer must use.
 STATUS_OPTIONS = ("Untracked", "Interested", "Applied", "Interviewing", "Rejected", "Offer")
 
+# The pipeline subset: statuses meaning "the user acted on this posting". They pull the
+# posting out of the Inbox and are positive ranking labels (Rejected included — the
+# user CHOSE to apply; the employer's answer isn't a preference signal).
+PIPELINE_STATUSES = ("Applied", "Interviewing", "Offer", "Rejected")
+
 # The "keyword-candidate" rule, single source of truth. SQL fragment for queries;
 # `is_candidate` is the same predicate for a fetched row (sqlite3.Row or dict).
 CANDIDATE_SQL = "(is_cs_relevant = 1 OR is_internship = 1 OR is_newgrad = 1)"

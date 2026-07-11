@@ -441,7 +441,7 @@ def main(argv=None) -> int:
         try:  # every verdict is a new label — retrain the ranker, but never block on it
             from internshelper import ranking
 
-            ranking.rescore_pending(conn, now=clock.now_iso())
+            ranking.rescore_inbox(conn, now=clock.now_iso())
         except Exception:
             pass
         print(f"{args.posting_id}: {args.verdict}")

@@ -84,7 +84,7 @@ def run_cycle(
     # failure must never break the collect — record it for the Health tab and move on.
     rescored = 0
     try:
-        rescored = ranking.rescore_pending(conn, now)
+        rescored = ranking.rescore_inbox(conn, now)
     except Exception as e:
         store.record_run(conn, "rank", ok=False, count=0,
                          error=f"{type(e).__name__}: {e}", now=now)

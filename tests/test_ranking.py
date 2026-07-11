@@ -17,10 +17,12 @@ def _conn(tmp_path):
 
 def _row(title, verdict="match", reason="", company="Stripe", source_key="greenhouse:stripe",
          description="", posted_at=None, first_seen=NOW, posting_id="g:x"):
+    """A gather_labels-shaped training row (label/weight derived like _signal does)."""
     return {
         "posting_id": posting_id, "title": title, "company": company,
         "description": description, "source_key": source_key, "posted_at": posted_at,
         "first_seen": first_seen, "verdict": verdict, "verdict_reason": reason,
+        "label": 1 if verdict == "match" else 0, "weight": ranking.label_weight(reason),
     }
 
 
@@ -153,7 +155,54 @@ def test_explanations_sorted_by_magnitude_and_json_round_trip():
     assert len(parsed) == 2 and all(len(p) == 2 for p in parsed)
 
 
-# ---------- rescore_pending ----------
+# ---------- gather_labels ----------
+
+def _seed_one(c, pid, title="SWE Intern", company="Stripe"):
+    store.upsert(c, Posting(posting_id=pid, source_key="greenhouse:stripe", title=title,
+                            company=company, url=f"https://x/{pid}"), now=NOW)
+
+
+def test_gather_labels_precedence_application_beats_verdict(tmp_path):
+    c = _conn(tmp_path)
+    _seed_one(c, "g:1")
+    review.set_verdict(c, "g:1", "no_match", "dismissed: board", now=NOW)
+    store.set_application_status(c, "g:1", "Applied", applied_date_if_empty="2026-07-11")
+    (row,) = ranking.gather_labels(c)
+    assert row["label"] == 1 and row["weight"] == 1.0     # applied wins over dismissed
+    assert row["labeled_at"] == "2026-07-11"
+
+
+def test_gather_labels_pin_direction_and_weights(tmp_path):
+    c = _conn(tmp_path)
+    for pid in ("g:promo", "g:demo", "g:weak", "g:silent"):
+        _seed_one(c, pid)
+    c.execute("UPDATE postings SET pinned_tier='apply_first', tier_before_pin='everything_else',"
+              " pinned_at='2026-07-11T09:00:00+00:00' WHERE posting_id='g:promo'")
+    c.execute("UPDATE postings SET pinned_tier='long_shots', tier_before_pin='target',"
+              " pinned_at='2026-07-11T09:01:00+00:00' WHERE posting_id='g:demo'")
+    c.commit()
+    review.set_verdict(c, "g:weak", "no_match", "bulk: guard leak", now=NOW)
+    by_id = {r["posting_id"]: r for r in ranking.gather_labels(c)}
+    assert "g:silent" not in by_id                        # unlabeled rows never train
+    assert by_id["g:promo"]["label"] == 1 and by_id["g:promo"]["weight"] == 1.0
+    assert by_id["g:demo"]["label"] == 0
+    assert by_id["g:weak"]["weight"] == ranking.WEAK_LABEL_WEIGHT
+    # Rejected is positive: the user chose to apply.
+    store.set_application_status(c, "g:demo", "Rejected")
+    by_id = {r["posting_id"]: r for r in ranking.gather_labels(c)}
+    assert by_id["g:demo"]["label"] == 1
+
+
+def test_gather_labels_sorted_by_labeled_at(tmp_path):
+    c = _conn(tmp_path)
+    _seed_one(c, "g:old")
+    _seed_one(c, "g:new")
+    review.set_verdict(c, "g:new", "match", "", now="2026-07-11T10:00:00+00:00")
+    review.set_verdict(c, "g:old", "match", "", now="2026-07-01T10:00:00+00:00")
+    assert [r["posting_id"] for r in ranking.gather_labels(c)] == ["g:old", "g:new"]
+
+
+# ---------- rescore_inbox ----------
 
 def _seed_history(c, n_match=20, n_no_match=15):
     """Interleaved match/no_match history with increasing reviewed_at timestamps,
@@ -169,25 +218,27 @@ def _seed_history(c, n_match=20, n_no_match=15):
         review.set_verdict(c, f"{kind}:{i}", verdict, reason, now=ts)
 
 
-def test_rescore_pending_persists_scores_and_model(tmp_path):
+def test_rescore_inbox_persists_scores_and_model(tmp_path):
     c = _conn(tmp_path)
-    _seed_history(c)
+    _seed_history(c)  # 20 match + 15 no_match
     store.upsert(c, Posting(posting_id="p:1", source_key="greenhouse:stripe",
                             title="Quant Intern", company="Stripe", url="https://x/p1",
                             is_cs_relevant=True), now=NOW)
-    n = ranking.rescore_pending(c, NOW)
-    assert n == 1
+    n = ranking.rescore_inbox(c, NOW)
+    assert n == 21  # everything not dismissed: 20 old matches + the new arrival
     row = c.execute("SELECT rank_score, rank_reasons FROM postings "
                     "WHERE posting_id='p:1'").fetchone()
     assert row["rank_score"] is not None and 0 < row["rank_score"] < 1
     assert "quant" in row["rank_reasons"]
-    # reviewed rows are never scored
-    done = c.execute("SELECT rank_score FROM postings WHERE posting_id='m:0'").fetchone()
-    assert done["rank_score"] is None
+    # old matches are inbox rows now — scored; dismissed rows never are
+    assert c.execute("SELECT rank_score FROM postings WHERE posting_id='m:0'"
+                     ).fetchone()["rank_score"] is not None
+    assert c.execute("SELECT rank_score FROM postings WHERE posting_id='n:0'"
+                     ).fetchone()["rank_score"] is None
     assert json.loads(db.get_meta(c, ranking.MODEL_META_KEY))["trained_at"] == NOW
 
 
-def test_rescore_pending_cold_start_nulls_scores(tmp_path):
+def test_rescore_inbox_cold_start_nulls_scores(tmp_path):
     c = _conn(tmp_path)
     _seed_history(c, n_match=3, n_no_match=3)  # below the floor
     store.upsert(c, Posting(posting_id="p:1", source_key="greenhouse:stripe",
@@ -195,22 +246,22 @@ def test_rescore_pending_cold_start_nulls_scores(tmp_path):
                  now=NOW)
     c.execute("UPDATE postings SET rank_score=0.9, rank_reasons='[]' WHERE posting_id='p:1'")
     c.commit()
-    ranking.rescore_pending(c, NOW)
+    ranking.rescore_inbox(c, NOW)
     row = c.execute("SELECT rank_score, rank_reasons FROM postings "
                     "WHERE posting_id='p:1'").fetchone()
     assert row["rank_score"] is None and row["rank_reasons"] is None
 
 
-def test_rescore_pending_is_idempotent(tmp_path):
+def test_rescore_inbox_is_idempotent(tmp_path):
     c = _conn(tmp_path)
     _seed_history(c)
     store.upsert(c, Posting(posting_id="p:1", source_key="greenhouse:stripe",
                             title="Quant Intern", company="Stripe", url="https://x/p1"),
                  now=NOW)
-    ranking.rescore_pending(c, NOW)
+    ranking.rescore_inbox(c, NOW)
     first = c.execute("SELECT rank_score, rank_reasons FROM postings "
                       "WHERE posting_id='p:1'").fetchone()
-    ranking.rescore_pending(c, NOW)
+    ranking.rescore_inbox(c, NOW)
     second = c.execute("SELECT rank_score, rank_reasons FROM postings "
                        "WHERE posting_id='p:1'").fetchone()
     assert tuple(first) == tuple(second)
@@ -268,7 +319,7 @@ def test_cli_retrain_show_eval(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("INTERNSHELPER_DB", str(tmp_path / "t.db"))
 
     assert ranking.main(["retrain"]) == 0
-    assert "rescored 1" in capsys.readouterr().out
+    assert "rescored 31" in capsys.readouterr().out  # 30 matches + the pending row
     assert ranking.main(["show"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["n_strong"] == 60

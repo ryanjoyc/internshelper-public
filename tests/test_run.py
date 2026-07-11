@@ -239,7 +239,7 @@ def test_run_cycle_rescores_new_pending_rows(tmp_path, monkeypatch):
     _wire(monkeypatch, {e.source_key: _FakeConnector(posts=[_raw("greenhouse:new", e.source_key)])})
     res = _collect(c, tmp_path, _settings(), [e], "2026-06-18T12:00:00+00:00", _Send())
 
-    assert res.rescored == 1
+    assert res.rescored == 21  # inbox scope: 20 old matches + the new arrival
     row = c.execute("SELECT rank_score FROM postings WHERE posting_id='greenhouse:new'").fetchone()
     assert row["rank_score"] is not None
 
@@ -254,7 +254,7 @@ def test_run_cycle_survives_a_raising_rescorer(tmp_path, monkeypatch):
     def boom(conn, now):
         raise RuntimeError("ranker broke")
 
-    monkeypatch.setattr(ranking, "rescore_pending", boom)
+    monkeypatch.setattr(ranking, "rescore_inbox", boom)
     res = _collect(c, tmp_path, _settings(), [e], "2026-06-18T12:00:00+00:00", _Send())
 
     assert res.rescored == 0  # cycle completed anyway

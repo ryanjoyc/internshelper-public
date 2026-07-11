@@ -35,7 +35,7 @@ def _rescore(conn: sqlite3.Connection) -> None:
     """Retrain the learned ranker after a verdict mutation — every verdict is a new
     label. Best-effort: a ranking bug must never block triage."""
     try:
-        ranking.rescore_pending(conn, now=clock.now_iso())
+        ranking.rescore_inbox(conn, now=clock.now_iso())
     except Exception:
         pass
 
