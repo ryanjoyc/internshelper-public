@@ -48,6 +48,44 @@ def test_migration_adds_v2_columns_to_v1_db_without_data_loss(tmp_path):
     assert row["review_status"] == "pending"  # default applied to the migrated row
 
 
+def test_fresh_db_has_v3_rank_columns(tmp_path):
+    conn = _conn(tmp_path)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(postings)")}
+    assert {"rank_score", "rank_reasons"} <= cols
+
+
+def test_migration_adds_v3_rank_columns_without_data_loss(tmp_path):
+    p = tmp_path / "v2.db"
+    raw = sqlite3.connect(p)
+    raw.execute(
+        """CREATE TABLE postings (
+            posting_id TEXT PRIMARY KEY, source_key TEXT NOT NULL, source_type TEXT NOT NULL,
+            title TEXT NOT NULL, company TEXT, location TEXT, url TEXT, description TEXT,
+            is_internship INTEGER NOT NULL DEFAULT 0, is_newgrad INTEGER NOT NULL DEFAULT 0,
+            is_cs_relevant INTEGER NOT NULL DEFAULT 0, first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1,
+            payload_path TEXT, review_status TEXT NOT NULL DEFAULT 'pending',
+            verdict TEXT, verdict_reason TEXT, reviewed_at TEXT, posted_at TEXT)"""
+    )
+    raw.execute(
+        "INSERT INTO postings (posting_id, source_key, source_type, title, first_seen, last_seen) "
+        "VALUES ('greenhouse:1','greenhouse:stripe','greenhouse','Old Role','t','t')"
+    )
+    raw.commit()
+    raw.close()
+
+    conn = db.connect(p)
+    db.init_db(conn)
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(postings)")}
+    assert {"rank_score", "rank_reasons"} <= cols
+    row = conn.execute(
+        "SELECT title, rank_score FROM postings WHERE posting_id='greenhouse:1'"
+    ).fetchone()
+    assert row["title"] == "Old Role"
+    assert row["rank_score"] is None  # unscored until the first retrain
+
+
 def test_fresh_db_runs_table_has_dropped_column(tmp_path):
     conn = _conn(tmp_path)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(runs)")}

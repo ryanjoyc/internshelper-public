@@ -27,12 +27,18 @@ _DESCRIPTION_KEYS = ("content", "description", "descriptionPlain", "descriptionH
 
 _FIELDS = (
     "posting_id, source_key, title, company, location, url, payload_path, posted_at, "
-    "first_seen, is_internship, is_newgrad, is_cs_relevant"
+    "first_seen, is_internship, is_newgrad, is_cs_relevant, rank_score, rank_reasons"
 )
 
 SORTS = ("rank", "newest")
 
 _RECENCY_SQL = "(posted_at IS NULL), posted_at DESC, first_seen DESC, posting_id"
+
+# Best-first: learned rank_score dominates when present (NULL = unscored/cold-start,
+# sorts after scored rows); the keyword-candidate tier + recency remain the tiebreak
+# and are the entire order when every score is NULL — byte-for-byte the pre-ranking
+# behavior. Ranking orders, never gates: no WHERE clause depends on the score.
+_RANK_SQL = "(rank_score IS NULL), rank_score DESC"
 
 
 def _pending_where(q: str = "", source: str = "") -> tuple[str, list[object]]:
@@ -57,8 +63,8 @@ def list_pending(
     source: str = "",
     sort: str = "rank",
 ) -> list[dict]:
-    """Pending postings; `sort="rank"` = best-first (keyword-candidates first, then
-    most-recently-posted), `sort="newest"` = pure recency.
+    """Pending postings; `sort="rank"` = best-first (learned score when trained,
+    keyword-candidates-first as tiebreak/fallback), `sort="newest"` = pure recency.
 
     Optional `q` searches title/company (case-insensitive substring); `source` filters
     on an exact source_key. Within a tier, rows with a known `posted_at` come before
@@ -69,7 +75,7 @@ def list_pending(
     order = (
         _RECENCY_SQL
         if sort == "newest"
-        else f"{store.CANDIDATE_SQL} DESC, {_RECENCY_SQL}"
+        else f"{_RANK_SQL}, {store.CANDIDATE_SQL} DESC, {_RECENCY_SQL}"
     )
     sql = f"SELECT {_FIELDS} FROM postings{where} ORDER BY {order}"
     if limit is not None or offset:
@@ -332,6 +338,12 @@ def main(argv=None) -> int:
             print(f"cleared {n} guard leak(s)")
     elif args.cmd == "set-verdict":
         set_verdict(conn, args.posting_id, args.verdict, args.reason, now=clock.now_iso())
+        try:  # every verdict is a new label — retrain the ranker, but never block on it
+            from internshelper import ranking
+
+            ranking.rescore_pending(conn, now=clock.now_iso())
+        except Exception:
+            pass
         print(f"{args.posting_id}: {args.verdict}")
     elif args.cmd == "finish":
         reset = finish(conn)

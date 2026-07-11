@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from internshelper import classify, clock, config, db, mailer, notify, store
+from internshelper import classify, clock, config, db, mailer, notify, ranking, store
 from internshelper.config import Settings, SourceEntry
 from internshelper.connectors import build_connector
 from internshelper.dotenv import feature_enabled, load_dotenv
@@ -25,6 +25,7 @@ class CollectResult:
     pending: int
     candidates: int
     sent: bool
+    rescored: int = 0
 
 
 def process_source(
@@ -79,6 +80,15 @@ def run_cycle(
     for entry in sources:
         process_source(conn, entry, compiled, now, payloads_dir)
 
+    # Learned ranking: score every pending row before the user sees it. A ranking
+    # failure must never break the collect — record it for the Health tab and move on.
+    rescored = 0
+    try:
+        rescored = ranking.rescore_pending(conn, now)
+    except Exception as e:
+        store.record_run(conn, "rank", ok=False, count=0,
+                         error=f"{type(e).__name__}: {e}", now=now)
+
     pending, candidates = store.pending_counts(conn)
     sent = False
     already = (db.get_meta(conn, "pending_notified") or "0") == "1"
@@ -90,7 +100,8 @@ def run_cycle(
             sent = True
         except Exception as e:
             store.record_run(conn, "notify", ok=False, count=0, error=str(e), now=now)
-    return CollectResult(pending=pending, candidates=candidates, sent=sent)
+    return CollectResult(pending=pending, candidates=candidates, sent=sent,
+                         rescored=rescored)
 
 
 def main(argv=None) -> int:
@@ -120,7 +131,8 @@ def main(argv=None) -> int:
                        email_enabled=feature_enabled("EMAIL"))
     print(
         f"internsHELPer: collected — sources={len(sources)} "
-        f"pending={result.pending} (candidates={result.candidates}) nudge_sent={result.sent}"
+        f"pending={result.pending} (candidates={result.candidates}) "
+        f"rescored={result.rescored} nudge_sent={result.sent}"
     )
     return 0
 

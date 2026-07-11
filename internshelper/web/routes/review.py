@@ -12,7 +12,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from internshelper import clock, review, store
+from internshelper import clock, ranking, review, store
 from internshelper.web.deps import get_conn, nav_context
 from internshelper.web.routes.sources import load_entries
 from internshelper.web.templating import templates
@@ -20,6 +20,15 @@ from internshelper.web.templating import templates
 router = APIRouter()
 
 PAGE_SIZE = 50
+
+
+def _rescore(conn: sqlite3.Connection) -> None:
+    """Retrain the learned ranker after a verdict mutation — every verdict is a new
+    label. Best-effort: a ranking bug must never block triage."""
+    try:
+        ranking.rescore_pending(conn, now=clock.now_iso())
+    except Exception:
+        pass
 
 
 def _filters(q: str = "", source: str = "", sort: str = "rank") -> dict:
@@ -178,6 +187,7 @@ def post_verdict(
     posting = _posting(conn, posting_id)
     review.set_verdict(conn, posting_id, verdict, reason, now=clock.now_iso())
     review.finish(conn)  # re-arms the email nudge the moment the queue empties
+    _rescore(conn)
 
     toast = {
         "verdict": verdict,
@@ -208,6 +218,7 @@ def post_undo(
 ):
     _posting(conn, posting_id)
     review.reset_verdict(conn, posting_id)
+    _rescore(conn)
     if mode == "focus":
         # Land on the restored posting so the user sees what came back.
         pending_ids = [r["posting_id"] for r in review.list_pending(conn)]
@@ -254,6 +265,7 @@ def post_bulk_clear(
     now = clock.now_iso()
     cleared = review.clear_non_candidate_pending(conn, now=now)
     review.finish(conn)
+    _rescore(conn)
     return _bulk_response(request, conn, filters=_filters(q, source, sort), cleared=cleared,
                           now=now, reason=review.BULK_CLEAR_REASON, noun="non-candidate")
 
@@ -270,6 +282,7 @@ def post_bulk_clear_leaks(
     now = clock.now_iso()
     cleared = 0 if cfg_error else review.clear_guard_leaks(conn, entries, now=now)
     review.finish(conn)
+    _rescore(conn)
     return _bulk_response(request, conn, filters=_filters(q, source, sort), cleared=cleared,
                           now=now, reason=review.GUARD_LEAK_REASON, noun="guard leak")
 
@@ -285,6 +298,7 @@ def post_bulk_clear_closed(
     now = clock.now_iso()
     cleared = review.clear_closed_pending(conn, now=now)
     review.finish(conn)
+    _rescore(conn)
     return _bulk_response(request, conn, filters=_filters(q, source, sort), cleared=cleared,
                           now=now, reason=review.CLOSED_REASON, noun="closed posting")
 
@@ -300,6 +314,7 @@ def post_bulk_undo(
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     review.undo_bulk_clear(conn, reviewed_at=reviewed_at, reason=reason)
+    _rescore(conn)
     return _bulk_response(request, conn, filters=_filters(q, source, sort))
 
 

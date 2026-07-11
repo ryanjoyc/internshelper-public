@@ -204,6 +204,7 @@ p { margin: 0; }
   color: var(--muted);
 }
 .pill--count { text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; padding: 0 7px; }
+.pill--rank { font-variant-numeric: tabular-nums; min-width: 26px; justify-content: center; }
 
 .pill--pending { background: var(--pending-bg); color: var(--pending-fg); }
 .pill--match { background: var(--match-bg); color: var(--match-fg); }

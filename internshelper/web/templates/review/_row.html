@@ -8,6 +8,13 @@
       </div>
     </div>
     <div class="row-side">
+      {% if r.rank_score is not none %}
+      {% if r.rank_score >= LIKELY_MATCH_THRESHOLD %}
+      <span class="pill pill--match" title="{{ r.rank_reasons | rank_explain }}">likely match</span>
+      {% else %}
+      <span class="pill pill--neutral pill--rank" title="{{ r.rank_reasons | rank_explain }}">{{ r.rank_score | rank_pct }}</span>
+      {% endif %}
+      {% endif %}
       <span class="pill pill--neutral">{{ r.source_key }}</span>
       <span class="row-age">{{ r.posted_at | release(r.first_seen) }}</span>
       <a class="btn btn-ghost btn-sm row-open" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">open ↗</a>

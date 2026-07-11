@@ -33,7 +33,11 @@ CREATE TABLE IF NOT EXISTS postings (
     verdict_reason  TEXT,
     reviewed_at     TEXT,
     -- v2.3: source's own posted/added date (recency); NULL if the source gives none
-    posted_at       TEXT
+    posted_at       TEXT,
+    -- v3: learned ranking (Phase 1.5) — persisted score + top contributing reasons (JSON).
+    -- NULL rank_score = unscored / cold start; the queue then falls back to candidates-first.
+    rank_score      REAL,
+    rank_reasons    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS applications (
@@ -88,6 +92,12 @@ _POSTINGS_V2_COLUMNS = [
     ("posted_at", "TEXT"),
 ]
 
+# v3: learned ranking (Phase 1.5) — both nullable, so ADD COLUMN needs no default.
+_POSTINGS_V3_COLUMNS = [
+    ("rank_score", "REAL"),
+    ("rank_reasons", "TEXT"),
+]
+
 # Columns added to `runs` after its original v2 shape, for additive migration of older DBs.
 _RUNS_COLUMNS = [
     ("dropped", "INTEGER NOT NULL DEFAULT 0"),
@@ -98,6 +108,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     """Create all tables if they do not exist, then apply additive migrations (idempotent)."""
     conn.executescript(SCHEMA)
     _migrate_columns(conn, "postings", _POSTINGS_V2_COLUMNS)
+    _migrate_columns(conn, "postings", _POSTINGS_V3_COLUMNS)
     _migrate_columns(conn, "runs", _RUNS_COLUMNS)
     conn.commit()
 

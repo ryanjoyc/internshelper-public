@@ -250,6 +250,30 @@ def test_list_pending_sort_newest_ignores_candidate_tier(tmp_path):
         ["g:plain", "g:cand"]
 
 
+def test_list_pending_orders_by_rank_score_when_present(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:low", cs=True), now="2026-06-18T10:05:00+00:00")
+    store.upsert(c, _p("g:high"), now="2026-06-18T10:00:00+00:00")
+    store.upsert(c, _p("g:unscored", cs=True), now="2026-06-18T10:10:00+00:00")
+    c.execute("UPDATE postings SET rank_score=0.2 WHERE posting_id='g:low'")
+    c.execute("UPDATE postings SET rank_score=0.9 WHERE posting_id='g:high'")
+    c.commit()  # g:unscored keeps NULL (e.g. collected mid-cycle, not yet rescored)
+
+    ids = [r["posting_id"] for r in review.list_pending(c)]
+    # score dominates the candidate flag; NULLs sort after scored rows
+    assert ids == ["g:high", "g:low", "g:unscored"]
+    assert review.list_pending(c)[0]["rank_score"] == 0.9
+    assert "rank_reasons" in review.list_pending(c)[0]
+
+
+def test_list_pending_all_null_scores_falls_back_to_heuristic(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:plain"), now="2026-06-18T10:05:00+00:00")
+    store.upsert(c, _p("g:cand", cs=True), now="2026-06-18T10:00:00+00:00")
+    ids = [r["posting_id"] for r in review.list_pending(c)]
+    assert ids == ["g:cand", "g:plain"]  # exactly the pre-ranking order
+
+
 def _guarded_entry(token="stripe", guard=("intern", "internship")):
     return config.SourceEntry(type="greenhouse", token=token, title_must_match=list(guard))
 

@@ -254,3 +254,62 @@ def test_focus_mode_ignores_filters(client):
     r = client.get("/review", params={"mode": "focus", "q": "cook"})
     assert r.status_code == 200
     assert "1 of 3" in r.text  # global queue, not the filtered one
+
+
+def _set_rank(db_path, pid, score, reasons='[["quant", 1.7], ["2026", -2.1]]'):
+    c = sqlite3.connect(db_path)
+    c.execute("UPDATE postings SET rank_score=?, rank_reasons=? WHERE posting_id=?",
+              (score, reasons, pid))
+    c.commit()
+    c.close()
+
+
+def test_row_shows_likely_match_badge_with_explanation(client, seeded_db):
+    _set_rank(seeded_db, "greenhouse:1", 0.87)
+    r = client.get("/review")
+    assert "likely match" in r.text
+    assert "↑ quant · ↓ 2026" in r.text  # hover title explanation
+
+
+def test_row_shows_numeric_pill_below_threshold(client, seeded_db):
+    _set_rank(seeded_db, "greenhouse:1", 0.42)
+    r = client.get("/review")
+    assert "likely match" not in r.text
+    assert 'pill--rank" title="↑ quant · ↓ 2026">42<' in r.text
+
+
+def test_unscored_rows_show_no_rank_pill(client):
+    r = client.get("/review")
+    assert "likely match" not in r.text
+    assert "pill--rank" not in r.text
+
+
+def test_focus_card_shows_score_why_line(client, seeded_db):
+    _set_rank(seeded_db, "greenhouse:1", 0.87)
+    r = client.get("/review", params={"mode": "focus"})
+    assert "Score 87 —" in r.text and "↑ quant" in r.text
+
+
+def test_verdict_triggers_rescore_of_remaining_pending(client, seeded_db):
+    # Give the ranker enough interleaved strong history to train.
+    c = sqlite3.connect(seeded_db)
+    for i in range(20):
+        c.execute(
+            "INSERT INTO postings (posting_id, source_key, source_type, title, company, url, "
+            "first_seen, last_seen, review_status, verdict, verdict_reason, reviewed_at) "
+            f"VALUES ('h:m{i}', 'greenhouse:stripe', 'greenhouse', 'Quant Intern', 'C', 'u', "
+            f"'t', 't', 'reviewed', 'match', 'yes', '2026-06-18T10:{i:02d}:00+00:00')")
+    for i in range(15):
+        c.execute(
+            "INSERT INTO postings (posting_id, source_key, source_type, title, company, url, "
+            f"first_seen, last_seen, review_status, verdict, verdict_reason, reviewed_at) "
+            f"VALUES ('h:n{i}', 'greenhouse:stripe', 'greenhouse', 'Sales Manager', 'C', 'u', "
+            f"'t', 't', 'reviewed', 'no_match', 'no', '2026-06-18T11:{i:02d}:00+00:00')")
+    c.commit()
+    c.close()
+
+    r = client.post("/review/verdict",
+                    data={"posting_id": "greenhouse:1", "verdict": "match"})
+    assert r.status_code == 200
+    # The remaining pending rows were rescored by the post-verdict retrain.
+    assert _row(seeded_db, "greenhouse:2")["rank_score"] is not None

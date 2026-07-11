@@ -217,3 +217,46 @@ def test_nudge_send_failure_keeps_flag_unset(tmp_path, monkeypatch):
     assert (db.get_meta(c, "pending_notified") or "0") == "0"  # retry next cycle
     nrun = c.execute("SELECT ok, error FROM runs WHERE source_key='notify'").fetchone()
     assert nrun["ok"] == 0 and "smtp down" in nrun["error"]
+
+
+def test_run_cycle_rescores_new_pending_rows(tmp_path, monkeypatch):
+    from internshelper import review
+
+    c = _conn(tmp_path)
+    # Enough interleaved strong history to train the ranker.
+    for i in range(20):
+        store.upsert(c, Posting(posting_id=f"m:{i}", source_key="greenhouse:stripe",
+                                title="Quant Intern", company="C", url=f"https://x/m{i}"),
+                     now="2026-06-18T10:00:00+00:00")
+        review.set_verdict(c, f"m:{i}", "match", "yes", now=f"2026-06-18T10:{i:02d}:00+00:00")
+    for i in range(15):
+        store.upsert(c, Posting(posting_id=f"n:{i}", source_key="greenhouse:stripe",
+                                title="Sales Manager", company="C", url=f"https://x/n{i}"),
+                     now="2026-06-18T10:00:00+00:00")
+        review.set_verdict(c, f"n:{i}", "no_match", "no", now=f"2026-06-18T11:{i:02d}:00+00:00")
+
+    e = SourceEntry(type="greenhouse", token="stripe")
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=[_raw("greenhouse:new", e.source_key)])})
+    res = _collect(c, tmp_path, _settings(), [e], "2026-06-18T12:00:00+00:00", _Send())
+
+    assert res.rescored == 1
+    row = c.execute("SELECT rank_score FROM postings WHERE posting_id='greenhouse:new'").fetchone()
+    assert row["rank_score"] is not None
+
+
+def test_run_cycle_survives_a_raising_rescorer(tmp_path, monkeypatch):
+    from internshelper import ranking
+
+    c = _conn(tmp_path)
+    e = SourceEntry(type="greenhouse", token="stripe")
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=[_raw("greenhouse:1", e.source_key)])})
+
+    def boom(conn, now):
+        raise RuntimeError("ranker broke")
+
+    monkeypatch.setattr(ranking, "rescore_pending", boom)
+    res = _collect(c, tmp_path, _settings(), [e], "2026-06-18T12:00:00+00:00", _Send())
+
+    assert res.rescored == 0  # cycle completed anyway
+    rank_run = c.execute("SELECT ok, error FROM runs WHERE source_key='rank'").fetchone()
+    assert rank_run["ok"] == 0 and "ranker broke" in rank_run["error"]
