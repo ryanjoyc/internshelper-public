@@ -24,6 +24,7 @@
       <input type="hidden" name="mode" value="focus">
       <input type="hidden" name="offset" value="{{ offset }}">
       <input class="input focus-reason" type="text" name="reason" placeholder="Reason (optional) — R">
+      <a class="btn btn-secondary focus-open" href="{{ card.url | safe_url }}" target="_blank" rel="noopener">Open posting ↗ <kbd>O</kbd></a>
       <button class="btn btn-secondary btn-nomatch" type="submit" name="verdict" value="no_match">✕ No match <kbd>X</kbd></button>
       <button class="btn btn-primary btn-match" type="submit" name="verdict" value="match">✓ Match <kbd>M</kbd></button>
     </form>

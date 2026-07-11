@@ -204,7 +204,6 @@ p { margin: 0; }
   color: var(--muted);
 }
 .pill--count { text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; padding: 0 7px; }
-.pill--rank { font-variant-numeric: tabular-nums; min-width: 26px; justify-content: center; }
 
 .pill--pending { background: var(--pending-bg); color: var(--pending-fg); }
 .pill--match { background: var(--match-bg); color: var(--match-fg); }
@@ -233,8 +232,6 @@ p { margin: 0; }
 .dot--lane-offer { background: var(--offer-fg); }
 .dot--lane-rejected { background: var(--rejected-fg); }
 
-.star { color: var(--accent); font-size: 13px; width: 16px; text-align: center; }
-.star--off { visibility: hidden; }
 
 /* ---------- buttons ---------- */
 
@@ -431,21 +428,6 @@ p { margin: 0; }
 .tier-bulk { margin-left: auto; }
 
 .tier-rows .row:last-child { border-bottom: none; }
-
-/* reason chips: the only colored element on a row — different per row on purpose */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: var(--r-pill);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  background: var(--match-bg);
-  color: var(--match-fg);
-}
-.chip--down { background: var(--nomatch-bg); color: var(--nomatch-fg); }
 
 .row {
   padding: 8px 14px;
@@ -741,8 +723,10 @@ select.input { padding-right: 26px; }
   font-variant-numeric: tabular-nums;
 }
 .focus-card { padding: 22px 24px; }
-.focus-flags { display: flex; gap: 6px; margin-bottom: 10px; }
 .focus-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+/* Titles open the posting: read as text, reveal as links on hover. */
+.row-title a, .focus-title a { color: inherit; text-decoration: none; }
+.row-title a:hover, .focus-title a:hover { text-decoration: underline; }
 .focus-meta { color: var(--muted); margin: 4px 0 14px; }
 .focus-desc { color: var(--text-2); white-space: pre-line; margin: 14px 0; }
 .focus-desc details, .focus-raw { margin-top: 10px; }

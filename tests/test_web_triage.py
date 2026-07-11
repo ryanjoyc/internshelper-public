@@ -242,40 +242,21 @@ def _set_rank(db_path, pid, score, reasons='[["quant", 1.7], ["2026", -2.1]]'):
     c.close()
 
 
-def test_scored_row_shows_reason_chips_and_pct_pill(client, seeded_db):
+def test_rows_carry_no_rank_tags(client, seeded_db):
+    # the user doesn't trust the tag accuracy — scored or not, rows show no chips,
+    # no % pill, no candidate star; tier placement is the only rank surface.
     _set_rank(seeded_db, "greenhouse:1", 0.87)
     r = client.get("/review")
-    assert "likely match" not in r.text  # the one-size-fits-all badge is gone
-    assert '"chip">quant</span>' in r.text  # positive reason chip
-    assert "chip--down" not in r.text  # negative reasons stay off mid/high rows
-    assert 'pill--rank" title="↑ quant · ↓ 2026">87<' in r.text
-
-
-def test_low_tier_row_shows_negative_chips(client, seeded_db):
-    _set_rank(seeded_db, "greenhouse:1", 0.12)
-    r = client.get("/review")
-    assert 'chip--down">↓ 2026</span>' in r.text  # why it's ranked low
-    assert '"chip">quant</span>' not in r.text  # positive reasons stay off low rows
-
-
-def test_reason_chip_humanizes_source_and_drops_company(client, seeded_db):
-    _set_rank(
-        seeded_db, "greenhouse:1", 0.5,
-        reasons='[["company:stripe", 2.0], '
-                '["source:markdown:https://raw.githubusercontent.com/o/summer-2027-internships/main/README.md", 1.1], '
-                '["recent", 0.4]]',
-    )
-    r = client.get("/review")
-    assert ">summer-2027-internships</span>" in r.text  # source:<url> -> short label
-    assert ">new this week</span>" in r.text  # recent -> prose
-    assert ">company:stripe</span>" not in r.text  # company chip dropped (redundant)
-
-
-def test_unscored_rows_show_no_rank_pill(client):
-    r = client.get("/review")
-    assert "likely match" not in r.text
-    assert "pill--rank" not in r.text
     assert 'class="chip' not in r.text
+    assert "pill--rank" not in r.text
+    assert 'class="star' not in r.text
+    assert "likely match" not in r.text
+
+
+def test_row_title_links_to_posting_and_keeps_open_button(client):
+    r = client.get("/review")
+    assert '<div class="row-title"><a href="https://x/1"' in r.text
+    assert 'class="btn btn-secondary btn-sm row-open" href="https://x/1"' in r.text
 
 
 def test_tier_sections_render_with_bulk_buttons_and_summary(client, seeded_db):
@@ -418,10 +399,15 @@ def test_verdict_response_updates_summary_and_tier_counts_oob(client, seeded_db)
     assert 'id="tier-count-high" hx-swap-oob="outerHTML">0<' in r.text  # tier emptied
 
 
-def test_focus_card_shows_score_why_line(client, seeded_db):
+def test_detail_card_links_title_and_shows_open_button(client, seeded_db):
     _set_rank(seeded_db, "greenhouse:1", 0.87)
-    r = client.get("/review", params={"mode": "focus"})
-    assert "Score 87 —" in r.text and "↑ quant" in r.text
+    for r in (client.get("/review", params={"mode": "focus"}),
+              client.get("/review/pane-card", params={"offset": 0})):
+        assert '<h2 class="focus-title"><a href="https://x/1"' in r.text
+        assert 'class="btn btn-secondary focus-open" href="https://x/1"' in r.text
+        # Rank/flag tags are gone from the card; source + age moved to the meta line.
+        assert "Score 87" not in r.text and "focus-flags" not in r.text
+        assert '<span title="greenhouse:stripe">stripe</span>' in r.text  # source in meta line
 
 
 def test_verdict_triggers_rescore_of_remaining_pending(client, seeded_db):

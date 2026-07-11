@@ -256,19 +256,6 @@ def test_evaluate_auc_bounds():
     assert ranking._auc([(0.5, 1), (0.5, 0), (0.5, 1), (0.5, 0)]) == 0.5
 
 
-# ---------- web templating filters (garbage-safe) ----------
-
-def test_rank_filters_tolerate_none_and_garbage():
-    from internshelper.web.templating import rank_explain, rank_pct
-
-    assert rank_pct(0.87) == "87"
-    assert rank_pct(None) == ""
-    assert rank_pct("junk") == ""
-    assert rank_explain('[["quant", 1.7], ["2026", -2.1]]') == "↑ quant · ↓ 2026"
-    assert rank_explain(None) == ""
-    assert rank_explain("{not json") == ""
-
-
 # ---------- CLI ----------
 
 def test_cli_retrain_show_eval(tmp_path, capsys, monkeypatch):

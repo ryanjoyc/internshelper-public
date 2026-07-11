@@ -83,7 +83,7 @@ document.addEventListener("keydown", function (e) {
       case "x": click(focusCard, ".btn-nomatch"); break;
       case "u": undoNewestToast(); break;
       case "r": e.preventDefault(); focusCard.querySelector(".focus-reason").focus(); break;
-      case "o": click(focusCard, ".focus-meta a"); break;
+      case "o": click(focusCard, ".focus-open"); break;
       case "ArrowLeft": click(document, ".focus-prev"); break;
       case "ArrowRight": click(document, ".focus-next"); break;
       // Explicit mode=list — bare /review would bounce back to focus via the view cookie.
@@ -103,7 +103,7 @@ document.addEventListener("keydown", function (e) {
       case "m": click(detail, ".btn-match"); break;
       case "x": click(detail, ".btn-nomatch"); break;
       case "u": undoNewestToast(); break;
-      case "o": click(detail, ".focus-meta a"); break;
+      case "o": click(detail, ".focus-open"); break;
       case "f": window.location.href = "/review?mode=focus"; break;
     }
     return;

@@ -1,20 +1,9 @@
 {# The posting-detail card guts, shared by focus mode and the split pane.
    Context contract: card, payload, raw_json. #}
-{% import "partials/_macros.html" as m %}
-<div class="focus-flags">
-  {% if card.rank_score is not none and card.rank_score >= LIKELY_MATCH_THRESHOLD %}{{ m.pill('likely match', 'match') }}{% endif %}
-  {% if card.is_cs_relevant %}{{ m.pill('CS', 'match') }}{% endif %}
-  {% if card.is_internship %}{{ m.pill('Intern', 'match') }}{% endif %}
-  {% if card.is_newgrad %}{{ m.pill('New grad', 'match') }}{% endif %}
-  {{ m.pill(card.source_key | source_label, title=card.source_key) }}
-  <span class="row-age">{{ card.posted_at | release(card.first_seen) }}</span>
-</div>
-{% if card.rank_score is not none and card.rank_reasons %}
-<p class="focus-why page-sub">Score {{ card.rank_score | rank_pct }} — {{ card.rank_reasons | rank_explain }}</p>
-{% endif %}
-<h2 class="focus-title">{{ card.title }}</h2>
+<h2 class="focus-title"><a href="{{ card.url | safe_url }}" target="_blank" rel="noopener">{{ card.title }}</a></h2>
 <p class="focus-meta">{{ card.company }}{% if card.location %} · {{ card.location }}{% endif %}
-  · <a href="{{ card.url | safe_url }}" target="_blank" rel="noopener">Open posting ↗</a></p>
+  · <span title="{{ card.source_key }}">{{ card.source_key | source_label }}</span>
+  · {{ card.posted_at | release(card.first_seen) }}</p>
 
 {% if payload.state == 'ok' and payload.description %}
 <div class="focus-desc">{{ payload.description }}</div>

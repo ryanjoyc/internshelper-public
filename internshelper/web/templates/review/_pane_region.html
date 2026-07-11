@@ -7,8 +7,7 @@
             hx-get="/review/pane-card?offset={{ loop.index0 }}" hx-include="#queue-toolbar"
             hx-target="#pane-detail" hx-swap="innerHTML">
       <span class="pane-item-title">{{ r.title }}</span>
-      <span class="pane-item-meta"><span class="pane-item-company">{{ r.company }}</span>
-        {%- if r.rank_score is not none %} <span class="pill pill--neutral pill--rank">{{ r.rank_score | rank_pct }}</span>{% endif %}</span>
+      <span class="pane-item-meta"><span class="pane-item-company">{{ r.company }}</span></span>
     </button>
     {% endfor %}
   </div>
