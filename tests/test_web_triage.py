@@ -313,3 +313,26 @@ def test_verdict_triggers_rescore_of_remaining_pending(client, seeded_db):
     assert r.status_code == 200
     # The remaining pending rows were rescored by the post-verdict retrain.
     assert _row(seeded_db, "greenhouse:2")["rank_score"] is not None
+
+
+def test_source_pill_shows_short_label_not_the_raw_url(client, seeded_db):
+    """Full-URL source_keys (markdown/workday) must render as a short name; the raw
+    key survives only as the pill's hover title and the filter option's value."""
+    key = "markdown:https://raw.githubusercontent.com/sndsh404/summer-2027-internships/main/README.md"
+    c = sqlite3.connect(seeded_db)
+    c.execute(
+        "INSERT INTO postings (posting_id, source_key, source_type, title, company, url, "
+        "is_cs_relevant, first_seen, last_seen, review_status) "
+        "VALUES ('md:1', ?, 'markdown', 'Quant Intern', 'IMC', 'https://x/md1', 1, "
+        "'2026-07-10T10:00:00+00:00', '2026-07-10T10:00:00+00:00', 'pending')",
+        (key,),
+    )
+    c.commit()
+    c.close()
+    r = client.get("/review")
+    assert r.status_code == 200
+    assert ">summer-2027-internships</span>" in r.text  # short pill text
+    assert f'title="{key}"' in r.text  # full key on hover
+    assert f'value="{key}"' in r.text  # dropdown filters by the raw key
+    assert f">{key}</span>" not in r.text  # never the raw URL as pill text
+    assert ">stripe</span>" in r.text  # slug sources shortened too

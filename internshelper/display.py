@@ -8,10 +8,33 @@ year-bearing string with a relative-age hint, e.g. `Jun 10, 2026 · 8d ago`.
 from __future__ import annotations
 
 from datetime import date, datetime
+from urllib.parse import urlsplit
 
 from internshelper import clock
 
 DASH = "—"
+
+_GITHUB_HOSTS = ("raw.githubusercontent.com", "github.com")
+
+
+def source_label(source_key: str | None) -> str:
+    """Short human label for a source_key; the full key belongs in a hover/tooltip.
+
+    `greenhouse:stripe` -> `stripe`; a GitHub list URL -> the repo name; a Workday
+    (or any other) URL -> the first hostname label (`capitalone.wd12...` -> `capitalone`).
+    Unrecognizable input is returned as-is — never hide the identity entirely.
+    """
+    key = str(source_key or "").strip()
+    _, _, rest = key.partition(":")
+    if "://" not in rest:
+        return rest or key
+    parts = urlsplit(rest)
+    host = (parts.hostname or "").removeprefix("www.")
+    if host in _GITHUB_HOSTS:
+        path = [p for p in parts.path.split("/") if p]
+        if len(path) >= 2:
+            return path[1]  # /<owner>/<repo>/...
+    return host.split(".")[0] or key
 
 
 def _to_date(value: str | None) -> date | None:

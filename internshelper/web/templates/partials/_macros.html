@@ -1,5 +1,5 @@
-{% macro pill(text, kind='neutral') -%}
-<span class="pill pill--{{ kind }}">{{ text }}</span>
+{% macro pill(text, kind='neutral', title='') -%}
+<span class="pill pill--{{ kind }}"{% if title %} title="{{ title }}"{% endif %}>{{ text }}</span>
 {%- endmacro %}
 
 {% macro status_pill(status) -%}

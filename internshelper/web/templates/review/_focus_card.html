@@ -21,7 +21,7 @@
       {% if card.is_cs_relevant %}{{ m.pill('CS', 'match') }}{% endif %}
       {% if card.is_internship %}{{ m.pill('Intern', 'match') }}{% endif %}
       {% if card.is_newgrad %}{{ m.pill('New grad', 'match') }}{% endif %}
-      {{ m.pill(card.source_key) }}
+      {{ m.pill(card.source_key | source_label, title=card.source_key) }}
       <span class="row-age">{{ card.posted_at | release(card.first_seen) }}</span>
     </div>
     {% if card.rank_score is not none and card.rank_reasons %}

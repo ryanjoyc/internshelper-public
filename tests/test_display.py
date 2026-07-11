@@ -76,3 +76,34 @@ def test_default_now_does_not_crash():
     # No explicit `now` → uses the real clock; just assert it produces a dated string.
     out = format_release("2020-01-15")
     assert out.startswith("Jan 15, 2020")
+
+
+# --- source_label -----------------------------------------------------------
+
+from internshelper.display import source_label
+
+
+def test_slug_source_drops_the_type_prefix():
+    assert source_label("greenhouse:stripe") == "stripe"
+    assert source_label("ashby:ramp") == "ramp"
+
+
+def test_github_list_url_labels_as_the_repo():
+    key = "markdown:https://raw.githubusercontent.com/northwesternfintech/2027QuantInternships/main/README.md"
+    assert source_label(key) == "2027QuantInternships"
+    assert source_label("github:https://github.com/SimplifyJobs/Summer2027-Internships") == "Summer2027-Internships"
+
+
+def test_workday_url_labels_as_the_tenant():
+    assert source_label("workday:https://capitalone.wd12.myworkdayjobs.com/Capital_One") == "capitalone"
+
+
+def test_other_url_labels_as_the_first_host_label():
+    assert source_label("markdown:https://www.example.com/jobs.md") == "example"
+
+
+def test_garbage_survives():
+    assert source_label(None) == ""
+    assert source_label("") == ""
+    assert source_label("no-colon-here") == "no-colon-here"
+    assert source_label("markdown:https://") == "markdown:https://"

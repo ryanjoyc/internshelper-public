@@ -70,7 +70,7 @@
            placeholder="Search title or company…">
     <select class="input" name="source" x-data x-on:change="$el.form.submit()">
       <option value="">All sources</option>
-      {% for s in source_options %}<option value="{{ s }}"{% if s == filters.source %} selected{% endif %}>{{ s }}</option>{% endfor %}
+      {% for s in source_options %}<option value="{{ s }}"{% if s == filters.source %} selected{% endif %}>{{ s | source_label }}</option>{% endfor %}
     </select>
     <select class="input" name="sort" x-data x-on:change="$el.form.submit()">
       <option value="rank"{% if filters.sort == 'rank' %} selected{% endif %}>Best first</option>

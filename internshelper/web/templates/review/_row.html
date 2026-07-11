@@ -15,7 +15,7 @@
       <span class="pill pill--neutral pill--rank" title="{{ r.rank_reasons | rank_explain }}">{{ r.rank_score | rank_pct }}</span>
       {% endif %}
       {% endif %}
-      <span class="pill pill--neutral">{{ r.source_key }}</span>
+      <span class="pill pill--neutral" title="{{ r.source_key }}">{{ r.source_key | source_label }}</span>
       <span class="row-age">{{ r.posted_at | release(r.first_seen) }}</span>
       <a class="btn btn-ghost btn-sm row-open" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">open ↗</a>
       <button class="btn btn-secondary btn-sm btn-match"

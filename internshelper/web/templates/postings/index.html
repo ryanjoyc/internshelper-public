@@ -12,7 +12,7 @@
     </select>
     <select class="input" name="source">
       <option value="">All sources</option>
-      {% for s in sources_seen %}<option value="{{ s }}"{% if s == source %} selected{% endif %}>{{ s }}</option>{% endfor %}
+      {% for s in sources_seen %}<option value="{{ s }}"{% if s == source %} selected{% endif %}>{{ s | source_label }}</option>{% endfor %}
     </select>
     <button class="btn btn-secondary" type="submit">Apply</button>
     <span class="toolbar-count">{{ total }} posting{{ '' if total == 1 else 's' }}</span>
@@ -32,7 +32,7 @@
         <td>{{ r.company }}</td>
         <td class="cell-strong">{{ r.title }}</td>
         <td>{{ r.location or "—" }}</td>
-        <td>{{ m.pill(r.source_key) }}</td>
+        <td>{{ m.pill(r.source_key | source_label, title=r.source_key) }}</td>
         <td>{{ m.verdict_pill(r) }}</td>
         <td><a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
       </tr>

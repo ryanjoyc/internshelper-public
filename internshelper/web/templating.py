@@ -54,6 +54,7 @@ def _build() -> Jinja2Templates:
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
     env = templates.env
     env.filters["release"] = display.format_release
+    env.filters["source_label"] = display.source_label
     env.filters["safe_url"] = safe_url
     env.filters["dom_id"] = dom_id
     env.filters["rank_pct"] = rank_pct
