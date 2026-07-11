@@ -22,32 +22,17 @@ def test_every_page_renders(client, path):
     assert "internsHELPer" in r.text
 
 
-def test_root_redirects_to_review_when_pending(client):
-    r = client.get("/", follow_redirects=False)
-    assert r.status_code == 303
-    assert r.headers["location"] == "/review"
+def test_root_and_legacy_review_redirect_to_board(client):
+    for path in ("/", "/review"):
+        r = client.get(path, follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"] == "/board"
 
 
-def test_root_redirects_to_board_when_queue_clear(tmp_path, monkeypatch, sources_file):
-    path = tmp_path / "empty.db"
-    monkeypatch.setenv("INTERNSHELPER_DB", str(path))
-    from internshelper.web import create_app
-
-    with TestClient(create_app()) as c:
-        r = c.get("/", follow_redirects=False)
-    assert r.status_code == 303
-    assert r.headers["location"] == "/board"
-
-
-def test_review_page_lists_pending(client):
-    r = client.get("/review")
+def test_board_page_shows_inbox_postings(client):
+    r = client.get("/board")
     assert "Software Engineer Intern" in r.text
     assert "Stripe" in r.text
-
-
-def test_board_page_shows_match(client):
-    r = client.get("/board")
-    assert "Stripe" in r.text  # greenhouse:0 is a confirmed match
 
 
 def test_sources_page_lists_existing(client, sources_file):

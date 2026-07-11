@@ -21,13 +21,9 @@
       <span>internsHELPer</span>
     </a>
     <nav class="nav">
-      <a class="nav-item{% if active == 'review' %} is-active{% endif %}" href="/review">
-        <span>Review</span>
-        <span class="nav-badge" id="nav-badge-review">{% if nav.pending %}<span class="pill pill--pending pill--count">{{ nav.pending }}</span>{% endif %}</span>
-      </a>
       <a class="nav-item{% if active == 'board' %} is-active{% endif %}" href="/board">
         <span>Board</span>
-        <span class="nav-badge" id="nav-badge-board">{% if nav.board_actionable %}<span class="pill pill--neutral pill--count">{{ nav.board_actionable }}</span>{% endif %}</span>
+        <span class="nav-badge" id="nav-badge-board">{% if nav.inbox %}<span class="pill pill--pending pill--count">{{ nav.inbox }}</span>{% endif %}</span>
       </a>
       <a class="nav-item{% if active == 'postings' %} is-active{% endif %}" href="/postings">
         <span>Postings</span>

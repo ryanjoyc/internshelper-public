@@ -1,6 +1,6 @@
-"""Board interactions: drag moves, the card drawer, move-back-to-review.
+"""Board interactions: drag moves, the card drawer, dismiss-from-drawer.
 
-Seeded board population: greenhouse:0 is the only confirmed match (no application row).
+Seeded population: all four seeded postings are inbox rows (no application rows).
 """
 
 import sqlite3
@@ -85,10 +85,13 @@ def test_move_rejects_unknown_status(client, seeded_db):
     assert _app_row(seeded_db, "greenhouse:0") is None
 
 
-def test_unmatch_returns_posting_to_review(client, seeded_db):
-    r = client.post("/board/unmatch",
-                    data={"posting_id": "greenhouse:0", "view": "board"})
+def test_dismiss_hides_posting_and_undo_restores(client, seeded_db):
+    r = client.post("/board/dismiss", data={"posting_id": "greenhouse:0"})
     assert r.status_code == 200
     row = _posting_row(seeded_db, "greenhouse:0")
-    assert row["review_status"] == "pending"
-    assert row["verdict"] is None
+    assert row["verdict"] == "no_match"
+    assert "/board/undo-dismiss" in r.text  # the toast offers undo
+
+    r = client.post("/board/undo-dismiss", data={"posting_id": "greenhouse:0"})
+    assert r.status_code == 200
+    assert _posting_row(seeded_db, "greenhouse:0")["verdict"] is None

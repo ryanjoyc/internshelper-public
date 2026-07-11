@@ -14,18 +14,14 @@ router = APIRouter()
 
 PER_PAGE = 100
 
-# Filter vocabulary; "active" (the default) hides archived no-matches and closed listings.
-STATES = ("active", "pending", "matched", "archived", "closed", "all")
+# Filter vocabulary; "active" (the default) hides dismissed and closed listings.
+STATES = ("active", "dismissed", "closed", "all")
 
 
 def _keep(r: sqlite3.Row, state: str, source: str) -> bool:
     if source and r["source_key"] != source:
         return False
-    if state == "pending":
-        return bool(r["is_active"]) and r["review_status"] == "pending"
-    if state == "matched":
-        return r["verdict"] == "match"
-    if state == "archived":
+    if state == "dismissed":
         return r["verdict"] == "no_match"
     if state == "closed":
         return not r["is_active"]

@@ -1,6 +1,6 @@
 // internsHELPer web UI glue. Kept deliberately small: HTMX does the requests,
-// Alpine does the toasts, this file owns the theme cycle and the keyboard router
-// (and, in Phase 4, the Sortable board wiring). Keys act by clicking the real
+// Alpine does the toasts, this file owns the theme cycle, the board keyboard
+// router, and the Sortable drag wiring. Keys act by clicking the real
 // HTMX-wired buttons — no duplicated request logic.
 
 "use strict";
@@ -33,29 +33,30 @@ document.addEventListener("DOMContentLoaded", function () {
     .addEventListener("change", applyTheme);
 });
 
-/* ---------- keyboard router (review page) ---------- */
+/* ---------- keyboard router (board Inbox) ---------- */
 
 var selected = -1;
 
-function listRows() {
-  // Rows inside a collapsed tier are display:none — j/k must skip them.
-  return Array.prototype.slice.call(document.querySelectorAll("#review-list .row"))
-    .filter(function (r) { return r.offsetParent !== null; });
+function inboxCards() {
+  // Cards inside a collapsed tier are display:none — j/k must skip them.
+  return Array.prototype.slice.call(
+    document.querySelectorAll(".board-col--inbox .board-card"))
+    .filter(function (c) { return c.offsetParent !== null; });
 }
 
 function select(idx) {
-  var rows = listRows();
-  if (!rows.length) { selected = -1; return; }
-  idx = Math.max(0, Math.min(idx, rows.length - 1));
-  rows.forEach(function (r) { r.classList.remove("is-selected"); });
-  rows[idx].classList.add("is-selected");
-  rows[idx].scrollIntoView({ block: "nearest" });
+  var cards = inboxCards();
+  if (!cards.length) { selected = -1; return; }
+  idx = Math.max(0, Math.min(idx, cards.length - 1));
+  cards.forEach(function (c) { c.classList.remove("is-selected"); });
+  cards[idx].classList.add("is-selected");
+  cards[idx].scrollIntoView({ block: "nearest" });
   selected = idx;
 }
 
-function selectedRow() {
-  var rows = listRows();
-  return selected >= 0 && selected < rows.length ? rows[selected] : null;
+function selectedCard() {
+  var cards = inboxCards();
+  return selected >= 0 && selected < cards.length ? cards[selected] : null;
 }
 
 function click(root, sel) {
@@ -75,88 +76,30 @@ document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") e.target.blur();
     return;
   }
-
-  var focusCard = document.querySelector("#focus-card .focus-card");
-  if (focusCard) {
-    switch (e.key) {
-      case "m": click(focusCard, ".btn-match"); break;
-      case "x": click(focusCard, ".btn-nomatch"); break;
-      case "u": undoNewestToast(); break;
-      case "r": e.preventDefault(); focusCard.querySelector(".focus-reason").focus(); break;
-      case "o": click(focusCard, ".focus-open"); break;
-      case "ArrowLeft": click(document, ".focus-prev"); break;
-      case "ArrowRight": click(document, ".focus-next"); break;
-      // Explicit mode=list — bare /review would bounce back to focus via the view cookie.
-      case "Escape": window.location.href = "/review?mode=list"; break;
-    }
-    return;
-  }
-
-  var paneList = document.getElementById("pane-list");
-  if (paneList) {
-    var items = Array.prototype.slice.call(paneList.querySelectorAll(".pane-item"));
-    var cur = items.indexOf(paneList.querySelector(".pane-item.is-selected"));
-    var detail = document.getElementById("pane-detail");
-    switch (e.key) {
-      case "j": case "ArrowDown": e.preventDefault(); if (items[cur + 1]) items[cur + 1].click(); break;
-      case "k": case "ArrowUp": e.preventDefault(); if (cur > 0) items[cur - 1].click(); break;
-      case "m": click(detail, ".btn-match"); break;
-      case "x": click(detail, ".btn-nomatch"); break;
-      case "u": undoNewestToast(); break;
-      case "o": click(detail, ".focus-open"); break;
-      case "f": window.location.href = "/review?mode=focus"; break;
-    }
-    return;
-  }
-
-  if (!document.getElementById("review-list")) return;
+  if (!document.querySelector(".board-col--inbox")) return;
   switch (e.key) {
     case "j": case "ArrowDown": e.preventDefault(); select(selected + 1); break;
     case "k": case "ArrowUp": e.preventDefault(); select(selected - 1); break;
-    case "m": click(selectedRow(), ".btn-match"); break;
-    case "x": click(selectedRow(), ".btn-nomatch"); break;
+    case "x": click(selectedCard(), ".card-dismiss"); break;
     case "u": undoNewestToast(); break;
-    case "o": click(selectedRow(), ".row-open"); break;
-    case "f":
-      window.location.href = "/review?mode=focus"; break;
-    case "Enter": {
-      var row = selectedRow();
-      // Under a filter, row offsets index the FILTERED list; focus mode walks the
-      // global queue, so jump to its head instead of a wrong card.
-      var filtered = document.getElementById("review-list").dataset.filtered;
-      if (row) window.location.href = filtered
-        ? "/review?mode=focus"
-        : "/review?mode=focus&offset=" + (row.dataset.offset || 0);
+    case "o": {
+      var card = selectedCard();
+      if (card) card.click(); // open the drawer (the posting link lives there)
       break;
     }
     case "Escape":
-      listRows().forEach(function (r) { r.classList.remove("is-selected"); });
+      inboxCards().forEach(function (c) { c.classList.remove("is-selected"); });
       selected = -1;
       break;
   }
 });
 
-// A verdicted row leaves the DOM; keep the selection on the row that slid up.
+// A dismissed card leaves the DOM (region re-render); keep the selection nearby.
 document.body.addEventListener("htmx:afterSwap", function () {
-  if (selected >= 0 && document.getElementById("review-list")) select(selected);
+  if (selected >= 0 && document.querySelector(".board-col--inbox")) select(selected);
 });
 
-// Pane list: clicking an item loads the detail via htmx; move the selection with it.
-document.addEventListener("click", function (e) {
-  var item = e.target.closest && e.target.closest("#pane-list .pane-item");
-  if (!item) return;
-  item.parentNode.querySelectorAll(".pane-item").forEach(function (el) {
-    el.classList.remove("is-selected");
-  });
-  item.classList.add("is-selected");
-  item.scrollIntoView({ block: "nearest" });
-});
-
-/* ---------- board: SortableJS drag -> POST /board/move ---------- */
-
-function domId(id) {
-  return id.replace(/[^A-Za-z0-9_-]/g, "-"); // mirror of the Jinja dom_id filter
-}
+/* ---------- board: SortableJS drag -> POST /board/move | /board/pin ---------- */
 
 var lastDragAt = 0;
 
@@ -169,11 +112,22 @@ function initBoard() {
       animation: 150,
       onEnd: function (evt) {
         lastDragAt = Date.now();
-        if (evt.from === evt.to) return; // no intra-column persistence
-        htmx.ajax("POST", "/board/move", {
-          values: { posting_id: evt.item.dataset.id, status: evt.to.dataset.status },
-          target: "#card-" + domId(evt.item.dataset.id),
-          swap: "outerHTML",
+        if (evt.from === evt.to) return; // no intra-list persistence
+        var values = { posting_id: evt.item.dataset.id };
+        var url;
+        if (evt.to.dataset.status) {           // pipeline lane -> status move
+          url = "/board/move";
+          values.status = evt.to.dataset.status;
+        } else if (evt.to.dataset.tier) {      // tier section -> sticky pin
+          url = "/board/pin";
+          values.tier = evt.to.dataset.tier;
+        } else {
+          return;
+        }
+        htmx.ajax("POST", url, {
+          values: values,
+          target: "#board-region",
+          swap: "innerHTML", // full region re-render keeps counts + order honest
         });
       },
     });
@@ -196,8 +150,8 @@ document.addEventListener("DOMContentLoaded", initBoard);
 document.body.addEventListener("htmx:afterSwap", initBoard);
 document.body.addEventListener("htmx:oobAfterSwap", initBoard);
 
-// If a move fails server-side, the optimistic drag is stale — resync from the DB.
+// If a move/pin fails server-side, the optimistic drag is stale — resync from the DB.
 document.body.addEventListener("htmx:responseError", function (evt) {
   var path = evt.detail && evt.detail.pathInfo && evt.detail.pathInfo.requestPath;
-  if (path === "/board/move") window.location.reload();
+  if (path === "/board/move" || path === "/board/pin") window.location.reload();
 });

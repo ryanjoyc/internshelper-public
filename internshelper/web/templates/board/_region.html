@@ -1,40 +1,107 @@
 {% import "partials/_macros.html" as m %}
-{% if not rows %}
-{{ m.empty_state("No matches yet.",
-                 "Confirm matches in Review to populate the board.",
-                 "/review", "Go to Review") }}
-{% elif view == 'table' %}
+{% if view == 'dismissed' %}
+{% if not dismissed %}
+{{ m.empty_state("Nothing dismissed yet.",
+                 "Postings you dismiss land here — undo any of them.",
+                 "/board", "Back to board") }}
+{% else %}
 <div class="table-wrap">
   <table class="table">
     <thead>
-      <tr><th>Status</th><th>Company</th><th>Title</th><th>Location</th><th>Applied</th><th>Posted</th><th></th></tr>
+      <tr><th>Company</th><th>Title</th><th>Reason</th><th>Dismissed</th><th></th></tr>
     </thead>
     <tbody>
-      {% for r in rows %}
-      <tr class="table-row-click" hx-get="/board/card/{{ r.posting_id }}?view=table"
-          hx-target="#drawer-body" hx-swap="innerHTML">
-        <td>{{ m.status_pill(r.status) }}</td>
+      {% for r in dismissed %}
+      <tr>
         <td>{{ r.company }}</td>
         <td class="cell-strong">{{ r.title }}</td>
-        <td>{{ r.location or "—" }}</td>
-        <td class="cell-num">{{ r.applied_date or "—" }}</td>
-        <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
-        <td><a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        <td>{{ r.verdict_reason or "—" }}</td>
+        <td class="cell-num">{{ r.reviewed_at | release }}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm" hx-post="/board/undo-dismiss"
+                  hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+                  hx-target="#board-region" hx-swap="innerHTML">Restore</button>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+{% endif %}
+{% elif view == 'table' %}
+{% if not rows %}
+{{ m.empty_state("Nothing collected yet.",
+                 "New postings land here after each collect run.") }}
 {% else %}
-<div class="board">
-  {% for lane in lanes %}
+<div class="table-wrap">
+  <table class="table">
+    <thead>
+      <tr><th>Tier</th><th>Status</th><th>Company</th><th>Title</th><th>Location</th><th>Posted</th><th></th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for tier in inbox_tiers %}{% for r in tier.rows %}
+      <tr class="table-row-click" hx-get="/board/card/{{ r.posting_id }}?view=table"
+          hx-target="#drawer-body" hx-swap="innerHTML">
+        <td>{{ m.pill(tier.label) }}{% if r.pinned_tier %} <span title="pinned">📌</span>{% endif %}</td>
+        <td>{{ m.status_pill(r.status) }}</td>
+        <td>{{ r.company }}</td>
+        <td class="cell-strong">{{ r.title }}</td>
+        <td>{{ r.location or "—" }}</td>
+        <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
+        <td><a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        <td><button class="btn btn-ghost btn-sm" title="Dismiss" x-on:click.stop
+                    hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+                    hx-target="#board-region" hx-swap="innerHTML">✕</button></td>
+      </tr>
+      {% endfor %}{% endfor %}
+      {% for lane in pipeline_lanes %}{% for r in columns[lane] %}
+      <tr class="table-row-click" hx-get="/board/card/{{ r.posting_id }}?view=table"
+          hx-target="#drawer-body" hx-swap="innerHTML">
+        <td>—</td>
+        <td>{{ m.status_pill(r.status) }}</td>
+        <td>{{ r.company }}</td>
+        <td class="cell-strong">{{ r.title }}</td>
+        <td>{{ r.location or "—" }}</td>
+        <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
+        <td><a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        <td></td>
+      </tr>
+      {% endfor %}{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% else %}
+<div class="board board--inbox">
+  <section class="board-col board-col--inbox">
+    <header class="board-col-head">
+      <span class="dot dot--lane-inbox"></span>
+      <span>Inbox</span>
+      <span class="pill pill--neutral pill--count" id="col-count-inbox">{{ inbox_total }}</span>
+    </header>
+    {% for tier in inbox_tiers %}
+    <section class="tier tier--{{ tier.key }}" x-data="{ open: {{ 'true' if tier.open else 'false' }} }">
+      <div class="tier-head" x-on:click="open = !open" title="{{ tier.hint }}">
+        <span class="tier-chevron" :class="{ 'is-open': open }">▸</span>
+        <span class="tier-label">{{ tier.label }}</span>
+        <span class="tier-count" id="tier-count-{{ tier.key }}">{{ tier.rows | length }}</span>
+      </div>
+      <div class="tier-rows" x-show="open" x-collapse.duration.200ms{% if not tier.open %} style="display: none"{% endif %}>
+        <ul class="board-cards" data-tier="{{ tier.key }}">
+          {% for r in tier.rows %}{% include "board/_card.html" %}{% endfor %}
+        </ul>
+      </div>
+    </section>
+    {% endfor %}
+  </section>
+  {% for lane in pipeline_lanes %}
   <section class="board-col">
     <header class="board-col-head">
       <span class="dot dot--lane-{{ lane | lower }}"></span>
       <span>{{ lane }}</span>
       <span class="pill pill--neutral pill--count" id="col-count-{{ lane | lower }}">{{ columns[lane] | length }}</span>
     </header>
-    <ul class="board-cards" data-status="{{ 'Untracked' if lane == 'Matched' else lane }}">
+    <ul class="board-cards" data-status="{{ lane }}">
       {% for r in columns[lane] %}{% include "board/_card.html" %}{% endfor %}
     </ul>
   </section>
@@ -42,3 +109,4 @@
 </div>
 {% endif %}
 {% if oob_nav %}{% include "partials/_nav_oob.html" %}{% endif %}
+{% if toast %}{% include "board/_toast.html" %}{% endif %}

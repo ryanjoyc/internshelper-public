@@ -391,19 +391,6 @@ def get_application(conn: sqlite3.Connection, posting_id: str) -> sqlite3.Row | 
     ).fetchone()
 
 
-def matches_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    """Confirmed matches with their application state (NULL status = untracked), for the board."""
-    return conn.execute(
-        """
-        SELECT p.*, a.status, a.notes, a.applied_date
-        FROM postings p
-        LEFT JOIN applications a ON a.posting_id = p.posting_id
-        WHERE p.verdict = 'match'
-        ORDER BY p.reviewed_at DESC, p.posting_id
-        """
-    ).fetchall()
-
-
 def inbox_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     """Every non-dismissed posting with its application state, best-first — the Board
     query. Pipeline rows ride along (the route splits them into lanes); `tier` in the

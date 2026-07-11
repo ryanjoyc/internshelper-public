@@ -1,4 +1,11 @@
-"""The kanban board (and its table lens) over confirmed matches.
+"""The Board: the whole product on one page.
+
+There is no approval gate — every collected posting lands in the first column (the
+Inbox, grouped into apply-order tier sections), and the pipeline lanes to its right
+track what the user acted on. Dragging a card Inbox → Applied IS the apply action;
+dragging between tier sections pins the card there (sticky + a training signal);
+Dismiss hides it (undoable). Every mutation ends with a best-effort rescore+retier —
+each action is a new ranking label.
 
 Drag moves are status-only writes (set_application_status — never the 3-column
 upsert, which would clobber notes); the drawer's Save is the full upsert.
@@ -9,49 +16,127 @@ from __future__ import annotations
 import sqlite3
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import RedirectResponse
 
-from internshelper import clock, review, store
+from internshelper import clock, config, review, store, tiers
 from internshelper.web.deps import get_conn, nav_context
 from internshelper.web.templating import templates
 
 router = APIRouter()
 
-LANES = ("Matched", "Applied", "Interviewing", "Offer", "Rejected")
+PIPELINE_LANES = store.PIPELINE_STATUSES  # ("Applied", "Interviewing", "Offer", "Rejected")
+
+# Tier sections inside the Inbox column, in display order. Empty sections still render:
+# they are the drop targets for pinning.
+TIER_UI = [
+    {"key": "apply_first", "label": tiers.TIER_LABELS["apply_first"],
+     "hint": "dream companies — apply to these today", "open": True},
+    {"key": "target", "label": tiers.TIER_LABELS["target"],
+     "hint": "companies on your list", "open": True},
+    {"key": "everything_else", "label": tiers.TIER_LABELS["everything_else"],
+     "hint": "unlisted companies, best fit first", "open": False},
+    {"key": "long_shots", "label": tiers.TIER_LABELS["long_shots"],
+     "hint": "the model scores these low — skim, dismiss, or rescue", "open": False},
+]
 
 
 def lane_of(status: str | None) -> str:
-    # NULL / Untracked / Interested / legacy free-text all land in Matched;
+    # NULL / Untracked / Interested / legacy free-text all mean "still in the Inbox";
     # Interested renders as a star on the card, not its own column.
-    return status if status in LANES else "Matched"
+    return status if status in PIPELINE_LANES else "Inbox"
+
+
+def _refresh(conn: sqlite3.Connection) -> None:
+    """Rescore + retier after a mutation — every action is a new label. Best-effort:
+    a ranking bug must never block the action itself."""
+    review.refresh_ranking(conn)
+
+
+def _self_heal_tiers(conn: sqlite3.Connection) -> None:
+    """Populate tiers on first load after a migration (cheap no-op otherwise)."""
+    untiered = conn.execute(
+        f"SELECT 1 FROM postings WHERE tier IS NULL AND {store.INBOX_SQL} LIMIT 1"
+    ).fetchone()
+    if untiered:
+        tiers.retier_inbox(conn, tiers.load_tier_map())
 
 
 def _board_ctx(conn: sqlite3.Connection, view: str) -> dict:
-    rows = store.matches_with_status(conn)
-    columns: dict[str, list] = {lane: [] for lane in LANES}
+    rows = store.inbox_with_status(conn)
+    columns: dict[str, list] = {lane: [] for lane in PIPELINE_LANES}
+    by_tier: dict[str, list] = {t["key"]: [] for t in TIER_UI}
     for r in rows:
-        columns[lane_of(r["status"])].append(r)
+        lane = lane_of(r["status"])
+        if lane == "Inbox":
+            # NULL tier only happens pre-first-retier; bucket with the unlisted crowd.
+            by_tier.setdefault(r["tier"] or "everything_else", []).append(r)
+        else:
+            columns[lane].append(r)
+    inbox_tiers = [{**t, "rows": by_tier[t["key"]]} for t in TIER_UI]
     return {
         "nav": nav_context(conn),
         "view": "table" if view == "table" else "board",
-        "lanes": LANES,
+        "pipeline_lanes": PIPELINE_LANES,
         "columns": columns,
+        "inbox_tiers": inbox_tiers,
+        "inbox_total": sum(len(t["rows"]) for t in inbox_tiers),
         "rows": rows,
+        "hygiene": _hygiene_counts(conn),
     }
 
 
-def _match_row(conn: sqlite3.Connection, posting_id: str) -> sqlite3.Row:
-    for r in store.matches_with_status(conn):
+def _hygiene_counts(conn: sqlite3.Connection) -> dict:
+    """Counts for the one-click cleanup buttons (guard leaks + closed-but-listed)."""
+    try:
+        entries, _ = config.load_sources(
+            config.default_path("INTERNSHELPER_SOURCES", "config/sources.yaml")
+        )
+        leaks = len(review.find_guard_leaks(conn, entries))
+    except Exception:
+        leaks = 0
+    return {"leaks": leaks, "closed": len(review.find_closed_inbox(conn))}
+
+
+def _board_row(conn: sqlite3.Connection, posting_id: str) -> sqlite3.Row:
+    for r in store.inbox_with_status(conn):
         if r["posting_id"] == posting_id:
             return r
-    raise HTTPException(status_code=404, detail=f"no confirmed match {posting_id!r}")
+    raise HTTPException(status_code=404, detail=f"no board posting {posting_id!r}")
+
+
+def _region(request: Request, conn: sqlite3.Connection, *, view: str = "board",
+            toast: dict | None = None) -> object:
+    ctx = _board_ctx(conn, view)
+    ctx["oob_nav"] = True
+    if toast:
+        ctx["toast"] = toast
+    return templates.TemplateResponse(request, "board/_region.html", ctx)
+
+
+@router.get("/")
+def root() -> RedirectResponse:
+    return RedirectResponse("/board", status_code=303)
+
+
+@router.get("/review")
+def legacy_review() -> RedirectResponse:
+    # The review queue is gone — the Board's Inbox tiers replaced it.
+    return RedirectResponse("/board", status_code=303)
 
 
 @router.get("/board")
 def board_page(
-    request: Request, view: str = "board", conn: sqlite3.Connection = Depends(get_conn)
+    request: Request,
+    view: str = "board",
+    show: str = "",
+    conn: sqlite3.Connection = Depends(get_conn),
 ):
+    _self_heal_tiers(conn)
     ctx = _board_ctx(conn, view)
     ctx["active"] = "board"
+    if show == "dismissed":
+        ctx["view"] = "dismissed"
+        ctx["dismissed"] = store.dismissed_rows(conn)
     return templates.TemplateResponse(request, "board/index.html", ctx)
 
 
@@ -62,12 +147,12 @@ def drawer(
     view: str = "board",
     conn: sqlite3.Connection = Depends(get_conn),
 ):
-    r = _match_row(conn, posting_id)
+    r = _board_row(conn, posting_id)
     payload = review.payload_summary(r["payload_path"])
     response = templates.TemplateResponse(
         request,
         "drawer/_posting.html",
-        {"r": r, "view": view, "payload": payload},
+        {"r": r, "view": view, "payload": payload, "tier_ui": TIER_UI},
     )
     response.headers["HX-Trigger"] = "drawer-open"
     return response
@@ -83,17 +168,19 @@ def drawer_save(
     view: str = Form("board"),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
-    _match_row(conn, posting_id)
+    _board_row(conn, posting_id)
     try:
         store.set_application(
             conn, posting_id, status=status, notes=notes, applied_date=applied_date or None
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    r = _match_row(conn, posting_id)
+    _refresh(conn)  # entering/leaving the pipeline is a label change
+    r = _board_row(conn, posting_id)
     payload = review.payload_summary(r["payload_path"])
     ctx = _board_ctx(conn, view)
-    ctx.update({"r": r, "view": view, "payload": payload, "oob_board": True, "saved": True})
+    ctx.update({"r": r, "view": view, "payload": payload, "tier_ui": TIER_UI,
+                "oob_board": True, "saved": True})
     return templates.TemplateResponse(request, "drawer/_posting.html", ctx)
 
 
@@ -102,12 +189,12 @@ def move(
     request: Request,
     posting_id: str = Form(...),
     status: str = Form(...),
-    region: str = Form(""),
+    undo: str = Form(""),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     prev = store.get_application(conn, posting_id)
     prev_status = (prev["status"] if prev else None) or "Untracked"
-    _match_row(conn, posting_id)
+    r = _board_row(conn, posting_id)
     try:
         store.set_application_status(
             conn,
@@ -117,33 +204,120 @@ def move(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    if region:  # undo path: the DOM wasn't pre-moved by a drag, re-render the whole board
-        ctx = _board_ctx(conn, "board")
-        ctx["oob_nav"] = True
-        return templates.TemplateResponse(request, "board/_region.html", ctx)
-    r = _match_row(conn, posting_id)
-    ctx = {
-        "nav": nav_context(conn),
-        "r": r,
-        "view": "board",
-        "columns_counts": _board_ctx(conn, "board")["columns"],
-        "lanes": LANES,
-        "move_toast": {"posting_id": posting_id, "to": status, "prev": prev_status},
-    }
-    return templates.TemplateResponse(request, "board/_move_response.html", ctx)
+    _refresh(conn)  # applying (or un-applying) is a training label
+    toast = None
+    if not undo:
+        toast = {
+            "text": f"Moved to {status} — {r['company']}: {r['title']}",
+            "undo_url": "/board/move",
+            "fields": {"posting_id": posting_id, "status": prev_status, "undo": "1"},
+        }
+    return _region(request, conn, toast=toast)
 
 
-@router.post("/board/unmatch")
-def unmatch(
+@router.post("/board/dismiss")
+def dismiss(
     request: Request,
     posting_id: str = Form(...),
-    view: str = Form("board"),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
-    _match_row(conn, posting_id)
-    review.reset_verdict(conn, posting_id)  # back to the pending queue; not a verdict, no finish()
-    ctx = _board_ctx(conn, view)
-    ctx["oob_nav"] = True
-    response = templates.TemplateResponse(request, "board/_region.html", ctx)
-    response.headers["HX-Trigger"] = "drawer-close"
+    r = _board_row(conn, posting_id)
+    review.dismiss(conn, posting_id, review.DISMISS_REASON, now=clock.now_iso())
+    _refresh(conn)
+    toast = {
+        "text": f"Dismissed — {r['company']}: {r['title']}",
+        "undo_url": "/board/undo-dismiss",
+        "fields": {"posting_id": posting_id},
+    }
+    response = _region(request, conn, toast=toast)
+    response.headers["HX-Trigger"] = "drawer-close"  # dismissing from the drawer closes it
     return response
+
+
+@router.post("/board/undo-dismiss")
+def undo_dismiss(
+    request: Request,
+    posting_id: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    review.undo_dismiss(conn, posting_id)
+    _refresh(conn)
+    return _region(request, conn)
+
+
+@router.post("/board/pin")
+def pin(
+    request: Request,
+    posting_id: str = Form(...),
+    tier: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    r = _board_row(conn, posting_id)
+    was_pinned = r["pinned_tier"]
+    try:
+        # A pipeline card dragged back into a tier section re-enters the Inbox first.
+        if (r["status"] or "Untracked") in PIPELINE_LANES:
+            store.set_application_status(conn, posting_id, "Untracked")
+        review.pin_tier(conn, posting_id, tier, now=clock.now_iso())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _refresh(conn)
+    toast = {
+        "text": f"Pinned to {tiers.TIER_LABELS[tier]} — {r['title']}",
+        "undo_url": "/board/unpin",
+        "fields": {"posting_id": posting_id},
+        "undo_label": "Unpin",
+    } if not was_pinned else None
+    return _region(request, conn, toast=toast)
+
+
+@router.post("/board/unpin")
+def unpin(
+    request: Request,
+    posting_id: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    review.unpin(conn, posting_id)
+    _refresh(conn)
+    return _region(request, conn)
+
+
+@router.post("/board/hygiene-closed")
+def hygiene_closed(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+    now = clock.now_iso()
+    n = review.clear_closed_inbox(conn, now=now)
+    _refresh(conn)
+    toast = {
+        "text": f"Dismissed {n} closed posting{'' if n == 1 else 's'}",
+        "undo_url": "/board/hygiene-undo",
+        "fields": {"reviewed_at": now, "reason": review.CLOSED_REASON},
+    } if n else None
+    return _region(request, conn, toast=toast)
+
+
+@router.post("/board/hygiene-leaks")
+def hygiene_leaks(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+    entries, _ = config.load_sources(
+        config.default_path("INTERNSHELPER_SOURCES", "config/sources.yaml")
+    )
+    now = clock.now_iso()
+    n = review.clear_guard_leaks(conn, entries, now=now)
+    _refresh(conn)
+    toast = {
+        "text": f"Dismissed {n} guard leak{'' if n == 1 else 's'}",
+        "undo_url": "/board/hygiene-undo",
+        "fields": {"reviewed_at": now, "reason": review.GUARD_LEAK_REASON},
+    } if n else None
+    return _region(request, conn, toast=toast)
+
+
+@router.post("/board/hygiene-undo")
+def hygiene_undo(
+    request: Request,
+    reviewed_at: str = Form(...),
+    reason: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    review.undo_bulk_clear(conn, reviewed_at, reason)
+    _refresh(conn)
+    return _region(request, conn)

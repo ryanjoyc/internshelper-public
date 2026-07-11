@@ -1,6 +1,0 @@
-{# Segmented Review-view control; the chosen mode is remembered via the review_view cookie. #}
-<nav class="seg" aria-label="Review view">
-  <a class="seg-btn{% if view == 'list' %} seg--on{% endif %}" href="/review?mode=list">Tiers</a>
-  <a class="seg-btn{% if view == 'pane' %} seg--on{% endif %}" href="/review?mode=pane">Pane</a>
-  <a class="seg-btn{% if view == 'focus' %} seg--on{% endif %}" href="/review?mode=focus">Focus</a>
-</nav>

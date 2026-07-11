@@ -21,13 +21,7 @@ def get_conn(request: Request) -> Iterator[sqlite3.Connection]:
 
 
 def nav_context(conn: sqlite3.Connection) -> dict:
-    """Counts + status for the sidebar: pending badge, board badge, health dot."""
-    total, candidates = store.pending_counts(conn)
-    actionable = sum(
-        1
-        for r in store.matches_with_status(conn)
-        if (r["status"] or "Untracked") in ("Untracked", "Interested")
-    )
+    """Counts + status for the sidebar: inbox badge on Board, health dot."""
     runs = store.source_health(conn)
     if any(not r["ok"] for r in runs):
         dot = "err"
@@ -36,9 +30,7 @@ def nav_context(conn: sqlite3.Connection) -> dict:
     else:
         dot = "ok"
     return {
-        "pending": total,
-        "candidates": candidates,
-        "board_actionable": actionable,
+        "inbox": store.inbox_count(conn),
         "health_dot": dot,
         "last_collect": max((r["started_at"] for r in runs), default=None),
     }

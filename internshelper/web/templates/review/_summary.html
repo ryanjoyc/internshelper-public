@@ -1,7 +1,0 @@
-{# The header's workload sentence — global tier counts, "need your call" is the real work. #}
-{% set tc = tier_counts %}
-{% if total %}
-<strong>{{ tc.mid }} need{{ 's' if tc.mid == 1 else '' }} your call</strong>
-{%- if tc.high %} · {{ tc.high }} look{{ 's' if tc.high == 1 else '' }} like {{ 'a sure thing' if tc.high == 1 else 'sure things' }}{% endif %}
-{%- if tc.low %} · {{ tc.low }} probably not{% endif %}
-{% else %}Queue clear — nothing pending.{% endif %}

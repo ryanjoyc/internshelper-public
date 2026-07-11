@@ -1,11 +1,19 @@
 <li class="card board-card" id="card-{{ r.posting_id | dom_id }}" data-id="{{ r.posting_id }}"
     hx-get="/board/card/{{ r.posting_id }}?view=board" hx-target="#drawer-body" hx-swap="innerHTML">
-  <div class="card-company">{{ r.company }}</div>
+  <div class="card-top">
+    <div class="card-company">{{ r.company }}</div>
+    {% if (r.status or 'Untracked') not in pipeline_lanes %}
+    <button class="card-dismiss btn btn-ghost btn-sm" title="Dismiss — not for me" x-on:click.stop
+            hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+            hx-target="#board-region" hx-swap="innerHTML">✕</button>
+    {% endif %}
+  </div>
   <div class="card-title">{{ r.title }}</div>
   <div class="card-meta">{% if r.location %}{{ r.location }} · {% endif %}{{ r.posted_at | release(r.first_seen) }}</div>
-  {% if r.applied_date or r.notes or (not r.is_active) or r.status == 'Interested' %}
+  {% if r.applied_date or r.notes or (not r.is_active) or r.status == 'Interested' or r.pinned_tier %}
   <div class="card-foot">
-    {% if r.status == 'Interested' %}<span class="star" title="interested">★</span>{% endif %}
+    {% if r.status == 'Interested' %}<span class="card-star" title="interested">★</span>{% endif %}
+    {% if r.pinned_tier %}<span title="pinned to this tier — re-ranking won't move it">📌</span>{% endif %}
     {% if r.applied_date %}<span class="pill pill--neutral">applied {{ r.applied_date }}</span>{% endif %}
     {% if not r.is_active %}<span class="pill pill--nomatch">closed</span>{% endif %}
     {% if r.notes %}<span class="card-note" title="{{ r.notes }}">✎</span>{% endif %}

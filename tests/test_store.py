@@ -244,28 +244,6 @@ def test_is_candidate_predicate():
     assert not store.is_candidate({"is_cs_relevant": 0, "is_internship": 0, "is_newgrad": 0})
 
 
-def test_matches_with_status_left_joins_applications(tmp_path):
-    from internshelper import review
-
-    c = _conn(tmp_path)
-    store.upsert(c, _p("greenhouse:1"), now="t1")
-    store.upsert(c, _p("greenhouse:2"), now="t2")
-    store.upsert(c, _p("greenhouse:3"), now="t3")
-    review.set_verdict(c, "greenhouse:1", "match", "", now="2026-06-18T10:00:00+00:00")
-    review.set_verdict(c, "greenhouse:2", "match", "", now="2026-06-18T11:00:00+00:00")
-    review.set_verdict(c, "greenhouse:3", "no_match", "", now="2026-06-18T12:00:00+00:00")
-    store.set_application(c, "greenhouse:2", status="Applied", notes="n",
-                          applied_date="2026-06-18")
-
-    rows = store.matches_with_status(c)
-    by_id = {r["posting_id"]: r for r in rows}
-    assert set(by_id) == {"greenhouse:1", "greenhouse:2"}  # no_match excluded
-    assert by_id["greenhouse:1"]["status"] is None  # no application row -> NULL status
-    assert by_id["greenhouse:2"]["status"] == "Applied"
-    # Newest reviewed first
-    assert [r["posting_id"] for r in rows] == ["greenhouse:2", "greenhouse:1"]
-
-
 def test_feed_limit_offset_and_count(tmp_path):
     c = _conn(tmp_path)
     for i in range(5):
