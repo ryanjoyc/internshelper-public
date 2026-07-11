@@ -301,17 +301,6 @@ def _quiet_signal(
     return False, ""
 
 
-def pending_counts(conn: sqlite3.Connection) -> tuple[int, int]:
-    """(total pending, keyword-candidate pending) for the review queue + nudge."""
-    total = conn.execute(
-        "SELECT COUNT(*) FROM postings WHERE review_status = 'pending'"
-    ).fetchone()[0]
-    candidates = conn.execute(
-        f"SELECT COUNT(*) FROM postings WHERE review_status = 'pending' AND {CANDIDATE_SQL}"
-    ).fetchone()[0]
-    return total, candidates
-
-
 def record_run(
     conn: sqlite3.Connection,
     source_key: str,

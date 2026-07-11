@@ -1,3 +1,5 @@
+"""The Apply-first digest email: rendering + SMTP-cred validation."""
+
 import pytest
 
 from internshelper import notify
@@ -12,27 +14,42 @@ def _settings():
     )
 
 
-def test_render_nudge_subject_and_breakdown():
-    subject, html = notify.render_nudge(12, 5)
-    assert subject == "internsHELPer: 12 postings ready to review"
-    assert "5 keyword-candidate" in html and "7 other" in html
-    assert "/review-internships" in html
+def _rows():
+    return [
+        {"title": "SWE Intern", "company": "Google", "url": "https://x/1"},
+        {"title": "Quant <Dev> & Co", "company": "Jane Street", "url": "https://x/2?a=1&b=2"},
+    ]
 
 
-def test_send_nudge_missing_password_raises():
+def test_render_digest_lists_titles_companies_links():
+    subject, html = notify.render_digest(_rows())
+    assert subject == "internsHELPer: 2 new Apply-first postings"
+    assert '<a href="https://x/1">SWE Intern</a>' in html
+    assert "Google" in html and "Jane Street" in html
+    # HTML in scraped titles/urls is escaped, never rendered
+    assert "Quant &lt;Dev&gt; &amp; Co" in html
+    assert "https://x/2?a=1&amp;b=2" in html
+
+
+def test_render_digest_singular_subject():
+    subject, _ = notify.render_digest(_rows()[:1])
+    assert subject == "internsHELPer: 1 new Apply-first posting"
+
+
+def test_send_digest_missing_password_raises():
     with pytest.raises(RuntimeError):
-        notify.send_nudge(_settings(), 5, 2, password=None, send_fn=lambda *a: None)
+        notify.send_digest(_settings(), _rows(), password=None, send_fn=lambda *a: None)
 
 
-def test_send_nudge_missing_sender_raises():
+def test_send_digest_missing_sender_raises():
     s = _settings()
     s.smtp_sender = ""
     with pytest.raises(RuntimeError):
-        notify.send_nudge(s, 5, 2, password="pw", send_fn=lambda *a: None)
+        notify.send_digest(s, _rows(), password="pw", send_fn=lambda *a: None)
 
 
-def test_send_nudge_missing_recipient_raises():
+def test_send_digest_missing_recipient_raises():
     s = _settings()
     s.smtp_recipient = ""
     with pytest.raises(RuntimeError):
-        notify.send_nudge(s, 5, 2, password="pw", send_fn=lambda *a: None)
+        notify.send_digest(s, _rows(), password="pw", send_fn=lambda *a: None)

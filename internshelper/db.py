@@ -123,6 +123,25 @@ def init_db(conn: sqlite3.Connection) -> None:
     _migrate_columns(conn, "postings", _POSTINGS_V4_COLUMNS)
     _migrate_columns(conn, "runs", _RUNS_COLUMNS)
     conn.commit()
+    _migrate_to_inbox(conn)
+
+
+def _migrate_to_inbox(conn: sqlite3.Connection) -> None:
+    """One-time data migration to the tiered-inbox model (meta-gated, idempotent).
+
+    Stamps `notified_at` on every existing posting so the first digest only covers
+    NEW arrivals (the Board shows the backlog — no first-run email blast; each row's
+    own last_seen is a truthful, clock-free stamp). Dismissed/inbox state needs no
+    migration: verdict='no_match' IS dismissed, everything else IS inbox. Also drops
+    the old threshold-nudge flag.
+    """
+    if get_meta(conn, "inbox_migrated") == "1":
+        return
+    conn.execute(
+        "UPDATE postings SET notified_at = last_seen WHERE notified_at IS NULL"
+    )
+    conn.execute("DELETE FROM meta WHERE key = 'pending_notified'")
+    set_meta(conn, "inbox_migrated", "1")  # commits
 
 
 def _migrate_columns(

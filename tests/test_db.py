@@ -185,3 +185,32 @@ def test_fresh_db_has_v4_tier_columns(tmp_path):
     conn = _conn(tmp_path)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(postings)")}
     assert {"tier", "pinned_tier", "tier_before_pin", "pinned_at", "notified_at"} <= cols
+
+
+def test_inbox_migration_stamps_notified_and_is_idempotent(tmp_path):
+    p = tmp_path / "old.db"
+    conn = db.connect(p)
+    # simulate a pre-inbox DB: build schema, seed a row + the old nudge flag, clear the gate
+    db.init_db(conn)
+    conn.execute("DELETE FROM meta")
+    conn.execute(
+        "INSERT INTO postings (posting_id, source_key, source_type, title, first_seen, last_seen) "
+        "VALUES ('g:1','greenhouse:x','greenhouse','Old Role','t1','t2')"
+    )
+    db.set_meta(conn, "pending_notified", "1")
+
+    db.init_db(conn)  # runs the meta-gated migration
+    row = conn.execute("SELECT notified_at FROM postings WHERE posting_id='g:1'").fetchone()
+    assert row["notified_at"] == "t2"  # stamped with the row's own last_seen — no digest blast
+    assert db.get_meta(conn, "pending_notified") is None
+    assert db.get_meta(conn, "inbox_migrated") == "1"
+
+    # idempotent: a post-migration arrival keeps its NULL (it SHOULD be digested)
+    conn.execute(
+        "INSERT INTO postings (posting_id, source_key, source_type, title, first_seen, last_seen) "
+        "VALUES ('g:2','greenhouse:x','greenhouse','New Role','t3','t3')"
+    )
+    conn.commit()
+    db.init_db(conn)
+    assert conn.execute("SELECT notified_at FROM postings WHERE posting_id='g:2'"
+                        ).fetchone()["notified_at"] is None

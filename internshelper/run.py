@@ -1,6 +1,6 @@
-"""Scheduled collector (v2): fetch every source (isolated), capture raw payloads, store
-as `pending`, compute keyword priority-hint flags, and email a review nudge once enough
-pile up. No classification happens here — that's the on-demand `/review-internships` skill.
+"""Scheduled collector: fetch every source (isolated), capture raw payloads, store
+straight into the Inbox (no approval gate), compute keyword priority-hint flags,
+rescore + retier, and email the Apply-first digest for never-digested top-tier rows.
 
 One invocation = one cycle. Run hourly via launchd. Per-source failures are isolated and
 recorded; only a source that succeeded (ok AND count>0) has its postings closed.
@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from internshelper import classify, clock, config, db, mailer, notify, ranking, store
+from internshelper import classify, clock, config, db, mailer, notify, ranking, store, tiers
 from internshelper.config import Settings, SourceEntry
 from internshelper.connectors import build_connector
 from internshelper.dotenv import feature_enabled, load_dotenv
@@ -22,8 +22,8 @@ from internshelper.dotenv import feature_enabled, load_dotenv
 
 @dataclass
 class CollectResult:
-    pending: int
-    candidates: int
+    inbox: int
+    digested: int   # apply-first rows emailed (and stamped) this cycle
     sent: bool
     rescored: int = 0
 
@@ -80,27 +80,38 @@ def run_cycle(
     for entry in sources:
         process_source(conn, entry, compiled, now, payloads_dir)
 
-    # Learned ranking: score every pending row before the user sees it. A ranking
-    # failure must never break the collect — record it for the Health tab and move on.
+    # Learned ranking + tiers: score and tier every inbox row before the user sees it.
+    # A ranking failure must never break the collect — record it and move on.
     rescored = 0
     try:
         rescored = ranking.rescore_inbox(conn, now)
+        tiers.retier_inbox(conn, tiers.load_tier_map())
     except Exception as e:
         store.record_run(conn, "rank", ok=False, count=0,
                          error=f"{type(e).__name__}: {e}", now=now)
 
-    pending, candidates = store.pending_counts(conn)
+    # Apply-first digest: exactly-once per posting (notified_at watermark). A send
+    # failure leaves the rows unstamped, so the next cycle retries them.
+    new_top = conn.execute(
+        "SELECT posting_id, title, company, url FROM postings "
+        "WHERE COALESCE(pinned_tier, tier) = 'apply_first' AND notified_at IS NULL "
+        f"AND is_active = 1 AND {store.INBOX_SQL} ORDER BY posting_id"
+    ).fetchall()
     sent = False
-    already = (db.get_meta(conn, "pending_notified") or "0") == "1"
-    if email_enabled and pending >= settings.notify_threshold and not already:
+    digested = 0
+    if email_enabled and new_top:
         try:
-            notify.send_nudge(settings, pending, candidates, password, send_fn=send_fn)
-            db.set_meta(conn, "pending_notified", "1")
-            store.record_run(conn, "notify", ok=True, count=pending, error=None, now=now)
-            sent = True
+            notify.send_digest(settings, new_top, password, send_fn=send_fn)
+            conn.executemany(
+                "UPDATE postings SET notified_at = ? WHERE posting_id = ?",
+                [(now, r["posting_id"]) for r in new_top],
+            )
+            conn.commit()
+            store.record_run(conn, "notify", ok=True, count=len(new_top), error=None, now=now)
+            sent, digested = True, len(new_top)
         except Exception as e:
             store.record_run(conn, "notify", ok=False, count=0, error=str(e), now=now)
-    return CollectResult(pending=pending, candidates=candidates, sent=sent,
+    return CollectResult(inbox=store.inbox_count(conn), digested=digested, sent=sent,
                          rescored=rescored)
 
 
@@ -130,9 +141,8 @@ def main(argv=None) -> int:
     result = run_cycle(conn, settings, sources, now, password, payloads_dir,
                        email_enabled=feature_enabled("EMAIL"))
     print(
-        f"internsHELPer: collected — sources={len(sources)} "
-        f"pending={result.pending} (candidates={result.candidates}) "
-        f"rescored={result.rescored} nudge_sent={result.sent}"
+        f"internsHELPer: collected — sources={len(sources)} inbox={result.inbox} "
+        f"rescored={result.rescored} digested={result.digested}"
     )
     return 0
 

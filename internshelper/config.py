@@ -101,8 +101,6 @@ class Settings:
     require_cs: bool
     require_intern_or_newgrad: bool
     keywords: dict[str, list[str]] = field(default_factory=dict)
-    # v2: send the review nudge once >= this many postings are pending.
-    notify_threshold: int = 10
 
 
 def load_sources(path: str | Path) -> tuple[list[SourceEntry], list[dict]]:
@@ -183,7 +181,6 @@ def load_settings(path: str | Path) -> Settings:
 
     filters = data.get("filters", {})
     keywords = data.get("keywords", {})
-    review = data.get("review", {})
     for key in ("internship", "newgrad", "cs"):
         if not keywords.get(key):
             raise ConfigError(f"{path}: missing required [keywords] {key} list")
@@ -196,5 +193,4 @@ def load_settings(path: str | Path) -> Settings:
         require_cs=bool(filters.get("require_cs", True)),
         require_intern_or_newgrad=bool(filters.get("require_intern_or_newgrad", True)),
         keywords={k: list(keywords[k]) for k in ("internship", "newgrad", "cs")},
-        notify_threshold=int(review.get("notify_threshold", 10)),
     )
