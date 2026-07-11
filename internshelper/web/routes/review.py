@@ -69,7 +69,7 @@ def _hygiene_counts(request: Request, conn: sqlite3.Connection) -> dict:
     leaks = review.find_guard_leaks(conn, entries) if not cfg_error else []
     return {
         "leak_count": len(leaks),
-        "closed_count": len(review.find_closed_pending(conn)),
+        "closed_count": len(review.find_closed_inbox(conn)),
     }
 
 
@@ -369,7 +369,7 @@ def post_bulk_clear_closed(
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     now = clock.now_iso()
-    cleared = review.clear_closed_pending(conn, now=now)
+    cleared = review.clear_closed_inbox(conn, now=now)
     review.finish(conn)
     _rescore(conn)
     return _bulk_response(request, conn, filters=_filters(q, source, sort), view=mode,

@@ -246,7 +246,7 @@ def top_reasons(contribs: list, limit: int = TOP_REASONS) -> str:
 
 # Every non-dismissed posting gets a score (pipeline rows ride along — harmless, and
 # simpler than excluding them). Dismissed rows keep whatever score they had.
-_INBOX_SQL = "(verdict IS NULL OR verdict != 'no_match')"
+_INBOX_SQL = store.INBOX_SQL
 
 
 def rescore_inbox(conn: sqlite3.Connection, now: str) -> int:

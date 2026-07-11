@@ -13,10 +13,12 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from internshelper import clock, config, db, store, text
+from internshelper import clock, config, db, store, text, tiers
 from internshelper.dotenv import load_dotenv
 
 VERDICTS = ("match", "no_match")
+
+DISMISS_REASON = "dismissed: board"
 
 BULK_CLEAR_REASON = "bulk: non-candidate"
 GUARD_LEAK_REASON = "bulk: guard leak"
@@ -245,7 +247,7 @@ def _applied_ids(conn: sqlite3.Connection) -> set[str]:
 
 
 def find_guard_leaks(conn: sqlite3.Connection, entries) -> list[dict]:
-    """Pending rows whose title no longer passes their source's CURRENT title guard.
+    """Inbox rows whose title no longer passes their source's CURRENT title guard.
 
     Catches postings collected before a guard was fixed/tightened (e.g. the substring-era
     'Internal…' leaks). Never flags: sources absent from the loaded config (removed),
@@ -255,7 +257,7 @@ def find_guard_leaks(conn: sqlite3.Connection, entries) -> list[dict]:
     applied_ids = _applied_ids(conn)
     rows = conn.execute(
         "SELECT posting_id, title, company, source_key FROM postings "
-        "WHERE review_status = 'pending' ORDER BY source_key, posting_id"
+        f"WHERE {store.INBOX_SQL} ORDER BY source_key, posting_id"
     )
     return [
         dict(r)
@@ -268,13 +270,13 @@ def find_guard_leaks(conn: sqlite3.Connection, entries) -> list[dict]:
 
 
 def _clear_batch(conn: sqlite3.Connection, ids: list[str], reason: str, now: str) -> int:
-    """Mark the given pending posting_ids no_match as one undoable batch (stamp + reason)."""
+    """Bulk-dismiss the given inbox posting_ids as one undoable batch (stamp + reason)."""
     if not ids:
         return 0
     ph = ",".join("?" * len(ids))
     cur = conn.execute(
         "UPDATE postings SET verdict = 'no_match', verdict_reason = ?, reviewed_at = ?, "
-        f"review_status = 'reviewed' WHERE review_status = 'pending' AND posting_id IN ({ph})",
+        f"review_status = 'reviewed' WHERE {store.INBOX_SQL} AND posting_id IN ({ph})",
         (reason, now, *ids),
     )
     conn.commit()
@@ -289,25 +291,27 @@ def clear_guard_leaks(
     return _clear_batch(conn, ids, reason, now)
 
 
-def find_closed_pending(conn: sqlite3.Connection) -> list[dict]:
-    """Pending rows whose posting vanished from its source board (close-detection).
+def find_closed_inbox(conn: sqlite3.Connection) -> list[dict]:
+    """Inbox rows whose posting vanished from its source board (close-detection).
 
-    They can't be applied to anymore, yet they linger in the queue because
-    `list_pending` ignores `is_active`. Applied posting_ids are never flagged.
+    They can't be applied to anymore, yet they linger in the Inbox because the inbox
+    queries ignore `is_active` (a closed pill marks them instead — close-detection
+    has false positives, so nothing auto-dismisses). Applied posting_ids are never
+    flagged.
     """
     applied_ids = _applied_ids(conn)
     rows = conn.execute(
         "SELECT posting_id, title, company, source_key FROM postings "
-        "WHERE review_status = 'pending' AND is_active = 0 ORDER BY source_key, posting_id"
+        f"WHERE {store.INBOX_SQL} AND is_active = 0 ORDER BY source_key, posting_id"
     )
     return [dict(r) for r in rows if r["posting_id"] not in applied_ids]
 
 
-def clear_closed_pending(
+def clear_closed_inbox(
     conn: sqlite3.Connection, now: str, reason: str = CLOSED_REASON
 ) -> int:
-    """Bulk no_match every closed-but-pending row. Undo via `undo_bulk_clear`."""
-    ids = [r["posting_id"] for r in find_closed_pending(conn)]
+    """Bulk-dismiss every closed-but-inbox row. Undo via `undo_bulk_clear`."""
+    ids = [r["posting_id"] for r in find_closed_inbox(conn)]
     return _clear_batch(conn, ids, reason, now)
 
 
@@ -325,6 +329,122 @@ def undo_bulk_clear(conn: sqlite3.Connection, reviewed_at: str, reason: str) -> 
     )
     conn.commit()
     return cur.rowcount
+
+
+# ---------- inbox actions (the tiered-board model: no gate, just curation) ----------
+
+_INBOX_FIELDS = (
+    "p.posting_id, p.source_key, p.title, p.company, p.location, p.url, p.payload_path, "
+    "p.posted_at, p.first_seen, p.is_internship, p.is_newgrad, p.is_cs_relevant, "
+    "p.rank_score, p.rank_reasons, p.is_active, "
+    "COALESCE(p.pinned_tier, p.tier) AS tier, p.pinned_tier"
+)
+
+
+def _inbox_where(
+    q: str = "", source: str = "", tier: str | None = None
+) -> tuple[str, list[object]]:
+    ph = ",".join("?" * len(store.PIPELINE_STATUSES))
+    clauses = [store.INBOX_SQL, f"(a.status IS NULL OR a.status NOT IN ({ph}))"]
+    params: list[object] = list(store.PIPELINE_STATUSES)
+    if q:
+        clauses.append("(LOWER(p.title) LIKE ? OR LOWER(p.company) LIKE ?)")
+        like = f"%{q.lower()}%"
+        params += [like, like]
+    if source:
+        clauses.append("p.source_key = ?")
+        params.append(source)
+    if tier:
+        clauses.append("COALESCE(p.pinned_tier, p.tier) = ?")
+        params.append(tier)
+    return " WHERE " + " AND ".join(clauses), params
+
+
+def list_inbox(
+    conn: sqlite3.Connection,
+    limit: int | None = None,
+    offset: int = 0,
+    *,
+    q: str = "",
+    source: str = "",
+    tier: str | None = None,
+) -> list[dict]:
+    """Inbox postings (non-dismissed, not yet in the pipeline), best-first.
+
+    `tier` filters on the EFFECTIVE tier (pin wins); the returned `tier` key is the
+    effective tier too, with `pinned_tier` alongside so a pin is visible. Ordering
+    and paging semantics match the old pending queue (stable posting_id tiebreak).
+    """
+    where, params = _inbox_where(q, source, tier)
+    sql = (
+        f"SELECT {_INBOX_FIELDS} FROM postings p "
+        f"LEFT JOIN applications a ON a.posting_id = p.posting_id{where} "
+        "ORDER BY (p.rank_score IS NULL), p.rank_score DESC, "
+        f"{store.CANDIDATE_SQL} DESC, "
+        "(p.posted_at IS NULL), p.posted_at DESC, p.first_seen DESC, p.posting_id"
+    )
+    if limit is not None or offset:
+        sql += " LIMIT ? OFFSET ?"
+        params += [-1 if limit is None else limit, offset]
+    return [dict(r) for r in conn.execute(sql, params)]
+
+
+def dismiss(conn: sqlite3.Connection, posting_id: str, reason: str, now: str) -> None:
+    """One-click "not for me": hides the posting and records the negative label.
+
+    Exactly the old no_match plumbing — `verdict='no_match'` IS the dismissed flag,
+    so history and new dismissals train identically. Undo via `undo_dismiss`.
+    """
+    set_verdict(conn, posting_id, "no_match", reason, now)
+
+
+def undo_dismiss(conn: sqlite3.Connection, posting_id: str) -> None:
+    """Put a dismissed posting back in the Inbox as if never touched."""
+    reset_verdict(conn, posting_id)
+
+
+def pin_tier(conn: sqlite3.Connection, posting_id: str, tier: str, now: str) -> None:
+    """Pin a posting to a tier (sticky: re-ranking never moves it; 'unpin' releases).
+
+    Records the effective tier at pin time as `tier_before_pin` — the promotion/
+    demotion direction is the ranker's training label (see ranking._signal).
+    """
+    if tier not in tiers.TIERS:
+        raise ValueError(f"tier must be one of {tiers.TIERS}, got {tier!r}")
+    row = conn.execute(
+        "SELECT COALESCE(pinned_tier, tier) AS effective FROM postings WHERE posting_id = ?",
+        (posting_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"unknown posting {posting_id!r}")
+    conn.execute(
+        "UPDATE postings SET pinned_tier = ?, tier_before_pin = ?, pinned_at = ? "
+        "WHERE posting_id = ?",
+        (tier, row["effective"], now, posting_id),
+    )
+    conn.commit()
+
+
+def unpin(conn: sqlite3.Connection, posting_id: str) -> None:
+    """Release a pin: the posting follows its computed tier again (and the pin's
+    training signal disappears with it)."""
+    conn.execute(
+        "UPDATE postings SET pinned_tier = NULL, tier_before_pin = NULL, pinned_at = NULL "
+        "WHERE posting_id = ?",
+        (posting_id,),
+    )
+    conn.commit()
+
+
+def refresh_ranking(conn: sqlite3.Connection) -> None:
+    """Best-effort rescore + retier after an action — never blocks the action itself."""
+    try:
+        from internshelper import ranking
+
+        ranking.rescore_inbox(conn, now=clock.now_iso())
+        tiers.retier_inbox(conn, tiers.load_tier_map())
+    except Exception:
+        pass
 
 
 def payload_summary(payload_path: str | None, *, max_chars: int = 2000) -> dict:
@@ -408,6 +528,24 @@ def main(argv=None) -> int:
     lp = sub.add_parser("list-pending", help="pending postings, candidates first (JSON)")
     lp.add_argument("--limit", type=int, default=None)
 
+    li = sub.add_parser("list-inbox", help="inbox postings, best-first (JSON)")
+    li.add_argument("--tier", choices=tiers.TIERS, default=None)
+    li.add_argument("--limit", type=int, default=None)
+
+    dm = sub.add_parser("dismiss", help="hide one posting ('not for me'; negative label)")
+    dm.add_argument("posting_id")
+    dm.add_argument("--reason", default=DISMISS_REASON)
+
+    ud = sub.add_parser("undo-dismiss", help="return a dismissed posting to the inbox")
+    ud.add_argument("posting_id")
+
+    pn = sub.add_parser("pin", help="pin a posting to a tier (sticky + training signal)")
+    pn.add_argument("posting_id")
+    pn.add_argument("--tier", required=True, choices=tiers.TIERS)
+
+    up = sub.add_parser("unpin", help="release a pin — the computed tier applies again")
+    up.add_argument("posting_id")
+
     sv = sub.add_parser("set-verdict", help="record a verdict for one posting")
     sv.add_argument("posting_id")
     sv.add_argument("--verdict", required=True, choices=VERDICTS)
@@ -436,14 +574,27 @@ def main(argv=None) -> int:
             n = clear_guard_leaks(conn, entries, now=clock.now_iso())
             finish(conn)
             print(f"cleared {n} guard leak(s)")
+    elif args.cmd == "list-inbox":
+        print(json.dumps(list_inbox(conn, args.limit, tier=args.tier), indent=2))
+    elif args.cmd == "dismiss":
+        dismiss(conn, args.posting_id, args.reason, now=clock.now_iso())
+        refresh_ranking(conn)  # every action is a new label
+        print(f"{args.posting_id}: dismissed")
+    elif args.cmd == "undo-dismiss":
+        undo_dismiss(conn, args.posting_id)
+        refresh_ranking(conn)
+        print(f"{args.posting_id}: back in the inbox")
+    elif args.cmd == "pin":
+        pin_tier(conn, args.posting_id, args.tier, now=clock.now_iso())
+        refresh_ranking(conn)
+        print(f"{args.posting_id}: pinned to {args.tier}")
+    elif args.cmd == "unpin":
+        unpin(conn, args.posting_id)
+        refresh_ranking(conn)
+        print(f"{args.posting_id}: unpinned")
     elif args.cmd == "set-verdict":
         set_verdict(conn, args.posting_id, args.verdict, args.reason, now=clock.now_iso())
-        try:  # every verdict is a new label — retrain the ranker, but never block on it
-            from internshelper import ranking
-
-            ranking.rescore_inbox(conn, now=clock.now_iso())
-        except Exception:
-            pass
+        refresh_ranking(conn)  # every verdict is a new label — never block on it
         print(f"{args.posting_id}: {args.verdict}")
     elif args.cmd == "finish":
         reset = finish(conn)

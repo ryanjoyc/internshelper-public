@@ -27,6 +27,17 @@ PIPELINE_STATUSES = ("Applied", "Interviewing", "Offer", "Rejected")
 # `is_candidate` is the same predicate for a fetched row (sqlite3.Row or dict).
 CANDIDATE_SQL = "(is_cs_relevant = 1 OR is_internship = 1 OR is_newgrad = 1)"
 
+# Not dismissed — there is no approval gate, so this is the whole Inbox universe
+# (pipeline rows are excluded per-query where it matters).
+INBOX_SQL = "(verdict IS NULL OR verdict != 'no_match')"
+
+# Best-first ordering, shared by the Inbox and the review CLI: learned rank_score
+# dominates when present (NULL = unscored/cold-start sorts last); keyword-candidate
+# tier + recency are the tiebreak and the entire order when every score is NULL.
+# The final posting_id tiebreak keeps paging stable.
+RANK_ORDER_SQL = "(rank_score IS NULL), rank_score DESC"
+RECENCY_ORDER_SQL = "(posted_at IS NULL), posted_at DESC, first_seen DESC, posting_id"
+
 
 def is_candidate(row) -> bool:
     return bool(row["is_cs_relevant"] or row["is_internship"] or row["is_newgrad"])
@@ -391,3 +402,42 @@ def matches_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         ORDER BY p.reviewed_at DESC, p.posting_id
         """
     ).fetchall()
+
+
+def inbox_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Every non-dismissed posting with its application state, best-first — the Board
+    query. Pipeline rows ride along (the route splits them into lanes); `tier` in the
+    result is the EFFECTIVE tier (pin wins over the computed value)."""
+    return conn.execute(
+        f"""
+        SELECT COALESCE(p.pinned_tier, p.tier) AS tier,  -- effective tier must precede
+               p.*, a.status, a.notes, a.applied_date    -- p.* (first "tier" wins the name)
+        FROM postings p
+        LEFT JOIN applications a ON a.posting_id = p.posting_id
+        WHERE {INBOX_SQL}
+        ORDER BY (p.rank_score IS NULL), p.rank_score DESC, {CANDIDATE_SQL} DESC,
+                 (p.posted_at IS NULL), p.posted_at DESC, p.first_seen DESC, p.posting_id
+        """
+    ).fetchall()
+
+
+def dismissed_rows(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:
+    """Recently dismissed postings, newest verdict first — the board's dismissed filter."""
+    return conn.execute(
+        "SELECT * FROM postings WHERE verdict = 'no_match' "
+        "ORDER BY reviewed_at DESC, posting_id LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
+def inbox_count(conn: sqlite3.Connection) -> int:
+    """Inbox size (non-dismissed, not yet in the pipeline) — the nav badge."""
+    ph = ",".join("?" * len(PIPELINE_STATUSES))
+    return conn.execute(
+        f"""
+        SELECT COUNT(*) FROM postings p
+        LEFT JOIN applications a ON a.posting_id = p.posting_id
+        WHERE {INBOX_SQL} AND (a.status IS NULL OR a.status NOT IN ({ph}))
+        """,
+        PIPELINE_STATUSES,
+    ).fetchone()[0]

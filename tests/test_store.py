@@ -277,3 +277,52 @@ def test_feed_limit_offset_and_count(tmp_path):
     assert [r["posting_id"] for r in page] == ["greenhouse:3", "greenhouse:2"]
     assert store.feed_count(c, **kwargs) == 5
     assert store.feed_count(c, **kwargs, search="zzz") == 0
+
+
+# ---------- inbox queries (tiered-board model) ----------
+
+def _post(pid, company="Stripe", cs=True):
+    return Posting(posting_id=pid, source_key="greenhouse:stripe", title="SWE Intern",
+                   company=company, url=f"https://x/{pid}", is_cs_relevant=cs)
+
+
+def test_inbox_with_status_excludes_dismissed_and_exposes_effective_tier(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    db.init_db(conn)
+    for pid in ("g:1", "g:2", "g:3"):
+        store.upsert(conn, _post(pid), now="2026-07-10T10:00:00+00:00")
+    conn.execute("UPDATE postings SET tier='everything_else'")
+    conn.execute("UPDATE postings SET pinned_tier='apply_first' WHERE posting_id='g:2'")
+    conn.execute("UPDATE postings SET verdict='no_match' WHERE posting_id='g:3'")
+    conn.execute("INSERT INTO applications (posting_id, status) VALUES ('g:1', 'Applied')")
+    conn.commit()
+
+    rows = {r["posting_id"]: r for r in store.inbox_with_status(conn)}
+    assert set(rows) == {"g:1", "g:2"}          # dismissed g:3 gone; pipeline g:1 rides along
+    assert rows["g:1"]["status"] == "Applied"
+    assert rows["g:2"]["tier"] == "apply_first"  # pin wins over computed tier
+    assert rows["g:1"]["tier"] == "everything_else"
+
+
+def test_inbox_count_excludes_pipeline_and_dismissed(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    db.init_db(conn)
+    for pid in ("g:1", "g:2", "g:3", "g:4"):
+        store.upsert(conn, _post(pid), now="2026-07-10T10:00:00+00:00")
+    conn.execute("UPDATE postings SET verdict='no_match' WHERE posting_id='g:1'")
+    conn.execute("INSERT INTO applications (posting_id, status) VALUES ('g:2', 'Applied')")
+    conn.execute("INSERT INTO applications (posting_id, status) VALUES ('g:3', 'Interested')")
+    conn.commit()
+    assert store.inbox_count(conn) == 2  # g:3 (Interested) + g:4
+
+
+def test_dismissed_rows_newest_first(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    db.init_db(conn)
+    for pid, ts in (("g:1", "2026-07-01T10:00:00+00:00"), ("g:2", "2026-07-02T10:00:00+00:00")):
+        store.upsert(conn, _post(pid), now="2026-07-01T09:00:00+00:00")
+        conn.execute("UPDATE postings SET verdict='no_match', reviewed_at=? WHERE posting_id=?",
+                     (ts, pid))
+    conn.commit()
+    assert [r["posting_id"] for r in store.dismissed_rows(conn)] == ["g:2", "g:1"]
+    assert [r["posting_id"] for r in store.dismissed_rows(conn, limit=1)] == ["g:2"]

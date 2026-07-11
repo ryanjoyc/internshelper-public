@@ -325,7 +325,7 @@ def test_clear_guard_leaks_and_undo_round_trip(tmp_path):
     assert plain["verdict_reason"] == review.BULK_CLEAR_REASON
 
 
-def test_find_and_clear_closed_pending(tmp_path):
+def test_find_and_clear_closed_inbox(tmp_path):
     c = _conn(tmp_path)
     store.upsert(c, _p("g:open", title="SWE Intern"), now="2026-07-10T10:00:00+00:00")
     store.upsert(c, _p("g:closed", title="Data Intern"), now="2026-07-10T10:01:00+00:00")
@@ -334,10 +334,10 @@ def test_find_and_clear_closed_pending(tmp_path):
     c.execute("INSERT INTO applications (posting_id, status) VALUES ('g:closedapplied', 'Applied')")
     c.commit()
 
-    found = review.find_closed_pending(c)
+    found = review.find_closed_inbox(c)
     assert [r["posting_id"] for r in found] == ["g:closed"]
 
-    n = review.clear_closed_pending(c, now="2026-07-10T11:00:00+00:00")
+    n = review.clear_closed_inbox(c, now="2026-07-10T11:00:00+00:00")
     assert n == 1
     row = c.execute("SELECT verdict, verdict_reason FROM postings "
                     "WHERE posting_id='g:closed'").fetchone()
@@ -413,3 +413,100 @@ def test_cli_list_pending_emits_json(tmp_path, capsys, monkeypatch):
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
     assert out[0]["posting_id"] == "g:1"
+
+
+# ---------- inbox actions (tiered-board model) ----------
+
+def test_list_inbox_includes_matches_excludes_dismissed_and_pipeline(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:new", cs=True), now="2026-07-10T10:00:00+00:00")
+    store.upsert(c, _p("g:match", cs=True), now="2026-07-10T10:01:00+00:00")
+    store.upsert(c, _p("g:gone", cs=True), now="2026-07-10T10:02:00+00:00")
+    store.upsert(c, _p("g:applied", cs=True), now="2026-07-10T10:03:00+00:00")
+    store.upsert(c, _p("g:interested", cs=True), now="2026-07-10T10:04:00+00:00")
+    review.set_verdict(c, "g:match", "match", "old gate", now="2026-07-10T11:00:00+00:00")
+    review.dismiss(c, "g:gone", review.DISMISS_REASON, now="2026-07-10T11:01:00+00:00")
+    store.set_application_status(c, "g:applied", "Applied")
+    store.set_application_status(c, "g:interested", "Interested")
+
+    ids = {r["posting_id"] for r in review.list_inbox(c)}
+    # old matches and Interested stay in the inbox; dismissed + pipeline leave it
+    assert ids == {"g:new", "g:match", "g:interested"}
+
+
+def test_list_inbox_tier_filter_uses_effective_tier(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:a", cs=True), now="2026-07-10T10:00:00+00:00")
+    store.upsert(c, _p("g:b", cs=True), now="2026-07-10T10:01:00+00:00")
+    c.execute("UPDATE postings SET tier='everything_else'")
+    c.commit()
+    review.pin_tier(c, "g:b", "apply_first", now="2026-07-10T11:00:00+00:00")
+
+    top = review.list_inbox(c, tier="apply_first")
+    assert [r["posting_id"] for r in top] == ["g:b"]
+    assert top[0]["tier"] == "apply_first" and top[0]["pinned_tier"] == "apply_first"
+    rest = review.list_inbox(c, tier="everything_else")
+    assert [r["posting_id"] for r in rest] == ["g:a"]
+
+
+def test_dismiss_and_undo_round_trip(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1", cs=True), now="2026-07-10T10:00:00+00:00")
+    review.dismiss(c, "g:1", review.DISMISS_REASON, now="2026-07-10T11:00:00+00:00")
+    row = c.execute("SELECT verdict, verdict_reason FROM postings WHERE posting_id='g:1'").fetchone()
+    assert row["verdict"] == "no_match" and row["verdict_reason"] == review.DISMISS_REASON
+    assert review.list_inbox(c) == []
+    review.undo_dismiss(c, "g:1")
+    assert [r["posting_id"] for r in review.list_inbox(c)] == ["g:1"]
+
+
+def test_pin_tier_records_direction_and_unpin_clears(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1", cs=True), now="2026-07-10T10:00:00+00:00")
+    c.execute("UPDATE postings SET tier='long_shots'")
+    c.commit()
+    review.pin_tier(c, "g:1", "apply_first", now="2026-07-10T11:00:00+00:00")
+    row = c.execute("SELECT pinned_tier, tier_before_pin, pinned_at FROM postings").fetchone()
+    assert (row["pinned_tier"], row["tier_before_pin"]) == ("apply_first", "long_shots")
+    assert row["pinned_at"] == "2026-07-10T11:00:00+00:00"
+    # re-pinning records the previous EFFECTIVE tier as the new before
+    review.pin_tier(c, "g:1", "target", now="2026-07-10T12:00:00+00:00")
+    row = c.execute("SELECT pinned_tier, tier_before_pin FROM postings").fetchone()
+    assert (row["pinned_tier"], row["tier_before_pin"]) == ("target", "apply_first")
+    review.unpin(c, "g:1")
+    row = c.execute("SELECT pinned_tier, tier_before_pin, pinned_at FROM postings").fetchone()
+    assert tuple(row) == (None, None, None)
+
+
+def test_pin_tier_validates(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1"), now="2026-07-10T10:00:00+00:00")
+    with pytest.raises(ValueError, match="tier"):
+        review.pin_tier(c, "g:1", "mega", now="t")
+    with pytest.raises(ValueError, match="unknown posting"):
+        review.pin_tier(c, "g:nope", "apply_first", now="t")
+
+
+def test_cli_inbox_verbs(tmp_path, capsys, monkeypatch):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1", title="Quant Intern", cs=True), now="2026-07-10T10:00:00+00:00")
+    c.close()
+    monkeypatch.setenv("INTERNSHELPER_DB", str(tmp_path / "t.db"))
+
+    assert review.main(["list-inbox"]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    assert rows[0]["posting_id"] == "g:1" and "tier" in rows[0]
+
+    assert review.main(["pin", "g:1", "--tier", "apply_first"]) == 0
+    assert "pinned to apply_first" in capsys.readouterr().out
+    assert review.main(["list-inbox", "--tier", "apply_first"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["posting_id"] == "g:1"
+    assert review.main(["unpin", "g:1"]) == 0
+    capsys.readouterr()
+
+    assert review.main(["dismiss", "g:1", "--reason", "not my field"]) == 0
+    assert "dismissed" in capsys.readouterr().out
+    assert review.main(["list-inbox"]) == 0
+    assert json.loads(capsys.readouterr().out) == []
+    assert review.main(["undo-dismiss", "g:1"]) == 0
+    assert "back in the inbox" in capsys.readouterr().out
