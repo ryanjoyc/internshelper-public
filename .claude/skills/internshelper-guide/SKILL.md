@@ -13,36 +13,40 @@ fit*, not every function signature. If you make a structural change, refresh thi
 ## What internsHELPer is
 
 A local, $0 tool that **collects** internship / new-grad postings from boards listed in
-`config/sources.yaml`, keeps a de-duplicated archive (raw payloads saved to disk), and **emails a
-nudge** when a batch piles up. Classification is **on-demand and free**: triage the pending queue
-right in the web UI (three switchable views, last choice remembered via cookie: a tiered queue —
-near-certain / needs-your-eyes / probably-not by learned score, with one-click bulk
-accept/dismiss and per-row reason chips; an email-client split pane; or a keyboard-driven focus
-mode — everything undoable), or open the repo
-in Claude Code and run `/review-internships` for the agent-assisted pass — same verdicts either
-way. The web UI (`internshelper/web/` — FastAPI + Jinja + HTMX/Alpine, vendored, no build step)
-has six pages: Review (triage), Board (kanban application tracker with a table lens), Postings
-(searchable archive), Companies (the approved-companies index + board-proposal approvals),
+`config/sources.yaml`, keeps a de-duplicated archive (raw payloads saved to disk), and **emails
+an Apply-first digest** when new top-tier postings arrive. There is **no approval gate**: every
+collected posting lands on the Board's Inbox, grouped into four apply-order tier sections —
+Apply first (dream companies), Then these (the approved index), Everything else, Long shots
+(low learned fit-score) — with the learned score ordering within a tier. Curation is one-click:
+**dismiss** (hidden, undoable), **pin** to a tier (sticky drag, survives re-ranking), **drag to
+Applied** — and every action trains the ranker. `/review-internships` in Claude Code is the
+agent-assisted audit of the same tiers. The web UI (`internshelper/web/` — FastAPI + Jinja +
+HTMX/Alpine, vendored, no build step) has five pages: Board (Inbox tier column + the
+Applied → Interviewing → Offer → Rejected kanban, with table + dismissed lenses), Postings
+(searchable archive), Companies (approved-companies index + proposals + dream-tier toggle),
 Sources (add/remove wizard), Health — in the browser, or as a Dock-launchable native macOS app
-(`InternsHELPer.app`). The hourly cron is a dumb free collector;
-review is the classifier step — accurate, no API key, $0 ongoing.
+(`InternsHELPer.app`). The hourly cron is a dumb free collector; ranking/tiers only order —
+accurate, no API key, $0 ongoing.
 
 ## Architecture & data flow
 
 ```
-collect (run.py) → store (store.py / db.py) → nudge (notify.py)
-    → review on demand (web UI Review page, or review.py + the review-internships skill)
-    → track (web UI Board page → applications table)
+collect (run.py) → store (store.py / db.py) → rank (ranking.py) + tier (tiers.py)
+    → digest new Apply-first arrivals (notify.py)
+    → curate on the Board (dismiss / pin / drag-to-Applied → review.py + applications table)
 ```
 
 Each collect cycle: scrape every source → save each new posting's raw payload to
-`data/payloads/{id}.json` → store it as `pending` → if `≥ notify_threshold` are pending (and you
-haven't been nudged yet), email a one-line nudge. **No classification happens at collect time.**
+`data/payloads/{id}.json` → store it straight into the Inbox → retrain + rescore + retier →
+email the Apply-first digest for rows never digested before (`notified_at` watermark,
+exactly-once per posting). **Nothing is gated — ranking and tiers only order.**
 
-Keyword flags (`is_internship` / `is_newgrad` / `is_cs_relevant`) are computed at collect time as
-**priority hints only**. The review queue's best-first order is the **learned rank score**
-(`ranking.py`, retrained each cycle + each verdict; the flags are the tiebreak and the cold-start
-fallback). Neither flags nor score ever gate what gets collected or shown.
+Keyword flags (`is_internship` / `is_newgrad` / `is_cs_relevant`) are computed at collect time
+as **cold-start hints only**. Within a tier, order is the **learned rank score** (`ranking.py`,
+retrained each cycle + each dismiss/pin/apply action; training labels via `gather_labels` —
+applications and pins at full weight, the historical match/no_match verdicts as seed data).
+The tier itself comes from the company (built-in dream list + companies.yaml) unless the score
+flags likely-junk (Long shots); a user pin overrides both and is sticky.
 
 ## Module map (`internshelper/`)
 
@@ -50,13 +54,14 @@ fallback). Neither flags nor score ever gate what gets collected or shown.
 
 | Module | Responsibility |
 |--------|----------------|
-| `run` | Scheduled collector: fetch all sources, store new payloads as pending, compute priority hints, retrain+rescore the learned ranking, email the nudge. One invocation = one cycle. |
-| `review` | On-demand review CLI + the web Review page's data layer: list pending (searchable/sortable), set verdicts, finish the queue, summarize confirmed matches, list/clear guard leaks + closed-pending, tier partitioning (`partition_tiers` / `tier_counts` over `ranking.TIER_HIGH`/`TIER_LOW`) and bulk tier accept/dismiss — every bulk batch undoable. Driven by the `review-internships` skill. |
-| `ranking` | Learned queue ranking (ROADMAP Phase 1.5 v1): weighted naive-Bayes match-likelihood over title tokens + company/source priors + a recency bonus, trained from verdict history. Scores persist on pending rows (`rank_score`/`rank_reasons`); ranking orders, never gates; cold start falls back to candidates-first. Retrained on every collect cycle and every verdict path. |
-| `companies` | The approved-companies index (`config/companies.yaml`, machine-managed): add/list companies, record board proposals, approve (→ writes the board into `sources.yaml` with the default guard) / reject / link / mark no-board. Driven by the `resolve-companies` skill + the web Companies page. |
+| `run` | Scheduled collector: fetch all sources, store new payloads into the Inbox, compute hint flags, retrain+rescore+retier, email the Apply-first digest (exactly-once per posting via `notified_at`). One invocation = one cycle. |
+| `review` | Inbox-actions CLI + the Board's data layer: `list_inbox` (best-first, effective-tier filter), `dismiss`/`undo_dismiss` (the no_match plumbing, reused), `pin_tier`/`unpin` (sticky + `tier_before_pin` training direction), guard-leak + closed-inbox hygiene (undoable batches), `payload_summary`, `refresh_ranking`. Driven by the `review-internships` + `deep-scan-source` skills and the board routes. |
+| `ranking` | Learned fit ranking: weighted naive-Bayes over title tokens + company/source priors + a recency bonus. Training labels via `gather_labels` (precedence application > pin > verdict; Rejected counts positive — the user chose to apply). Scores persist on inbox rows; ranking orders, never gates. Retrained on every collect cycle and every board action. |
+| `tiers` | Apply-order tiers: `apply_first` (dream companies — built-in list + companies.yaml `tier: dream`), `target` (rest of the approved index), `everything_else`, `long_shots` (low score, any company). `normalize_company` (suffix drop + initials merge), `compute_tier`, `retier_inbox` (pin-immune). |
+| `companies` | The approved-companies index (`config/companies.yaml`, machine-managed): add/list companies, record board proposals, approve (→ writes the board into `sources.yaml` with the default guard) / reject / link / mark no-board / set-tier (dream → Apply first). Driven by the `resolve-companies` skill + the web Companies page. |
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
 | `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the launchd plist and install the Dock app on macOS. Idempotent. |
-| `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). A package, not a single file — `create_app()` factory in `__init__.py`, per-request DB connections in `deps.py`, routes/ (review, board, postings, health incl. `/healthz`, sources), templates/ (Jinja + HTMX partials), static/ (app.css design tokens, app.js, vendored htmx/alpine/sortable, Geist fonts). UI only; data logic lives in `store` / `review` / `sources`. |
+| `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). A package, not a single file — `create_app()` factory in `__init__.py`, per-request DB connections in `deps.py`, routes/ (board — incl. the `/` and `/review` redirects, postings, health incl. `/healthz`, sources, companies), templates/ (Jinja + HTMX partials), static/ (app.css design tokens, app.js, vendored htmx/alpine/sortable, Geist fonts). UI only; data logic lives in `store` / `review` / `sources`. |
 | `app` | Dock-app runtime launcher: start the web server headless on port 8510 (under a pipe-watchdog that reaps it if the launcher dies), probe `/healthz`, show it in a native pywebview window, stop it on quit. Pidfile (`data/app.pid`) decides attach vs own for a pre-existing server; caps `data/app.log` at launch. |
 | `appbundle` | Build `InternsHELPer.app` into `build/` (Info.plist, launcher script execing `app`, `.icns` from `assets/icon-1024.png` via sips/iconutil); `--install` copies it to `~/Applications`. macOS-only. |
 
@@ -70,7 +75,7 @@ fallback). Neither flags nor score ever gate what gets collected or shown.
 | `models` | The normalized `Posting` dataclass shared across connectors / classify / store; carries scraped + classified fields + the raw payload. |
 | `classify` | Keyword matcher (whole-word, case-insensitive) over title + HTML-stripped description → the three flag booleans. |
 | `clock` | Canonical UTC ISO-8601 helpers: parse mixed date formats, convert to UTC, diff. |
-| `notify` | Render + send the review-nudge email. |
+| `notify` | Render + send the Apply-first digest email (new top-tier arrivals; HTML-escaped). |
 | `display` | Pure display helpers: humanize mixed date formats with relative-age hints (framework-free). |
 | `dotenv` | Stdlib `.env` loader; shell env vars win; silent no-op if the file is missing. |
 | `text` | HTML→text helpers (stdlib `html.parser`, survives double-escaped HTML): `strip_html` one-liner for keyword/token matching, `html_to_text` paragraph/bullet-preserving for showing descriptions. |
@@ -104,9 +109,9 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
   `test <url|source_key> [--json]` (`--json` dumps every parsed posting with its
   `posting_id`+`url` — used by `deep-scan-source`; `test` adopts the registered entry's extras
   (e.g. markdown `columns`) when the target is registered, so it parses exactly as collect does)
-- **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary` · `applied` (applied posting_ids — the `deep-scan-source` guard) · `list-leaks` / `clear-leaks` (pending rows failing their source's *current* title guard)
-- **`ranking`** — `retrain` (rescore all pending) · `show` (stored model summary) · `explain <posting_id>` (score + per-feature contributions) · `eval [--holdout 0.25] [--k 10,25,50]` (time-ordered backtest: precision@k + AUC vs the old heuristic)
-- **`companies`** — `add <name>` · `list [--json]` · `propose <name> --url ... [--count N] [--evidence ...]` · `approve <name>` · `reject <name>` · `resolve-write <name> <source_key>` · `mark-no-board <name>`
+- **`review`** — `list-inbox [--tier T] [--limit N]` · `dismiss <id> [--reason ...]` · `undo-dismiss <id>` · `pin <id> --tier T` · `unpin <id>` · `applied` (applied posting_ids — the `deep-scan-source` guard) · `list-leaks` / `clear-leaks` (inbox rows failing their source's *current* title guard)
+- **`ranking`** — `retrain` (rescore all inbox rows) · `show` (stored model summary) · `explain <posting_id>` (score + per-feature contributions) · `labels` (the unified training set, JSON) · `eval [--holdout 0.25] [--k 10,25,50]` (time-ordered backtest over all label signals)
+- **`companies`** — `add <name>` · `list [--json]` · `propose <name> --url ... [--count N] [--evidence ...]` · `approve <name>` · `reject <name>` · `resolve-write <name> <source_key>` · `mark-no-board <name>` · `set-tier <name> dream|default` (dream → postings land in Apply first)
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
 - **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.
 - **`web`** — `[--port 8510]`; serves the web UI on 127.0.0.1. Needs the `web` extra.
@@ -122,7 +127,7 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - `config/profile.md` — the user's role-fit profile. The `deep-scan-source` / `review-internships`
   agents judge every posting's JD against it (generous, JD-over-title).
 - `config/settings.toml` — neutral, committed settings (e.g. `[smtp] host`/`port`,
-  `[review] notify_threshold`, classification keywords/filters).
+  classification keywords/filters).
 - `.env` — **gitignored, per-machine**: SMTP secrets + `INTERNSHELPER_FEATURE_*` toggles
   (`COLLECT`/`EMAIL`/`SCHEDULE`/`DASHBOARD`/`APP`) and path overrides (`INTERNSHELPER_DB`/
   `_SOURCES`/`_SETTINGS`). A real exported env var always overrides the file.
@@ -153,11 +158,12 @@ bash scripts/bootstrap.sh
   rule rather than wiring it in elsewhere.
 - **launchd doesn't fire while the Mac is asleep**; overnight postings land on the first cycle
   after wake (`RunAtLoad=true`).
-- The classification *judgment* (made in-app or by the agent) is the deliberate human-in-the-loop
-  step; the mechanics it drives are unit-tested — the `review` CLI, and the web UI via FastAPI
-  `TestClient` (`tests/test_web*.py`; fixtures in `tests/conftest.py`).
-- **The web UI must call `review.finish()` after every verdict path** (single + bulk) — it re-arms
-  the email nudge. Undo (`reset_verdict`) must never touch the flag.
+- The curation *judgment* (dismiss/pin, made in-app or by the agent) is the deliberate
+  human-in-the-loop step; the mechanics it drives are unit-tested — the `review` CLI, and the
+  web UI via FastAPI `TestClient` (`tests/test_web*.py`; fixtures in `tests/conftest.py`).
+- **Every board mutation ends with `review.refresh_ranking()`** (best-effort rescore + retier) —
+  each action is a new training label. Dismissed = `verdict='no_match'` (the old plumbing,
+  reused); a pin is sticky (`pinned_tier` wins over the computed `tier` at read time).
 
 ## Related skills
 
@@ -166,10 +172,10 @@ bash scripts/bootstrap.sh
 - **`resolve-companies`** — researches each *pending* company in the approved-companies index
   into a board **proposal** (any supported ATS), fetch-tested, for the user's Approval A on the web
   Companies page. Never approves on its own.
-- **`review-internships`** — drives the `review` CLI to classify the pending queue **generously**
-  for CS-relevance, from saved payloads. Use it to *classify* what the collector found.
+- **`review-internships`** — drives the `review` CLI to audit the Inbox tiers **generously**
+  (pin confirmed strong fits to Apply first, dismiss confirmed junk), from saved payloads.
 - **`deep-scan-source`** — exhaustively *verify* one source against a specific term (e.g. "Summer
   2027") by opening **every** posting's live link with a subagent, sorting each into
-  match/uncertain/no_match, and writing verdicts for a registered source. The strict, per-link
+  match/uncertain/no_match, and writing pin/dismiss actions for a registered source. The strict, per-link
   counterpart to `review-internships`. Enumerates via `sources test --json`. Token-heavy by design.
 - **`update-internshelper-guide`** — refresh THIS guide after a structural change.

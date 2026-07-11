@@ -94,6 +94,16 @@ the top, without ever hiding anything.*
 > candidates-first heuristic. Remaining from this phase: only the optional
 > embedding-similarity accelerator below.
 
+> **2026-07-11 — the approval gate is GONE (tiered inbox,
+> `docs/superpowers/specs/2026-07-11-tiered-inbox-design.md`).** Users don't care which
+> internships they apply to — they care which they apply to *first*. Every collected
+> posting now lands straight on the Board's Inbox in four apply-order tiers (dream
+> companies → approved index → everything else → long shots); the Review page is gone.
+> Curation is dismiss / pin / drag-to-Applied, and those actions are now the ranker's
+> training labels (`gather_labels`: application > pin > verdict-seed-history). The
+> threshold nudge became an Apply-first digest (exactly-once per posting). References
+> below to "the review queue" / verdicts describe the pre-2026-07-11 model.
+
 Every review verdict is already a labeled training example we're not using: the
 `postings` row carries title, company, location, description, source, and posted_at;
 `verdict` / `verdict_reason` / `reviewed_at` record the decision; and the full raw

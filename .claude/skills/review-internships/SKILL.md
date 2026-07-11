@@ -1,71 +1,66 @@
 ---
 name: review-internships
-description: Classify the internsHELPer pending-posting queue. Use when the user runs /review-internships, asks to "review the new postings", "go through the internship queue", "classify what the collector found", or after an internsHELPer review-nudge email. Reads each pending posting's raw payload and records a match/no_match verdict via the internshelper.review CLI, then prints the confirmed shortlist.
+description: Audit the internsHELPer Inbox tiers. Use when the user runs /review-internships, asks to "review the new postings", "go through the internship inbox", "clean up the board tiers", or after an internsHELPer Apply-first digest email. Reads each inbox posting's raw payload and curates the tiers via the internshelper.review CLI — pin confirmed strong fits to Apply first, dismiss confirmed junk — then reports the Apply-first shortlist.
 ---
 
-# Review internsHELPer pending postings
+# Audit the internsHELPer Inbox
 
-The hourly collector scrapes the configured boards and stores every new posting as
-`pending` with **keyword priority hints** — it does NOT classify. You are the classifier.
-Your job: read each pending posting and record a verdict. Keyword hints only order the
-queue; **scan everything**, the user does not trust keyword precision.
+There is no approval gate: every collected posting is already on the Board, grouped into
+apply-order tiers (`apply_first` = dream companies, `target` = the approved index,
+`everything_else`, `long_shots` = low fit-score). You are the **tier auditor**: confirm
+the machine's sort against the actual payloads and correct it — you never gate.
 
 Run everything from the repo root with the project venv: `.venv/bin/python`.
 
-## What counts as a match — be GENEROUS
+## Judgment — be GENEROUS, curation over gating
 
-**Default to `match`. Cast a wide net.** the user would rather see a loosely-relevant role and skip
-it himself than have it filtered out — applying to an extra place costs nothing. Generosity over
-precision. **Do NOT screen on required years of experience or strictness.**
+Judge fit against **`config/profile.md`** (the user's role-fit profile), JD-over-title — title
+keywords must never be the reason to dismiss. the user would rather skim a loosely-relevant
+role himself than have it hidden.
 
-`match` = anything plausibly relevant to a CS-degree student / new grad — and "somewhat related"
-counts: software/SWE, data (analyst / engineer / scientist), ML/AI, quant (developer **and**
-research), security, infra/platform, embedded, IT / digital technology, and technical or
-analytical analyst / rotational / "all-tracks" programs (e.g. BlackRock-style). Internships,
-co-ops, **and** new-grad/entry roles all qualify.
-
-`no_match` = ONLY when the role is clearly non-technical with no CS / data / analytical angle at
-all — pure sales, retail/food service, or non-technical operations/management. When in any doubt
-→ `match`, and prefix the reason with "borderline:" so the user can eyeball it.
-
-Judge fit against **`config/profile.md`** (the user's role-fit profile — background, wants, revealed
-preference): generous, JD-over-title — title keywords must never be the reason to reject. The
-criteria above are the floor; the profile is the reference for what "relevant to the user" means.
+- **Dismiss** ONLY confirmed junk: clearly non-technical with no CS / data / quant /
+  analytical angle at all (pure sales, retail/food service, non-technical ops), or
+  obviously wrong level (senior/staff roles). When in any doubt, leave it alone —
+  or dismiss with the reason prefixed `borderline:` so it stays a weak label and
+  visible under the board's Dismissed view.
+- **Pin to `apply_first`** ONLY clear standouts stuck in a lower tier: a posting whose
+  JD screams profile-fit (great role + intern/new-grad level) that the company rule
+  buried in `everything_else` or `long_shots`. Pins are sticky and train the ranker —
+  a handful of deliberate pins beats mass promotion.
+- **Everything else stays put.** The tiers + learned ordering are the default; your
+  job is fixing confirmed mistakes in both directions, not re-sorting the world.
 
 ## Steps
 
-1. **Pull the queue (candidates first, newest first):**
+1. **Pull the inbox (best-first):**
    ```bash
-   .venv/bin/python -m internshelper.review list-pending
+   .venv/bin/python -m internshelper.review list-inbox
    ```
-   This returns JSON ordered keyword-candidates first, then by `posted_at` (the source's own
-   posted/added date) newest-first. Process in that order — recent roles matter most — but
-   **review every item**, candidates AND the rest. Note each row's `posted_at` when judging:
-   a very stale posting is lower-value even if relevant.
+   JSON rows carry `tier` (effective — a pin wins), `pinned_tier`, `rank_score`,
+   `payload_path`, `posted_at`. Audit `long_shots` and `everything_else` for buried
+   gems, and `apply_first`/`target` for junk that rode a good company name. Note
+   `posted_at` — a very stale posting is lower-value even if relevant.
+   Filter one tier at a time to keep context bounded:
+   `--tier long_shots --limit 50`, etc.
 
-2. **For each posting**, read the title and the full payload, then record a verdict:
+2. **For each posting you're acting on**, read the payload first:
    ```bash
    cat <payload_path>          # the raw JSON the collector saved
-   .venv/bin/python -m internshelper.review set-verdict <posting_id> \
-       --verdict match|no_match --reason "<one line>"
+   .venv/bin/python -m internshelper.review dismiss <posting_id> --reason "<one line>"
+   .venv/bin/python -m internshelper.review pin <posting_id> --tier apply_first
    ```
-   Work in chunks of ~25–50 per pass to keep context bounded. After a chunk, re-run
-   `list-pending` and continue until it returns an empty list. (A posting with no
-   `payload_path` — e.g. older rows — judge from the title alone and say so in the reason.)
+   (`undo-dismiss` / `unpin` revert; every action retrains the ranker automatically.
+   A posting with no `payload_path` — judge from the title alone and say so.)
+   Never touch a posting the user applied to (`review applied` lists them).
 
-3. **Finish** — reset the notify flag so the next batch can nudge again:
+3. **Report.** Show the Apply-first shortlist:
    ```bash
-   .venv/bin/python -m internshelper.review finish
+   .venv/bin/python -m internshelper.review list-inbox --tier apply_first
    ```
-
-4. **Show the user the shortlist** — the confirmed matches:
-   ```bash
-   .venv/bin/python -m internshelper.review summary
-   ```
-   Present them as a short list (title — company — location — apply URL), with counts
-   (reviewed N, matched M). The web dashboard also reflects the verdicts.
+   Present title — company — location — URL, plus counts of what you dismissed and
+   pinned (with one-line reasons). The Board reflects everything on reload.
 
 ## Notes
-- This is free — it runs in the current Claude Code session, no API key, no per-posting charge.
-- Verdicts are stored in SQLite (`data/internshelper.db`); re-running the skill only sees
-  what is still `pending`, so it is safe to stop and resume.
+- This is free — it runs in the current Claude Code session, no API key.
+- Actions are stored in SQLite (`data/internshelper.db`) and are individually
+  undoable in the app; safe to stop and resume — re-running only sees the current inbox.

@@ -1,11 +1,11 @@
 ---
 name: deep-scan-source
-description: Exhaustively verify EVERY posting on one internsHELPer source against a specific term (e.g. "Summer 2027") by fetching each live link with a subagent. Use when the user runs /deep-scan-source, or says "deep scan this source for <term>", "verify every posting on <board> for <term>", "check every link on <source> for <term>", "make sure we didn't miss any <term> on <board>", or "audit <source> for <term>". Enumerates the source, fans out one investigation per link, sorts each into match / uncertain / no_match with on-page evidence, and (for a registered source) writes the verdicts into the app DB. Token-heavy by design — that's the point: nothing is judged from the title alone.
+description: Exhaustively verify EVERY posting on one internsHELPer source against a specific term (e.g. "Summer 2027") by fetching each live link with a subagent. Use when the user runs /deep-scan-source, or says "deep scan this source for <term>", "verify every posting on <board> for <term>", "check every link on <source> for <term>", "make sure we didn't miss any <term> on <board>", or "audit <source> for <term>". Enumerates the source, fans out one investigation per link, sorts each into match / uncertain / no_match with on-page evidence, and (for a registered source) writes the results into the app as tier actions — pin matches to Apply first, dismiss the rest. Token-heavy by design — that's the point: nothing is judged from the title alone.
 ---
 
 # Deep-scan a source for a term
 
-`/review-internships` classifies the pending queue **generously** for CS-relevance, judging from the
+`/review-internships` audits the Inbox tiers **generously** for CS-relevance, judging from the
 saved payload. This skill is the opposite tool: given **one source** and **one or more terms**
 (e.g. "Summer 2027"), it opens **every posting's live link** and confirms the term from the actual
 page — so the user can trust that no matching role was missed and no stale/mislabeled one slipped in.
@@ -61,29 +61,28 @@ session scratchpad directory, not the repo.
      that is clearly non-technical — say which of the two reasons applies).
    Each row: company — title — verdict — open/closed — fit — one-line evidence. Give counts.
 
-6. **Write verdicts — only if the source is registered** (`source_key` appears in `sources list`):
+6. **Write tier actions — only if the source is registered** (`source_key` appears in `sources list`):
    ```bash
-   .venv/bin/python -m internshelper.review set-verdict <posting_id> \
-       --verdict match|no_match --reason "<term> — deep-scan <YYYY-MM-DD> (<open|closed>); <evidence>"
+   .venv/bin/python -m internshelper.review pin <posting_id> --tier apply_first
+   .venv/bin/python -m internshelper.review dismiss <posting_id> \
+       --reason "<term> — deep-scan <YYYY-MM-DD> (<open|closed>); <evidence>"
    ```
-   Mapping: MATCH → `match`; NO-MATCH → `no_match` (term-matched-but-nofit rows get reason
-   `"<term> but not profile-fit; <evidence>"`); **UNCERTAIN → `no_match` with the reason prefixed
-   `borderline:`** so it stays visible for a human pass. Then re-arm the nudge:
-   ```bash
-   .venv/bin/python -m internshelper.review finish
-   ```
-   `set-verdict` UPDATEs by `posting_id`, so it is a **no-op for rows not yet collected**. If the
+   Mapping: MATCH → `pin --tier apply_first` (the on-page term + fit evidence goes in the report;
+   pins carry no reason field); NO-MATCH → `dismiss` (term-matched-but-nofit rows get reason
+   `"<term> but not profile-fit; <evidence>"`); **UNCERTAIN → `dismiss` with the reason prefixed
+   `borderline:`** so it stays a weak training label and visible under the Board's Dismissed view.
+   Both verbs act by `posting_id`, so they **fail loudly for rows not yet collected**. If the
    source is registered but the enumerated `posting_id`s aren't in the DB yet, run one collect cycle
    first (`INTERNSHELPER_FEATURE_EMAIL=false .venv/bin/python -m internshelper.run`), then apply.
    For an **unregistered raw URL**, skip this step entirely — deliver the report only and note the
    results weren't written (there are no DB rows to attach them to).
    **Belt-and-suspenders:** the applied ids from step 2 were already dropped from the scan set, so
-   they can't appear here — but never `set-verdict` an applied `posting_id` regardless (unless the
+   they can't appear here — but never pin/dismiss an applied `posting_id` regardless (unless the
    user opted into scanning applied jobs).
 
-7. **Report.** Present the shortlist (MATCH first, then UNCERTAIN), note how many verdicts were written
-   vs report-only, and — if you wrote to a registered source — remind the user the app's Review/Board
-   pages now reflect it on reload.
+7. **Report.** Present the shortlist (MATCH first, then UNCERTAIN), note how many actions were written
+   vs report-only, and — if you wrote to a registered source — remind the user the app's Board now
+   reflects it on reload (pinned MATCHes sit in Apply first; dismissals under the Dismissed view).
 
 ## The investigation-agent prompt (bake this in; substitute {TERMS} and the batch path)
 
@@ -118,11 +117,11 @@ POSTING_ID | match|no_match|uncertain | <term found> | open|closed|unknown | fit
 ## Notes
 
 - **This is free** — it runs in the current Claude Code session (subagents, no API key).
-- Complements the other skills: `/add-source` *adds* a board; `/review-internships` *classifies* the
-  pending queue generously for CS-relevance from payloads; **this** *verifies* ONE specified term
+- Complements the other skills: `/add-source` *adds* a board; `/review-internships` *audits* the
+  Inbox tiers generously for CS-relevance from payloads; **this** *verifies* ONE specified term
   strictly, per live link, across a whole source. They can disagree on purpose — a later generous
-  `/review-internships` pass could re-match something this skill demoted.
+  `/review-internships` pass could restore something this skill dismissed.
 - Mirrors the user's preferred pattern (fan out one subagent per ambiguous posting to confirm the term
   from the source) and the Workday-CXS `startDate` caveat — both are baked into the agent prompt above.
-- The DB writes are reversible in the app (undo a verdict) — the strict pass never deletes postings,
-  only sets verdicts.
+- The DB writes are reversible in the app (unpin / restore from the Dismissed view) — the strict
+  pass never deletes postings.

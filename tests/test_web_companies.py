@@ -59,3 +59,13 @@ def test_reject_proposal_marks_no_board(client, companies_file):
     assert r.status_code == 200
     e = companies.load_companies(companies_file)[0][0]
     assert e.status == "no-board" and e.proposal == {}
+
+
+def test_set_tier_toggle_round_trip(client, companies_file):
+    client.post("/companies/add", data={"name": "Jane Street Capital"})
+    r = client.post("/companies/set-tier", data={"name": "Jane Street Capital", "tier": "dream"})
+    assert r.status_code == 200
+    assert "tier: dream" in companies_file.read_text()
+    assert "Undream" in r.text
+    r = client.post("/companies/set-tier", data={"name": "Jane Street Capital", "tier": ""})
+    assert "tier" not in companies_file.read_text()

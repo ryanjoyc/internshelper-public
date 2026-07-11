@@ -21,7 +21,12 @@
     {% endif %}
   </div>
   <div class="source-side">
+    {% if c.tier == 'dream' %}{{ m.pill('★ dream', 'pending', title='postings land in Apply first') }}{% endif %}
     {{ m.pill(c.status) }}
+    <button class="btn btn-ghost btn-sm" title="dream companies land in the Apply-first tier"
+            hx-post="/companies/set-tier"
+            hx-vals='{"name": {{ c.name | tojson }}, "tier": {{ ('' if c.tier == 'dream' else 'dream') | tojson }}}'
+            hx-target="#company-list" hx-swap="innerHTML">{{ 'Undream' if c.tier == 'dream' else '★ Dream' }}</button>
     {% if c.proposal %}
     <button class="btn btn-primary btn-sm" hx-post="/companies/approve"
             hx-vals='{"name": {{ c.name | tojson }}}'

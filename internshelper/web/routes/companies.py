@@ -2,7 +2,7 @@
 
 One card per company (name · state · board or proposal + evidence). Approve/reject act
 on agent-written proposals; all writes go through internshelper.companies — UI only.
-Approval B (per-posting) stays on the Review page.
+Dream-tier toggle promotes a company's postings to the Board's Apply-first tier.
 """
 
 from __future__ import annotations
@@ -59,6 +59,16 @@ def approve(request: Request, name: str = Form(...)):
         src = companies.approve(request.app.state.companies_path,
                                 request.app.state.sources_path, name)
         flash = f"{name} resolved -> {src.source_key}"
+    except (ValueError, config.ConfigError) as e:
+        flash = str(e)
+    return _list(request, flash)
+
+
+@router.post("/companies/set-tier")
+def set_tier(request: Request, name: str = Form(...), tier: str = Form("")):
+    try:
+        companies.set_tier(request.app.state.companies_path, name, tier)
+        flash = f"{name} -> {'dream (Apply first)' if tier == 'dream' else 'default tier'}"
     except (ValueError, config.ConfigError) as e:
         flash = str(e)
     return _list(request, flash)
