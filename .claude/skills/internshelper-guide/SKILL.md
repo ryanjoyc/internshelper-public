@@ -18,9 +18,10 @@ nudge** when a batch piles up. Classification is **on-demand and free**: triage 
 right in the web UI (inline verdicts, or a keyboard-driven focus mode with undo), or open the repo
 in Claude Code and run `/review-internships` for the agent-assisted pass — same verdicts either
 way. The web UI (`internshelper/web/` — FastAPI + Jinja + HTMX/Alpine, vendored, no build step)
-has five pages: Review (triage), Board (kanban application tracker with a table lens), Postings
-(searchable archive), Sources (add/remove wizard), Health — in the browser, or as a
-Dock-launchable native macOS app (`InternsHELPer.app`). The hourly cron is a dumb free collector;
+has six pages: Review (triage), Board (kanban application tracker with a table lens), Postings
+(searchable archive), Companies (the approved-companies index + board-proposal approvals),
+Sources (add/remove wizard), Health — in the browser, or as a Dock-launchable native macOS app
+(`InternsHELPer.app`). The hourly cron is a dumb free collector;
 review is the classifier step — accurate, no API key, $0 ongoing.
 
 ## Architecture & data flow
@@ -47,6 +48,7 @@ collected or shown.
 |--------|----------------|
 | `run` | Scheduled collector: fetch all sources, store new payloads as pending, compute priority hints, email the nudge. One invocation = one cycle. |
 | `review` | On-demand review CLI: list pending, set verdicts, finish the queue, summarize confirmed matches. Driven by the `review-internships` skill. |
+| `companies` | The approved-companies index (`config/companies.yaml`, machine-managed): add/list companies, record board proposals, approve (→ writes the board into `sources.yaml` with the default guard) / reject / link / mark no-board. Driven by the `resolve-companies` skill + the web Companies page. |
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
 | `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the launchd plist and install the Dock app on macOS. Idempotent. |
 | `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). A package, not a single file — `create_app()` factory in `__init__.py`, per-request DB connections in `deps.py`, routes/ (review, board, postings, health incl. `/healthz`, sources), templates/ (Jinja + HTMX partials), static/ (app.css design tokens, app.js, vendored htmx/alpine/sortable, Geist fonts). UI only; data logic lives in `store` / `review` / `sources`. |
@@ -98,6 +100,7 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
   `posting_id`+`url` — used by `deep-scan-source`; `test` adopts the registered entry's extras
   (e.g. markdown `columns`) when the target is registered, so it parses exactly as collect does)
 - **`review`** — `list-pending` · `set-verdict <id> --verdict match|no_match [--reason ...]` · `finish` · `summary` · `applied` (applied posting_ids — the `deep-scan-source` guard)
+- **`companies`** — `add <name>` · `list [--json]` · `propose <name> --url ... [--count N] [--evidence ...]` · `approve <name>` · `reject <name>` · `resolve-write <name> <source_key>` · `mark-no-board <name>`
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
 - **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.
 - **`web`** — `[--port 8510]`; serves the web UI on 127.0.0.1. Needs the `web` extra.
@@ -108,6 +111,10 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 
 - `config/sources.yaml` — the board list. **Git-committed and shared**; prefer the `sources` CLI
   over hand-editing it.
+- `config/companies.yaml` — the approved-companies index (**machine-managed** — regenerated on
+  every write; edit via the `companies` CLI or the web Companies page, never by hand).
+- `config/profile.md` — the user's role-fit profile. The `deep-scan-source` / `review-internships`
+  agents judge every posting's JD against it (generous, JD-over-title).
 - `config/settings.toml` — neutral, committed settings (e.g. `[smtp] host`/`port`,
   `[review] notify_threshold`, classification keywords/filters).
 - `.env` — **gitignored, per-machine**: SMTP secrets + `INTERNSHELPER_FEATURE_*` toggles
@@ -150,6 +157,9 @@ bash scripts/bootstrap.sh
 
 - **`add-source`** — turns messy input (company name, careers page, job link, GitHub list) into a
   clean board URL and adds it via the `sources` CLI. Use it to *add* boards.
+- **`resolve-companies`** — researches each *pending* company in the approved-companies index
+  into a board **proposal** (any supported ATS), fetch-tested, for the user's Approval A on the web
+  Companies page. Never approves on its own.
 - **`review-internships`** — drives the `review` CLI to classify the pending queue **generously**
   for CS-relevance, from saved payloads. Use it to *classify* what the collector found.
 - **`deep-scan-source`** — exhaustively *verify* one source against a specific term (e.g. "Summer

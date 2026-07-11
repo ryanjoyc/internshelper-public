@@ -12,8 +12,9 @@ This repo ships its own onboarding skills. Use them rather than re-deriving the 
   if you added/renamed a module, connector, or CLI subcommand, or changed the data flow, schema, or
   config — so the guide stays accurate for the next agent.
 - **Task-specific skills:** `add-source` (add a job board from messy input),
-  `review-internships` (classify the pending queue generously for CS-relevance), and
-  `deep-scan-source` (exhaustively verify one source against a specific term — e.g. Summer 2027 —
-  by opening every posting's live link).
+  `resolve-companies` (research pending approved-index companies into board proposals for
+  the user's approval), `review-internships` (classify the pending queue generously against
+  `config/profile.md`), and `deep-scan-source` (exhaustively verify one source against a
+  specific term — e.g. Summer 2027 — plus profile fit, by opening every posting's live link).
 
 Always run Python via the project venv: `.venv/bin/python`.
