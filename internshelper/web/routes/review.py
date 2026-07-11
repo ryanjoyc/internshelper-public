@@ -14,11 +14,23 @@ from fastapi.responses import RedirectResponse
 
 from internshelper import clock, review, store
 from internshelper.web.deps import get_conn, nav_context
+from internshelper.web.routes.sources import load_entries
 from internshelper.web.templating import templates
 
 router = APIRouter()
 
 PAGE_SIZE = 50
+
+
+def _hygiene_counts(request: Request, conn: sqlite3.Connection) -> dict:
+    """Counts for the queue-hygiene buttons. A broken sources.yaml means no leak
+    detection this render (count 0) — never a 500."""
+    entries, _, cfg_error = load_entries(request.app.state.sources_path)
+    leaks = review.find_guard_leaks(conn, entries) if not cfg_error else []
+    return {
+        "leak_count": len(leaks),
+        "closed_count": len(review.find_closed_pending(conn)),
+    }
 
 
 def _counts_ctx(conn: sqlite3.Connection) -> dict:
@@ -80,6 +92,7 @@ def review_page(
         ctx["active"] = "review"
         return templates.TemplateResponse(request, "review/focus.html", ctx)
     ctx = _counts_ctx(conn)
+    ctx.update(_hygiene_counts(request, conn))
     rows = review.list_pending(conn, limit=PAGE_SIZE)
     ctx.update(
         {
@@ -166,11 +179,7 @@ def post_undo(
     return templates.TemplateResponse(request, "review/_list_region.html", ctx)
 
 
-@router.post("/review/bulk-clear")
-def post_bulk_clear(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
-    now = clock.now_iso()
-    cleared = review.clear_non_candidate_pending(conn, now=now)
-    review.finish(conn)
+def _bulk_response(request, conn, *, cleared: int, now: str, reason: str, noun: str):
     ctx = _counts_ctx(conn)
     rows = review.list_pending(conn, limit=PAGE_SIZE)
     ctx.update(
@@ -180,10 +189,38 @@ def post_bulk_clear(request: Request, conn: sqlite3.Connection = Depends(get_con
             "more": len(rows) == PAGE_SIZE,
             "oob": True,
             "bulk_toast": {"cleared": cleared, "reviewed_at": now,
-                           "reason": review.BULK_CLEAR_REASON},
+                           "reason": reason, "noun": noun},
         }
     )
     return templates.TemplateResponse(request, "review/_list_region.html", ctx)
+
+
+@router.post("/review/bulk-clear")
+def post_bulk_clear(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+    now = clock.now_iso()
+    cleared = review.clear_non_candidate_pending(conn, now=now)
+    review.finish(conn)
+    return _bulk_response(request, conn, cleared=cleared, now=now,
+                          reason=review.BULK_CLEAR_REASON, noun="non-candidate")
+
+
+@router.post("/review/bulk-clear-leaks")
+def post_bulk_clear_leaks(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+    entries, _, cfg_error = load_entries(request.app.state.sources_path)
+    now = clock.now_iso()
+    cleared = 0 if cfg_error else review.clear_guard_leaks(conn, entries, now=now)
+    review.finish(conn)
+    return _bulk_response(request, conn, cleared=cleared, now=now,
+                          reason=review.GUARD_LEAK_REASON, noun="guard leak")
+
+
+@router.post("/review/bulk-clear-closed")
+def post_bulk_clear_closed(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+    now = clock.now_iso()
+    cleared = review.clear_closed_pending(conn, now=now)
+    review.finish(conn)
+    return _bulk_response(request, conn, cleared=cleared, now=now,
+                          reason=review.CLOSED_REASON, noun="closed posting")
 
 
 @router.post("/review/bulk-undo")

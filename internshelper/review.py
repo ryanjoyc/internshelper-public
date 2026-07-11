@@ -19,6 +19,8 @@ from internshelper.dotenv import load_dotenv
 VERDICTS = ("match", "no_match")
 
 BULK_CLEAR_REASON = "bulk: non-candidate"
+GUARD_LEAK_REASON = "bulk: guard leak"
+CLOSED_REASON = "bulk: closed on source"
 
 # Payload keys tried (in order) for a human-readable description, across connector shapes.
 _DESCRIPTION_KEYS = ("content", "description", "descriptionPlain", "descriptionHtml", "plain")
@@ -95,6 +97,77 @@ def clear_non_candidate_pending(
     )
     conn.commit()
     return cur.rowcount
+
+
+def _applied_ids(conn: sqlite3.Connection) -> set[str]:
+    return {r["posting_id"] for r in conn.execute("SELECT posting_id FROM applications")}
+
+
+def find_guard_leaks(conn: sqlite3.Connection, entries) -> list[dict]:
+    """Pending rows whose title no longer passes their source's CURRENT title guard.
+
+    Catches postings collected before a guard was fixed/tightened (e.g. the substring-era
+    'Internal…' leaks). Never flags: sources absent from the loaded config (removed),
+    guardless sources (accepts() is trivially True), or posting_ids the user applied to.
+    """
+    by_key = {e.source_key: e for e in entries}
+    applied_ids = _applied_ids(conn)
+    rows = conn.execute(
+        "SELECT posting_id, title, company, source_key FROM postings "
+        "WHERE review_status = 'pending' ORDER BY source_key, posting_id"
+    )
+    return [
+        dict(r)
+        for r in rows
+        if (e := by_key.get(r["source_key"])) is not None
+        and e.title_must_match
+        and not e.accepts(r["title"])
+        and r["posting_id"] not in applied_ids
+    ]
+
+
+def _clear_batch(conn: sqlite3.Connection, ids: list[str], reason: str, now: str) -> int:
+    """Mark the given pending posting_ids no_match as one undoable batch (stamp + reason)."""
+    if not ids:
+        return 0
+    ph = ",".join("?" * len(ids))
+    cur = conn.execute(
+        "UPDATE postings SET verdict = 'no_match', verdict_reason = ?, reviewed_at = ?, "
+        f"review_status = 'reviewed' WHERE review_status = 'pending' AND posting_id IN ({ph})",
+        (reason, now, *ids),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def clear_guard_leaks(
+    conn: sqlite3.Connection, entries, now: str, reason: str = GUARD_LEAK_REASON
+) -> int:
+    """Bulk no_match every guard leak. Undo via `undo_bulk_clear(conn, now, reason)`."""
+    ids = [r["posting_id"] for r in find_guard_leaks(conn, entries)]
+    return _clear_batch(conn, ids, reason, now)
+
+
+def find_closed_pending(conn: sqlite3.Connection) -> list[dict]:
+    """Pending rows whose posting vanished from its source board (close-detection).
+
+    They can't be applied to anymore, yet they linger in the queue because
+    `list_pending` ignores `is_active`. Applied posting_ids are never flagged.
+    """
+    applied_ids = _applied_ids(conn)
+    rows = conn.execute(
+        "SELECT posting_id, title, company, source_key FROM postings "
+        "WHERE review_status = 'pending' AND is_active = 0 ORDER BY source_key, posting_id"
+    )
+    return [dict(r) for r in rows if r["posting_id"] not in applied_ids]
+
+
+def clear_closed_pending(
+    conn: sqlite3.Connection, now: str, reason: str = CLOSED_REASON
+) -> int:
+    """Bulk no_match every closed-but-pending row. Undo via `undo_bulk_clear`."""
+    ids = [r["posting_id"] for r in find_closed_pending(conn)]
+    return _clear_batch(conn, ids, reason, now)
 
 
 def undo_bulk_clear(conn: sqlite3.Connection, reviewed_at: str, reason: str) -> int:
@@ -195,12 +268,26 @@ def main(argv=None) -> int:
     sub.add_parser("finish", help="reset the notify flag if the queue is empty")
     sub.add_parser("summary", help="confirmed matches (JSON)")
     sub.add_parser("applied", help="posting_ids the user has applied to (JSON) — deep-scan guard")
+    sub.add_parser("list-leaks", help="pending rows failing their source's current title guard (JSON)")
+    sub.add_parser("clear-leaks", help="bulk no_match every guard leak (undoable batch)")
 
     args = parser.parse_args(argv)
     conn = _open()
 
     if args.cmd == "list-pending":
         print(json.dumps(list_pending(conn, args.limit), indent=2))
+    elif args.cmd in ("list-leaks", "clear-leaks"):
+        entries, errors = config.load_sources(
+            config.default_path("INTERNSHELPER_SOURCES", "config/sources.yaml")
+        )
+        for e in errors:
+            print(f"config warning: {e}", file=sys.stderr)
+        if args.cmd == "list-leaks":
+            print(json.dumps(find_guard_leaks(conn, entries), indent=2))
+        else:
+            n = clear_guard_leaks(conn, entries, now=clock.now_iso())
+            finish(conn)
+            print(f"cleared {n} guard leak(s)")
     elif args.cmd == "set-verdict":
         set_verdict(conn, args.posting_id, args.verdict, args.reason, now=clock.now_iso())
         print(f"{args.posting_id}: {args.verdict}")

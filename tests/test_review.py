@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from internshelper import db, review, store
+from internshelper import config, db, review, store
 from internshelper.models import Posting
 
 
@@ -208,6 +208,80 @@ def test_undo_bulk_clear_reverts_only_the_batch(tmp_path):
     assert manual["verdict"] == "no_match"  # individually-reviewed row untouched
 
 
+def _guarded_entry(token="stripe", guard=("intern", "internship")):
+    return config.SourceEntry(type="greenhouse", token=token, title_must_match=list(guard))
+
+
+def test_find_guard_leaks_flags_only_current_guard_failures(tmp_path):
+    c = _conn(tmp_path)
+    entries = [_guarded_entry(), config.SourceEntry(type="lever", token="open")]  # open = no guard
+    store.upsert(c, _p("g:leak", title="Internal Auditor - APAC"), now="2026-07-10T10:00:00+00:00")
+    store.upsert(c, _p("g:ok", title="Software Engineer Intern"), now="2026-07-10T10:01:00+00:00")
+    store.upsert(c, _p("g:gone", title="Internal Auditor"), now="2026-07-10T10:02:00+00:00")
+    c.execute("UPDATE postings SET source_key='github:removed' WHERE posting_id='g:gone'")
+    store.upsert(c, _p("g:free", title="Anything At All"), now="2026-07-10T10:03:00+00:00")
+    c.execute("UPDATE postings SET source_key='lever:open' WHERE posting_id='g:free'")
+    store.upsert(c, _p("g:applied", title="Internal Systems Lead"), now="2026-07-10T10:04:00+00:00")
+    c.execute("INSERT INTO applications (posting_id, status) VALUES ('g:applied', 'Applied')")
+    store.upsert(c, _p("g:done", title="Internal Ops"), now="2026-07-10T10:05:00+00:00")
+    c.commit()
+    review.set_verdict(c, "g:done", "no_match", "read", now="2026-07-10T11:00:00+00:00")
+
+    leaks = review.find_guard_leaks(c, entries)
+    assert [r["posting_id"] for r in leaks] == ["g:leak"]
+    assert leaks[0]["title"] == "Internal Auditor - APAC"
+
+
+def test_clear_guard_leaks_and_undo_round_trip(tmp_path):
+    c = _conn(tmp_path)
+    entries = [_guarded_entry()]
+    # Real leaks are keyword-candidates (cs=True) — that's why "Clear non-candidates" misses them.
+    store.upsert(c, _p("g:leak", title="Internal Auditor", cs=True), now="2026-07-10T10:00:00+00:00")
+    store.upsert(c, _p("g:ok", title="SWE Intern", cs=True), now="2026-07-10T10:01:00+00:00")
+    store.upsert(c, _p("g:plain", title="Chef"), now="2026-07-10T10:02:00+00:00")
+    # A same-timestamp non-candidate bulk clear must not be reverted by the leak undo.
+    review.clear_non_candidate_pending(c, now="2026-07-10T11:00:00+00:00")
+
+    n = review.clear_guard_leaks(c, entries, now="2026-07-10T11:00:00+00:00")
+    assert n == 1
+    row = c.execute("SELECT verdict, verdict_reason, review_status FROM postings "
+                    "WHERE posting_id='g:leak'").fetchone()
+    assert row["verdict"] == "no_match"
+    assert row["verdict_reason"] == review.GUARD_LEAK_REASON
+    assert row["review_status"] == "reviewed"
+
+    reverted = review.undo_bulk_clear(c, reviewed_at="2026-07-10T11:00:00+00:00",
+                                      reason=review.GUARD_LEAK_REASON)
+    assert reverted == 1
+    pending = {r["posting_id"] for r in review.list_pending(c)}
+    assert pending == {"g:leak", "g:ok"}  # g:plain stays in the other batch
+    plain = c.execute("SELECT verdict_reason FROM postings WHERE posting_id='g:plain'").fetchone()
+    assert plain["verdict_reason"] == review.BULK_CLEAR_REASON
+
+
+def test_find_and_clear_closed_pending(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:open", title="SWE Intern"), now="2026-07-10T10:00:00+00:00")
+    store.upsert(c, _p("g:closed", title="Data Intern"), now="2026-07-10T10:01:00+00:00")
+    store.upsert(c, _p("g:closedapplied", title="Quant Intern"), now="2026-07-10T10:02:00+00:00")
+    c.execute("UPDATE postings SET is_active=0 WHERE posting_id IN ('g:closed','g:closedapplied')")
+    c.execute("INSERT INTO applications (posting_id, status) VALUES ('g:closedapplied', 'Applied')")
+    c.commit()
+
+    found = review.find_closed_pending(c)
+    assert [r["posting_id"] for r in found] == ["g:closed"]
+
+    n = review.clear_closed_pending(c, now="2026-07-10T11:00:00+00:00")
+    assert n == 1
+    row = c.execute("SELECT verdict, verdict_reason FROM postings "
+                    "WHERE posting_id='g:closed'").fetchone()
+    assert row["verdict"] == "no_match"
+    assert row["verdict_reason"] == review.CLOSED_REASON
+    applied_row = c.execute("SELECT review_status FROM postings "
+                            "WHERE posting_id='g:closedapplied'").fetchone()
+    assert applied_row["review_status"] == "pending"  # applied guard held
+
+
 def test_payload_summary_extracts_and_strips_description(tmp_path):
     p = tmp_path / "pay.json"
     p.write_text(json.dumps({"content": "<p>Build <b>backend</b> systems</p>", "id": 7}))
@@ -229,6 +303,28 @@ def test_payload_summary_missing_and_unreadable(tmp_path):
     bad = tmp_path / "bad.json"
     bad.write_text("{not json")
     assert review.payload_summary(str(bad))["state"] == "unreadable"
+
+
+def test_cli_list_and_clear_leaks(tmp_path, capsys, monkeypatch):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:leak", title="Internal Auditor", cs=True),
+                 now="2026-07-10T10:00:00+00:00")
+    c.close()
+    src = tmp_path / "sources.yaml"
+    src.write_text("sources:\n  - type: greenhouse\n    token: stripe\n"
+                   "    title_must_match: [intern, internship]\n")
+    monkeypatch.setenv("INTERNSHELPER_DB", str(tmp_path / "t.db"))
+    monkeypatch.setenv("INTERNSHELPER_SOURCES", str(src))
+
+    assert review.main(["list-leaks"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [r["posting_id"] for r in out] == ["g:leak"]
+
+    assert review.main(["clear-leaks"]) == 0
+    assert "cleared 1" in capsys.readouterr().out
+    c = db.connect(tmp_path / "t.db")
+    row = c.execute("SELECT verdict_reason FROM postings WHERE posting_id='g:leak'").fetchone()
+    assert row["verdict_reason"] == review.GUARD_LEAK_REASON
 
 
 def test_cli_list_pending_emits_json(tmp_path, capsys, monkeypatch):

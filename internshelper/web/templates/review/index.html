@@ -4,7 +4,7 @@
 <header class="page-head">
   <div class="page-head-row">
     <h1>Review</h1>
-    <div class="page-actions" x-data="{ confirmBulk: false }">
+    <div class="page-actions" x-data="{ confirmBulk: false, confirmLeaks: false, confirmClosed: false }">
       {% if non_candidates %}
       <button class="btn btn-secondary" x-on:click="confirmBulk = true">Clear non-candidates ({{ non_candidates }})</button>
       <template x-teleport="body">
@@ -17,6 +17,40 @@
               <button class="btn btn-secondary" x-on:click="confirmBulk = false">Cancel</button>
               <button class="btn btn-danger" x-on:click="confirmBulk = false"
                       hx-post="/review/bulk-clear" hx-target="#review-region" hx-swap="innerHTML">Clear {{ non_candidates }}</button>
+            </div>
+          </div>
+        </div>
+      </template>
+      {% endif %}
+      {% if leak_count %}
+      <button class="btn btn-secondary" x-on:click="confirmLeaks = true">Clear guard leaks ({{ leak_count }})</button>
+      <template x-teleport="body">
+        <div class="modal-scrim" x-show="confirmLeaks" x-on:click.self="confirmLeaks = false"
+             x-on:keydown.escape.window="confirmLeaks = false" style="display: none">
+          <div class="modal">
+            <p class="modal-title">Clear {{ leak_count }} guard leak{{ '' if leak_count == 1 else 's' }}?</p>
+            <p class="modal-body">These titles no longer pass their source's title guard (e.g. "Internal…" rows collected when "intern" matched substrings). They're marked no-match, not deleted, and undoable from the toast.</p>
+            <div class="modal-actions">
+              <button class="btn btn-secondary" x-on:click="confirmLeaks = false">Cancel</button>
+              <button class="btn btn-danger" x-on:click="confirmLeaks = false"
+                      hx-post="/review/bulk-clear-leaks" hx-target="#review-region" hx-swap="innerHTML">Clear {{ leak_count }}</button>
+            </div>
+          </div>
+        </div>
+      </template>
+      {% endif %}
+      {% if closed_count %}
+      <button class="btn btn-secondary" x-on:click="confirmClosed = true">Clear closed ({{ closed_count }})</button>
+      <template x-teleport="body">
+        <div class="modal-scrim" x-show="confirmClosed" x-on:click.self="confirmClosed = false"
+             x-on:keydown.escape.window="confirmClosed = false" style="display: none">
+          <div class="modal">
+            <p class="modal-title">Clear {{ closed_count }} closed posting{{ '' if closed_count == 1 else 's' }}?</p>
+            <p class="modal-body">These postings vanished from their source boards — they can't be applied to anymore. They're marked no-match, not deleted, and undoable from the toast.</p>
+            <div class="modal-actions">
+              <button class="btn btn-secondary" x-on:click="confirmClosed = false">Cancel</button>
+              <button class="btn btn-danger" x-on:click="confirmClosed = false"
+                      hx-post="/review/bulk-clear-closed" hx-target="#review-region" hx-swap="innerHTML">Clear {{ closed_count }}</button>
             </div>
           </div>
         </div>
