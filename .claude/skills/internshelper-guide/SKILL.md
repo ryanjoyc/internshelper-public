@@ -15,7 +15,10 @@ fit*, not every function signature. If you make a structural change, refresh thi
 A local, $0 tool that **collects** internship / new-grad postings from boards listed in
 `config/sources.yaml`, keeps a de-duplicated archive (raw payloads saved to disk), and **emails a
 nudge** when a batch piles up. Classification is **on-demand and free**: triage the pending queue
-right in the web UI (inline verdicts, or a keyboard-driven focus mode with undo), or open the repo
+right in the web UI (three switchable views, last choice remembered via cookie: a tiered queue —
+near-certain / needs-your-eyes / probably-not by learned score, with one-click bulk
+accept/dismiss and per-row reason chips; an email-client split pane; or a keyboard-driven focus
+mode — everything undoable), or open the repo
 in Claude Code and run `/review-internships` for the agent-assisted pass — same verdicts either
 way. The web UI (`internshelper/web/` — FastAPI + Jinja + HTMX/Alpine, vendored, no build step)
 has six pages: Review (triage), Board (kanban application tracker with a table lens), Postings
@@ -48,7 +51,7 @@ fallback). Neither flags nor score ever gate what gets collected or shown.
 | Module | Responsibility |
 |--------|----------------|
 | `run` | Scheduled collector: fetch all sources, store new payloads as pending, compute priority hints, retrain+rescore the learned ranking, email the nudge. One invocation = one cycle. |
-| `review` | On-demand review CLI: list pending (searchable/sortable), set verdicts, finish the queue, summarize confirmed matches, list/clear guard leaks + closed-pending (undoable batches). Driven by the `review-internships` skill. |
+| `review` | On-demand review CLI + the web Review page's data layer: list pending (searchable/sortable), set verdicts, finish the queue, summarize confirmed matches, list/clear guard leaks + closed-pending, tier partitioning (`partition_tiers` / `tier_counts` over `ranking.TIER_HIGH`/`TIER_LOW`) and bulk tier accept/dismiss — every bulk batch undoable. Driven by the `review-internships` skill. |
 | `ranking` | Learned queue ranking (ROADMAP Phase 1.5 v1): weighted naive-Bayes match-likelihood over title tokens + company/source priors + a recency bonus, trained from verdict history. Scores persist on pending rows (`rank_score`/`rank_reasons`); ranking orders, never gates; cold start falls back to candidates-first. Retrained on every collect cycle and every verdict path. |
 | `companies` | The approved-companies index (`config/companies.yaml`, machine-managed): add/list companies, record board proposals, approve (→ writes the board into `sources.yaml` with the default guard) / reject / link / mark no-board. Driven by the `resolve-companies` skill + the web Companies page. |
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
@@ -70,7 +73,7 @@ fallback). Neither flags nor score ever gate what gets collected or shown.
 | `notify` | Render + send the review-nudge email. |
 | `display` | Pure display helpers: humanize mixed date formats with relative-age hints (framework-free). |
 | `dotenv` | Stdlib `.env` loader; shell env vars win; silent no-op if the file is missing. |
-| `text` | HTML→plaintext stripper (stdlib `html.parser`) used before keyword matching. |
+| `text` | HTML→text helpers (stdlib `html.parser`, survives double-escaped HTML): `strip_html` one-liner for keyword/token matching, `html_to_text` paragraph/bullet-preserving for showing descriptions. |
 | `sourceurl` | Pure URL→`SourceEntry` detection (no network): map a pasted board URL to a source by host + path. |
 | `sniffer` | Heuristic, no-AI detection of embedded Greenhouse/Lever/Ashby/Workday boards on an arbitrary careers page (regex over the fetched HTML). The add-source fallback when `sourceurl` can't resolve a clean board URL. |
 | `filters` | Apply user filter booleans (`require_cs`, `require_intern_or_newgrad`) to classified postings. Pure function. |

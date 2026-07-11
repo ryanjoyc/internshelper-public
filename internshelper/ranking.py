@@ -34,6 +34,8 @@ ALPHA = 1.0                 # Laplace smoothing
 RECENCY_WEIGHT = 0.5        # max logit bonus for a brand-new posting
 RECENCY_HORIZON_DAYS = 60   # linear decay to 0 over this window
 LIKELY_MATCH_THRESHOLD = 0.65  # UI badge cutoff (on the sigmoid output)
+TIER_HIGH = 0.90            # review tier cutoffs (sigmoid output): >= HIGH is
+TIER_LOW = 0.35             # "near-certain", < LOW is "probably not"
 TOP_REASONS = 4             # contributors persisted per row
 
 MODEL_META_KEY = "rank_model"

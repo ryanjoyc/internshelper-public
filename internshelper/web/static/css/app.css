@@ -307,6 +307,9 @@ p { margin: 0; }
 
 /* ---------- review rows ---------- */
 
+.review-summary { margin: 14px 0 0; color: var(--muted); font-size: 14px; }
+.review-summary strong { color: var(--text); font-size: 15px; }
+
 .row-list {
   max-width: 1100px;
   border: 1px solid var(--border);
@@ -314,6 +317,135 @@ p { margin: 0; }
   background: var(--surface);
   overflow: hidden;
 }
+
+/* ---------- review view switcher ---------- */
+
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 6px;
+  font: 600 12px/1 "Geist", sans-serif;
+  color: var(--muted);
+  text-decoration: none;
+}
+.seg-btn:hover { color: var(--text); }
+.seg--on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+
+/* ---------- review split pane ---------- */
+
+.pane {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 14px;
+  max-width: 1100px;
+  align-items: start;
+}
+.pane-list {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow-y: auto;
+  max-height: calc(100vh - 250px);
+}
+.pane-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pane-item:last-child { border-bottom: none; }
+.pane-item:hover { background: var(--surface-2); }
+.pane-item.is-selected { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--accent); }
+.pane-item-title {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pane-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.pane-item-company { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane-detail { min-width: 0; position: sticky; top: 16px; }
+.pane-bar { margin: 0 0 8px; }
+
+/* ---------- review tiers ---------- */
+
+.tier { border-bottom: 1px solid var(--border); }
+.tier:last-child { border-bottom: none; }
+
+.tier-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--surface-2);
+}
+.tier-head:hover .tier-label { color: var(--text-2); }
+
+.tier-chevron {
+  display: inline-block;
+  color: var(--faint);
+  font-size: 11px;
+  width: 12px;
+  transition: transform 160ms var(--ease);
+}
+.tier-chevron.is-open { transform: rotate(90deg); }
+.tier-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tier-count {
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tier-bulk { margin-left: auto; }
+
+.tier-rows .row:last-child { border-bottom: none; }
+
+/* reason chips: the only colored element on a row — different per row on purpose */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--match-bg);
+  color: var(--match-fg);
+}
+.chip--down { background: var(--nomatch-bg); color: var(--nomatch-fg); }
 
 .row {
   padding: 8px 14px;

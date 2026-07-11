@@ -3,7 +3,7 @@
        x-on:htmx:after-request="clearTimeout(t); $el.remove()">
     <span class="toast-text">{{ 'Matched' if toast.verdict == 'match' else 'No match' }} — {{ toast.company }}: {{ toast.title }}</span>
     <form hx-post="/review/undo"
-          {% if toast.mode == 'focus' %}hx-target="#focus-card" hx-swap="outerHTML"{% else %}hx-target="#review-region" hx-swap="innerHTML" hx-include="#queue-toolbar"{% endif %}>
+          {% if toast.mode == 'focus' %}hx-target="#focus-card" hx-swap="outerHTML"{% elif toast.mode == 'pane' %}hx-target="#pane-region" hx-swap="outerHTML" hx-include="#queue-toolbar"{% else %}hx-target="#review-region" hx-swap="innerHTML" hx-include="#queue-toolbar"{% endif %}>
       <input type="hidden" name="posting_id" value="{{ toast.posting_id }}">
       <input type="hidden" name="mode" value="{{ toast.mode }}">
       <button class="btn btn-ghost btn-sm" type="submit">Undo</button>

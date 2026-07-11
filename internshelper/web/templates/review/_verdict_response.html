@@ -1,11 +1,9 @@
 {# List-mode verdict: the target row is replaced with nothing; the rest is out-of-band. #}
 {% include "partials/_nav_oob.html" %}
-{% set include_tiles = true %}
-<div class="tiles" id="review-tiles" hx-swap-oob="outerHTML">
-  {% import "partials/_macros.html" as m %}
-  {{ m.stat_tile("Pending", total) }}
-  {{ m.stat_tile("Candidates", candidates) }}
-</div>
+<p class="review-summary" id="review-summary" hx-swap-oob="outerHTML">{% include "review/_summary.html" %}</p>
+{% for key, n in shown_tier_counts.items() %}
+<span class="tier-count" id="tier-count-{{ key }}" hx-swap-oob="outerHTML">{{ n }}</span>
+{% endfor %}
 {% if filtered %}
 <span class="toolbar-count" id="queue-note" hx-swap-oob="outerHTML">{{ shown }} shown of {{ total }} pending</span>
 {% endif %}

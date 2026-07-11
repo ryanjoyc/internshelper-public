@@ -38,7 +38,9 @@ document.addEventListener("DOMContentLoaded", function () {
 var selected = -1;
 
 function listRows() {
-  return Array.prototype.slice.call(document.querySelectorAll("#review-list .row"));
+  // Rows inside a collapsed tier are display:none — j/k must skip them.
+  return Array.prototype.slice.call(document.querySelectorAll("#review-list .row"))
+    .filter(function (r) { return r.offsetParent !== null; });
 }
 
 function select(idx) {
@@ -84,7 +86,25 @@ document.addEventListener("keydown", function (e) {
       case "o": click(focusCard, ".focus-meta a"); break;
       case "ArrowLeft": click(document, ".focus-prev"); break;
       case "ArrowRight": click(document, ".focus-next"); break;
-      case "Escape": window.location.href = "/review"; break;
+      // Explicit mode=list — bare /review would bounce back to focus via the view cookie.
+      case "Escape": window.location.href = "/review?mode=list"; break;
+    }
+    return;
+  }
+
+  var paneList = document.getElementById("pane-list");
+  if (paneList) {
+    var items = Array.prototype.slice.call(paneList.querySelectorAll(".pane-item"));
+    var cur = items.indexOf(paneList.querySelector(".pane-item.is-selected"));
+    var detail = document.getElementById("pane-detail");
+    switch (e.key) {
+      case "j": case "ArrowDown": e.preventDefault(); if (items[cur + 1]) items[cur + 1].click(); break;
+      case "k": case "ArrowUp": e.preventDefault(); if (cur > 0) items[cur - 1].click(); break;
+      case "m": click(detail, ".btn-match"); break;
+      case "x": click(detail, ".btn-nomatch"); break;
+      case "u": undoNewestToast(); break;
+      case "o": click(detail, ".focus-meta a"); break;
+      case "f": window.location.href = "/review?mode=focus"; break;
     }
     return;
   }
@@ -119,6 +139,17 @@ document.addEventListener("keydown", function (e) {
 // A verdicted row leaves the DOM; keep the selection on the row that slid up.
 document.body.addEventListener("htmx:afterSwap", function () {
   if (selected >= 0 && document.getElementById("review-list")) select(selected);
+});
+
+// Pane list: clicking an item loads the detail via htmx; move the selection with it.
+document.addEventListener("click", function (e) {
+  var item = e.target.closest && e.target.closest("#pane-list .pane-item");
+  if (!item) return;
+  item.parentNode.querySelectorAll(".pane-item").forEach(function (el) {
+    el.classList.remove("is-selected");
+  });
+  item.classList.add("is-selected");
+  item.scrollIntoView({ block: "nearest" });
 });
 
 /* ---------- board: SortableJS drag -> POST /board/move ---------- */

@@ -1,8 +1,0 @@
-{% for r in rows %}{% set row_offset = offset + loop.index0 %}{% include "review/_row.html" %}{% endfor %}
-{% if more %}
-<div class="row-sentinel"
-     hx-get="/review/queue"
-     hx-include="#queue-toolbar"
-     hx-vals='js:{"offset": document.querySelectorAll("#review-list .row").length}'
-     hx-trigger="revealed" hx-swap="outerHTML"></div>
-{% endif %}

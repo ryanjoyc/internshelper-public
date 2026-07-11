@@ -361,7 +361,18 @@ def test_payload_summary_truncates_to_max_chars(tmp_path):
     p = tmp_path / "pay.json"
     p.write_text(json.dumps({"description": "x" * 5000}))
     out = review.payload_summary(str(p), max_chars=100)
-    assert len(out["description"]) == 100
+    assert out["description"] == "x" * 100 + "…"
+
+
+def test_payload_summary_unescapes_html_and_keeps_paragraphs(tmp_path):
+    # Greenhouse ships `content` HTML-escaped; the summary must show clean
+    # readable text — no tags — with paragraph breaks preserved.
+    content = ("&lt;div&gt;&lt;p&gt;First &amp;amp; foremost.&lt;/p&gt;"
+               "&lt;p&gt;Second.&lt;/p&gt;&lt;/div&gt;")
+    p = tmp_path / "pay.json"
+    p.write_text(json.dumps({"content": content}))
+    out = review.payload_summary(str(p))
+    assert out["description"] == "First & foremost.\n\nSecond."
 
 
 def test_payload_summary_missing_and_unreadable(tmp_path):

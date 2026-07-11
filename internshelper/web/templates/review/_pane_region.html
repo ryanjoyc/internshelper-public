@@ -1,0 +1,48 @@
+{% import "partials/_macros.html" as m %}
+<div id="pane-region" class="pane"{% if filtered %} data-filtered="1"{% endif %}>
+  {% if pane_rows %}
+  <div id="pane-list" class="pane-list">
+    {% for r in pane_rows %}
+    <button class="pane-item{% if loop.index0 == offset %} is-selected{% endif %}" type="button"
+            hx-get="/review/pane-card?offset={{ loop.index0 }}" hx-include="#queue-toolbar"
+            hx-target="#pane-detail" hx-swap="innerHTML">
+      <span class="pane-item-title">{{ r.title }}</span>
+      <span class="pane-item-meta"><span class="pane-item-company">{{ r.company }}</span>
+        {%- if r.rank_score is not none %} <span class="pill pill--neutral pill--rank">{{ r.rank_score | rank_pct }}</span>{% endif %}</span>
+    </button>
+    {% endfor %}
+  </div>
+  <div id="pane-detail" class="pane-detail">
+    {% include "review/_pane_detail.html" %}
+  </div>
+  {% elif filtered %}
+  {{ m.empty_state("No pending postings match your filters.",
+                   "Try a different search or source.",
+                   "/review", "Clear filters") }}
+  {% else %}
+  {{ m.empty_state("Nothing pending — the queue is clear.",
+                   "New postings land here after each collect run.",
+                   "/board", "Go to board") }}
+  {% endif %}
+</div>
+{% if oob %}
+{% include "partials/_nav_oob.html" %}
+<p class="review-summary" id="review-summary" hx-swap-oob="outerHTML">{% include "review/_summary.html" %}</p>
+{% if filtered %}
+<span class="toolbar-count" id="queue-note" hx-swap-oob="outerHTML">{{ shown }} shown of {{ total }} pending</span>
+{% endif %}
+{% endif %}
+{% if toast %}{% include "review/_toast.html" %}{% endif %}
+{% if bulk_toast %}
+<div hx-swap-oob="beforeend:#toast-region">
+  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 8000) }"
+       x-on:htmx:after-request="clearTimeout(t); $el.remove()">
+    <span class="toast-text">{{ bulk_toast.verb | default('Cleared') }} {{ bulk_toast.cleared }} {{ bulk_toast.noun | default('non-candidate') }}{{ '' if bulk_toast.cleared == 1 else 's' }}</span>
+    <form hx-post="/review/bulk-undo" hx-target="#pane-region" hx-swap="outerHTML" hx-include="#queue-toolbar">
+      <input type="hidden" name="reviewed_at" value="{{ bulk_toast.reviewed_at }}">
+      <input type="hidden" name="reason" value="{{ bulk_toast.reason }}">
+      <button class="btn btn-ghost btn-sm" type="submit">Undo</button>
+    </form>
+  </div>
+</div>
+{% endif %}

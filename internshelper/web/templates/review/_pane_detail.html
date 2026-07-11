@@ -1,0 +1,17 @@
+{% import "partials/_macros.html" as m %}
+{% if card %}
+<div class="pane-bar page-sub">{{ offset + 1 }} of {{ pane_total }}</div>
+<article class="card focus-card pane-card">
+  {% include "review/_detail_body.html" %}
+  {# mode + filters ride in via the toolbar's hidden fields (hx-include). #}
+  <form class="focus-actions"
+        hx-post="/review/verdict" hx-include="#queue-toolbar"
+        hx-target="#pane-region" hx-swap="outerHTML">
+    <input type="hidden" name="posting_id" value="{{ card.posting_id }}">
+    <input type="hidden" name="offset" value="{{ offset }}">
+    <input class="input focus-reason" type="text" name="reason" placeholder="Reason (optional)">
+    <button class="btn btn-secondary btn-nomatch" type="submit" name="verdict" value="no_match">✕ No match <kbd>X</kbd></button>
+    <button class="btn btn-primary btn-match" type="submit" name="verdict" value="match">✓ Match <kbd>M</kbd></button>
+  </form>
+</article>
+{% endif %}

@@ -4,6 +4,8 @@ The web app resolves INTERNSHELPER_DB / INTERNSHELPER_SOURCES at create_app() ti
 so these fixtures redirect both to tmp files before building the client.
 """
 
+import html
+
 import pytest
 
 from internshelper import db, store
@@ -25,7 +27,11 @@ def seeded_db(tmp_path, monkeypatch):
                     title="Software Engineer Intern", company="Stripe", url=f"https://x/{i}",
                     is_cs_relevant=True, is_internship=True)
         if i == 1:
-            p.raw = {"content": "<p>Build <b>backend</b> systems</p>", "id": i}
+            # HTML-escaped like Greenhouse's real `content` field — the UI must
+            # show readable text (with the bullet), never the tags.
+            p.raw = {"content": html.escape(
+                "<div><p>Build <b>backend</b> systems</p>"
+                "<ul><li>Perk one</li></ul></div>"), "id": i}
         store.upsert(c, p, now="2026-06-18T10:00:00+00:00", payloads_dir=payloads)
     store.upsert(
         c,

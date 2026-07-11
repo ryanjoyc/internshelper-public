@@ -1,12 +1,27 @@
 """HTML -> plain text, using only the stdlib html.parser (no extra dependency).
 
-Used to clean posting descriptions before keyword matching so tags and attribute
-text (e.g. URLs) cannot produce false keyword hits.
+Two flavours: `strip_html` (single line, for keyword/token matching) and
+`html_to_text` (paragraph-preserving, for showing descriptions to a human).
+Both survive double-encoded HTML — Greenhouse's `content` field arrives
+HTML-escaped, so one decode pass just reveals the tags instead of removing them.
 """
 
 from __future__ import annotations
 
+import re
 from html.parser import HTMLParser
+
+# Tags that end a line of visible text. Closing one (or hitting <br>) starts a
+# new line; a <li> additionally gets a bullet so lists survive flattening.
+_BLOCK_TAGS = frozenset(
+    ("p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "br")
+)
+
+# A real markup tag (not a stray "a < b") left in the output after a parse pass
+# means the input was escaped HTML — decode again.
+_TAG_RE = re.compile(r"</?[a-zA-Z][^>]*>")
+
+_MAX_DECODE_PASSES = 3
 
 
 class _Stripper(HTMLParser):
@@ -15,6 +30,21 @@ class _Stripper(HTMLParser):
         super().__init__()
         self._parts: list[str] = []
 
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag == "br":
+            self._parts.append("\n")
+        elif tag == "li":
+            self._parts.append("\n• ")
+
+    def handle_endtag(self, tag: str) -> None:
+        # Paragraphs and headings read better with a blank line after them.
+        # <li>/<br> already break on the start tag — a close-newline too would
+        # put a blank line between every bullet.
+        if tag == "p" or (len(tag) == 2 and tag[0] == "h" and tag[1].isdigit()):
+            self._parts.append("\n\n")
+        elif tag in _BLOCK_TAGS and tag not in ("li", "br"):
+            self._parts.append("\n")
+
     def handle_data(self, data: str) -> None:
         self._parts.append(data)
 
@@ -22,11 +52,29 @@ class _Stripper(HTMLParser):
         return "".join(self._parts)
 
 
-def strip_html(s: str | None) -> str:
-    """Return the visible text of an HTML (or plain) string, whitespace-collapsed."""
+def _visible_text(s: str) -> str:
+    """One decode+strip pass, repeated while the output still contains markup."""
+    out = s
+    for _ in range(_MAX_DECODE_PASSES):
+        parser = _Stripper()
+        parser.feed(out)
+        parser.close()
+        out = parser.text()
+        if not _TAG_RE.search(out):
+            break
+    return out
+
+
+def html_to_text(s: str | None) -> str:
+    """Visible text of an HTML (or plain) string, paragraphs/lists kept as lines."""
     if not s:
         return ""
-    parser = _Stripper()
-    parser.feed(s)
-    parser.close()
-    return " ".join(parser.text().split())
+    lines = [" ".join(line.split()) for line in _visible_text(s).split("\n")]
+    # Collapse runs of blank lines to a single paragraph break.
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
+    return text.strip()
+
+
+def strip_html(s: str | None) -> str:
+    """Return the visible text of an HTML (or plain) string, whitespace-collapsed."""
+    return " ".join(html_to_text(s).split())

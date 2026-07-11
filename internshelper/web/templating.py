@@ -37,6 +37,43 @@ def rank_pct(score: object) -> str:
         return ""
 
 
+_CHIP_MAX = 3
+
+
+def rank_chips(reasons_json: object, tier: str = "mid") -> list[dict]:
+    """rank_reasons JSON -> up to 3 humanized chips explaining the row's tier.
+
+    High/mid tiers show what pulls the score UP; the "probably not" tier shows what
+    drags it DOWN — that's what makes Dismiss-all trustworthy. Feature keys are
+    humanized: company:* is dropped (the company is already on the row), source:*
+    becomes the short source label, `recent` reads as prose. Tolerates None/garbage.
+    """
+    if not reasons_json:
+        return []
+    try:
+        pairs = json.loads(str(reasons_json))
+        chips = []
+        for k, v in pairs:
+            neg = float(v) < 0
+            if neg != (tier == "low"):
+                continue
+            key = str(k)
+            if key.startswith("company:"):
+                continue
+            if key.startswith("source:"):
+                chip_text = display.source_label(key.removeprefix("source:"))
+            elif key == "recent":
+                chip_text = "new this week"
+            else:
+                chip_text = key
+            chips.append({"text": chip_text, "neg": neg})
+            if len(chips) == _CHIP_MAX:
+                break
+        return chips
+    except (ValueError, TypeError):
+        return []
+
+
 def rank_explain(reasons_json: object) -> str:
     """rank_reasons JSON -> "↑ quant · ↓ 2026"; tolerates None/garbage (returns "")."""
     if not reasons_json:
@@ -59,6 +96,7 @@ def _build() -> Jinja2Templates:
     env.filters["dom_id"] = dom_id
     env.filters["rank_pct"] = rank_pct
     env.filters["rank_explain"] = rank_explain
+    env.filters["rank_chips"] = rank_chips
     env.globals["STATUS_OPTIONS"] = store.STATUS_OPTIONS
     env.globals["is_candidate"] = store.is_candidate
     env.globals["LIKELY_MATCH_THRESHOLD"] = ranking.LIKELY_MATCH_THRESHOLD

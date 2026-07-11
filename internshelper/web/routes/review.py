@@ -19,7 +19,16 @@ from internshelper.web.templating import templates
 
 router = APIRouter()
 
-PAGE_SIZE = 50
+VIEWS = ("list", "pane", "focus")
+VIEW_COOKIE = "review_view"
+
+
+def _resolve_view(request: Request, mode: str | None) -> str:
+    """Explicit ?mode= wins (and gets remembered); else the cookie; else tiers."""
+    if mode is not None:
+        return mode if mode in VIEWS else "list"
+    cookie = request.cookies.get(VIEW_COOKIE, "")
+    return cookie if cookie in VIEWS else "list"
 
 
 def _rescore(conn: sqlite3.Connection) -> None:
@@ -71,7 +80,55 @@ def _counts_ctx(conn: sqlite3.Connection) -> dict:
         "total": total,
         "candidates": candidates,
         "non_candidates": total - candidates,
+        # Global (unfiltered) tier sizes — the header's "N need your call" sentence.
+        "tier_counts": review.tier_counts(conn, high=ranking.TIER_HIGH, low=ranking.TIER_LOW),
     }
+
+
+def _pane_ctx(conn: sqlite3.Connection, filters: dict, offset: int = 0) -> dict:
+    """The split-pane view: the filtered flat queue + the detail card at `offset`.
+
+    Unlike focus mode (which walks the GLOBAL queue), pane offsets index the
+    filtered, sorted list — the left list and the detail always agree.
+    """
+    ctx = _filter_ctx(conn, filters)
+    rows = review.list_pending(conn, q=filters["q"], source=filters["source"],
+                               sort=filters["sort"])
+    pane_total = len(rows)
+    offset = min(max(offset, 0), max(pane_total - 1, 0))
+    card = rows[offset] if rows else None
+    payload = review.payload_summary(card["payload_path"]) if card else None
+    ctx.update(
+        {
+            "view": "pane",
+            "pane_rows": rows,
+            "pane_total": pane_total,
+            "offset": offset,
+            "card": card,
+            "payload": payload,
+            "raw_json": json.dumps(payload["raw"], indent=2, default=str)
+            if payload and payload["raw"] is not None
+            else None,
+        }
+    )
+    return ctx
+
+
+def _list_ctx(conn: sqlite3.Connection, filters: dict) -> dict:
+    """The tiered list region: the WHOLE filtered queue, partitioned by tier.
+
+    No paging — collapsed tiers hide their rows, and the open tier is the short one;
+    a local single-user queue renders comfortably in full. `global_offset` is each
+    row's index in this list order, the Enter→focus-mode jump target.
+    """
+    rows = review.list_pending(conn, q=filters["q"], source=filters["source"],
+                               sort=filters["sort"])
+    for i, row in enumerate(rows):
+        row["global_offset"] = i
+    ctx = _filter_ctx(conn, filters)
+    ctx["tiers"] = review.partition_tiers(rows, high=ranking.TIER_HIGH, low=ranking.TIER_LOW)
+    ctx["any_rows"] = bool(rows)
+    return ctx
 
 
 def _posting(conn: sqlite3.Connection, posting_id: str) -> sqlite3.Row:
@@ -114,37 +171,32 @@ def root(conn: sqlite3.Connection = Depends(get_conn)) -> RedirectResponse:
 @router.get("/review")
 def review_page(
     request: Request,
-    mode: str = "list",
+    mode: str | None = None,
     offset: int = 0,
     q: str = "",
     source: str = "",
     sort: str = "rank",
     conn: sqlite3.Connection = Depends(get_conn),
 ):
-    if mode == "focus":
+    view = _resolve_view(request, mode)
+    if view == "focus":
         # Focus mode deliberately ignores filters: it walks global pending offsets.
         ctx = _focus_ctx(conn, offset)
-        ctx["active"] = "review"
-        return templates.TemplateResponse(request, "review/focus.html", ctx)
-    ctx = _counts_ctx(conn)
-    ctx.update(_hygiene_counts(request, conn))
-    f = _filters(q, source, sort)
-    ctx.update(_filter_ctx(conn, f))
-    rows = review.list_pending(conn, limit=PAGE_SIZE, q=f["q"], source=f["source"],
-                               sort=f["sort"])
-    ctx.update(
-        {
-            "active": "review",
-            "rows": rows,
-            "offset": 0,
-            "more": len(rows) == PAGE_SIZE,
-        }
-    )
-    return templates.TemplateResponse(request, "review/index.html", ctx)
+        ctx.update({"active": "review", "view": view})
+        resp = templates.TemplateResponse(request, "review/focus.html", ctx)
+    else:
+        ctx = _counts_ctx(conn)
+        ctx.update(_hygiene_counts(request, conn))
+        f = _filters(q, source, sort)
+        ctx.update(_pane_ctx(conn, f, offset) if view == "pane" else _list_ctx(conn, f))
+        ctx.update({"active": "review", "view": view})
+        resp = templates.TemplateResponse(request, "review/index.html", ctx)
+    resp.set_cookie(VIEW_COOKIE, view, max_age=31536000, samesite="lax")
+    return resp
 
 
-@router.get("/review/queue")
-def queue_partial(
+@router.get("/review/pane-card")
+def pane_card(
     request: Request,
     offset: int = 0,
     q: str = "",
@@ -152,14 +204,9 @@ def queue_partial(
     sort: str = "rank",
     conn: sqlite3.Connection = Depends(get_conn),
 ):
-    """Next slice for the infinite scroll; `offset` is the caller's rendered-row count."""
-    ctx = _counts_ctx(conn)
-    f = _filters(q, source, sort)
-    ctx.update(_filter_ctx(conn, f))
-    rows = review.list_pending(conn, limit=PAGE_SIZE, offset=offset, q=f["q"],
-                               source=f["source"], sort=f["sort"])
-    ctx.update({"rows": rows, "offset": offset, "more": len(rows) == PAGE_SIZE})
-    return templates.TemplateResponse(request, "review/_rows.html", ctx)
+    """Detail-only swap when a pane-list item is clicked."""
+    ctx = _pane_ctx(conn, _filters(q, source, sort), offset)
+    return templates.TemplateResponse(request, "review/_pane_detail.html", ctx)
 
 
 @router.get("/review/focus-card")
@@ -200,8 +247,19 @@ def post_verdict(
         ctx = _focus_ctx(conn, offset)
         ctx.update({"toast": toast, "oob": True})
         return templates.TemplateResponse(request, "review/_focus_card.html", ctx)
+    if mode == "pane":
+        # Same offset in the now-shorter list = the next posting (clamped at the end).
+        ctx = _counts_ctx(conn)
+        ctx.update(_pane_ctx(conn, _filters(q, source, sort), offset))
+        ctx.update({"toast": toast, "oob": True})
+        return templates.TemplateResponse(request, "review/_pane_region.html", ctx)
     ctx = _counts_ctx(conn)
-    ctx.update(_filter_ctx(conn, _filters(q, source, sort)))
+    f = _filters(q, source, sort)
+    ctx.update(_filter_ctx(conn, f))
+    # Tier-head counters show the FILTERED queue, so their OOB refresh must too.
+    ctx["shown_tier_counts"] = review.tier_counts(
+        conn, high=ranking.TIER_HIGH, low=ranking.TIER_LOW, q=f["q"], source=f["source"]
+    )
     ctx["toast"] = toast
     return templates.TemplateResponse(request, "review/_verdict_response.html", ctx)
 
@@ -226,32 +284,42 @@ def post_undo(
         ctx = _focus_ctx(conn, offset)
         ctx["oob"] = True
         return templates.TemplateResponse(request, "review/_focus_card.html", ctx)
-    ctx = _counts_ctx(conn)
     f = _filters(q, source, sort)
-    ctx.update(_filter_ctx(conn, f))
-    rows = review.list_pending(conn, limit=PAGE_SIZE, q=f["q"], source=f["source"],
-                               sort=f["sort"])
-    ctx.update(
-        {"rows": rows, "offset": 0, "more": len(rows) == PAGE_SIZE, "oob": True}
-    )
+    if mode == "pane":
+        # Land on the restored posting (its index in the FILTERED order).
+        rows = review.list_pending(conn, q=f["q"], source=f["source"], sort=f["sort"])
+        ids = [r["posting_id"] for r in rows]
+        offset = ids.index(posting_id) if posting_id in ids else 0
+        ctx = _counts_ctx(conn)
+        ctx.update(_pane_ctx(conn, f, offset))
+        ctx["oob"] = True
+        return templates.TemplateResponse(request, "review/_pane_region.html", ctx)
+    ctx = _counts_ctx(conn)
+    ctx.update(_list_ctx(conn, f))
+    ctx["oob"] = True
     return templates.TemplateResponse(request, "review/_list_region.html", ctx)
 
 
-def _bulk_response(request, conn, *, filters: dict, cleared: int | None = None,
-                   now: str = "", reason: str = "", noun: str = ""):
-    """Re-render the (filter-respecting) list region after a bulk action.
+def _bulk_response(request, conn, *, filters: dict, view: str = "list",
+                   cleared: int | None = None, now: str = "", reason: str = "",
+                   noun: str = "", verb: str = "Cleared"):
+    """Re-render the queue region (tiers or pane, per the caller's view) after a bulk
+    action.
 
-    Bulk actions are always GLOBAL in scope — filters only shape the redisplay.
+    The hygiene clears are GLOBAL in scope (filters only shape the redisplay);
+    the tier accept/dismiss actions are filter-scoped by their callers.
     """
     ctx = _counts_ctx(conn)
-    ctx.update(_filter_ctx(conn, filters))
-    rows = review.list_pending(conn, limit=PAGE_SIZE, q=filters["q"],
-                               source=filters["source"], sort=filters["sort"])
-    ctx.update({"rows": rows, "offset": 0, "more": len(rows) == PAGE_SIZE, "oob": True})
+    if view == "pane":
+        ctx.update(_pane_ctx(conn, filters))
+    else:
+        ctx.update(_list_ctx(conn, filters))
+    ctx["oob"] = True
     if cleared is not None:
         ctx["bulk_toast"] = {"cleared": cleared, "reviewed_at": now,
-                             "reason": reason, "noun": noun}
-    return templates.TemplateResponse(request, "review/_list_region.html", ctx)
+                             "reason": reason, "noun": noun, "verb": verb}
+    template = "review/_pane_region.html" if view == "pane" else "review/_list_region.html"
+    return templates.TemplateResponse(request, template, ctx)
 
 
 @router.post("/review/bulk-clear")
@@ -260,14 +328,16 @@ def post_bulk_clear(
     q: str = Form(""),
     source: str = Form(""),
     sort: str = Form("rank"),
+    mode: str = Form("list"),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     now = clock.now_iso()
     cleared = review.clear_non_candidate_pending(conn, now=now)
     review.finish(conn)
     _rescore(conn)
-    return _bulk_response(request, conn, filters=_filters(q, source, sort), cleared=cleared,
-                          now=now, reason=review.BULK_CLEAR_REASON, noun="non-candidate")
+    return _bulk_response(request, conn, filters=_filters(q, source, sort), view=mode,
+                          cleared=cleared, now=now, reason=review.BULK_CLEAR_REASON,
+                          noun="non-candidate")
 
 
 @router.post("/review/bulk-clear-leaks")
@@ -276,6 +346,7 @@ def post_bulk_clear_leaks(
     q: str = Form(""),
     source: str = Form(""),
     sort: str = Form("rank"),
+    mode: str = Form("list"),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     entries, _, cfg_error = load_entries(request.app.state.sources_path)
@@ -283,8 +354,9 @@ def post_bulk_clear_leaks(
     cleared = 0 if cfg_error else review.clear_guard_leaks(conn, entries, now=now)
     review.finish(conn)
     _rescore(conn)
-    return _bulk_response(request, conn, filters=_filters(q, source, sort), cleared=cleared,
-                          now=now, reason=review.GUARD_LEAK_REASON, noun="guard leak")
+    return _bulk_response(request, conn, filters=_filters(q, source, sort), view=mode,
+                          cleared=cleared, now=now, reason=review.GUARD_LEAK_REASON,
+                          noun="guard leak")
 
 
 @router.post("/review/bulk-clear-closed")
@@ -293,14 +365,57 @@ def post_bulk_clear_closed(
     q: str = Form(""),
     source: str = Form(""),
     sort: str = Form("rank"),
+    mode: str = Form("list"),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     now = clock.now_iso()
     cleared = review.clear_closed_pending(conn, now=now)
     review.finish(conn)
     _rescore(conn)
-    return _bulk_response(request, conn, filters=_filters(q, source, sort), cleared=cleared,
-                          now=now, reason=review.CLOSED_REASON, noun="closed posting")
+    return _bulk_response(request, conn, filters=_filters(q, source, sort), view=mode,
+                          cleared=cleared, now=now, reason=review.CLOSED_REASON,
+                          noun="closed posting")
+
+
+@router.post("/review/bulk-accept")
+def post_bulk_accept(
+    request: Request,
+    q: str = Form(""),
+    source: str = Form(""),
+    sort: str = Form("rank"),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """Match everything in the near-certain tier. Filter-SCOPED, unlike the hygiene
+    clears: the button acts on exactly the tier the user is looking at."""
+    f = _filters(q, source, sort)
+    now = clock.now_iso()
+    accepted = review.accept_high_tier(conn, now, threshold=ranking.TIER_HIGH,
+                                       q=f["q"], source=f["source"])
+    review.finish(conn)
+    _rescore(conn)
+    return _bulk_response(request, conn, filters=f, cleared=accepted, now=now,
+                          reason=review.TIER_ACCEPT_REASON, noun="sure thing",
+                          verb="Accepted")
+
+
+@router.post("/review/bulk-dismiss")
+def post_bulk_dismiss(
+    request: Request,
+    q: str = Form(""),
+    source: str = Form(""),
+    sort: str = Form("rank"),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """No-match everything the model scored below the low tier. Filter-scoped."""
+    f = _filters(q, source, sort)
+    now = clock.now_iso()
+    dismissed = review.dismiss_low_tier(conn, now, threshold=ranking.TIER_LOW,
+                                        q=f["q"], source=f["source"])
+    review.finish(conn)
+    _rescore(conn)
+    return _bulk_response(request, conn, filters=f, cleared=dismissed, now=now,
+                          reason=review.TIER_DISMISS_REASON, noun="long shot",
+                          verb="Dismissed")
 
 
 @router.post("/review/bulk-undo")
@@ -311,11 +426,12 @@ def post_bulk_undo(
     q: str = Form(""),
     source: str = Form(""),
     sort: str = Form("rank"),
+    mode: str = Form("list"),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     review.undo_bulk_clear(conn, reviewed_at=reviewed_at, reason=reason)
     _rescore(conn)
-    return _bulk_response(request, conn, filters=_filters(q, source, sort))
+    return _bulk_response(request, conn, filters=_filters(q, source, sort), view=mode)
 
 
 @router.get("/review/peek/{posting_id}")

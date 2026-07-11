@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "partials/_macros.html" as m %}
 {% block content %}
 <header class="page-head">
   <div class="page-head-row">
@@ -56,16 +55,13 @@
         </div>
       </template>
       {% endif %}
-      {% if total %}
-      <a class="btn btn-primary" href="/review?mode=focus">Focus mode</a>
-      {% endif %}
+      {% include "review/_view_switcher.html" %}
     </div>
   </div>
-  <div class="tiles" id="review-tiles">
-    {{ m.stat_tile("Pending", total) }}
-    {{ m.stat_tile("Candidates", candidates) }}
-  </div>
+  <p class="review-summary" id="review-summary">{% include "review/_summary.html" %}</p>
   <form id="queue-toolbar" class="toolbar" method="get" action="/review">
+    {# Threads the current view through toolbar submits AND every hx-include="#queue-toolbar" action. #}
+    <input type="hidden" name="mode" value="{{ view }}">
     <input class="input" type="search" name="q" value="{{ filters.q }}"
            placeholder="Search title or company…">
     <select class="input" name="source" x-data x-on:change="$el.form.submit()">
@@ -85,6 +81,6 @@
 </header>
 
 <div id="review-region">
-  {% include "review/_list_region.html" %}
+  {% if view == 'pane' %}{% include "review/_pane_region.html" %}{% else %}{% include "review/_list_region.html" %}{% endif %}
 </div>
 {% endblock %}

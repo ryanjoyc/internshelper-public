@@ -21,6 +21,11 @@ VERDICTS = ("match", "no_match")
 BULK_CLEAR_REASON = "bulk: non-candidate"
 GUARD_LEAK_REASON = "bulk: guard leak"
 CLOSED_REASON = "bulk: closed on source"
+# Tier bulk verdicts keep the "bulk:" prefix on purpose: they echo the model's own
+# predictions, so as training labels they must stay weak (see ranking._WEAK_PREFIXES) —
+# the ranker never feasts on its own outputs at full weight.
+TIER_ACCEPT_REASON = "bulk: tier accept"
+TIER_DISMISS_REASON = "bulk: tier dismiss"
 
 # Payload keys tried (in order) for a human-readable description, across connector shapes.
 _DESCRIPTION_KEYS = ("content", "description", "descriptionPlain", "descriptionHtml", "plain")
@@ -87,6 +92,94 @@ def list_pending(
 def count_pending_filtered(conn: sqlite3.Connection, *, q: str = "", source: str = "") -> int:
     where, params = _pending_where(q, source)
     return conn.execute(f"SELECT COUNT(*) FROM postings{where}", params).fetchone()[0]
+
+
+def partition_tiers(rows: list[dict], *, high: float, low: float) -> list[dict]:
+    """Split pending rows into the three review tiers by learned score.
+
+    `>= high` is "near-certain", `< low` is "probably not", everything between
+    "needs your eyes". Unscored (cold-start) rows fall back to the keyword-candidate
+    heuristic: candidates need eyes, non-candidates are probably-not. Rows keep the
+    caller's order and gain a `tier` key; each tier's `bulk_count` counts only its
+    SCORED rows — the bulk verdicts never act on the heuristic alone.
+    """
+    buckets: dict[str, list[dict]] = {"high": [], "mid": [], "low": []}
+    for row in rows:
+        score = row.get("rank_score")
+        if score is None:
+            key = "mid" if store.is_candidate(row) else "low"
+        elif score >= high:
+            key = "high"
+        elif score < low:
+            key = "low"
+        else:
+            key = "mid"
+        row["tier"] = key
+        buckets[key].append(row)
+    return [
+        {"key": "high", "rows": buckets["high"], "bulk_count": len(buckets["high"])},
+        {"key": "mid", "rows": buckets["mid"], "bulk_count": 0},
+        {
+            "key": "low",
+            "rows": buckets["low"],
+            "bulk_count": sum(1 for r in buckets["low"] if r.get("rank_score") is not None),
+        },
+    ]
+
+
+def tier_counts(
+    conn: sqlite3.Connection, *, high: float, low: float, q: str = "", source: str = ""
+) -> dict:
+    """Pending-queue size per review tier (same bucketing rule as partition_tiers)."""
+    where, params = _pending_where(q, source)
+    row = conn.execute(
+        "SELECT "
+        "COALESCE(SUM(rank_score >= ?), 0), "
+        "COALESCE(SUM(rank_score >= ? AND rank_score < ?), 0) "
+        f"  + COALESCE(SUM(rank_score IS NULL AND {store.CANDIDATE_SQL}), 0), "
+        "COALESCE(SUM(rank_score < ?), 0) "
+        f"  + COALESCE(SUM(rank_score IS NULL AND NOT {store.CANDIDATE_SQL}), 0) "
+        f"FROM postings{where}",
+        (high, low, high, low, *params),
+    ).fetchone()
+    return {"high": row[0], "mid": row[1], "low": row[2]}
+
+
+def accept_high_tier(
+    conn: sqlite3.Connection, now: str, *, threshold: float, q: str = "", source: str = ""
+) -> int:
+    """Bulk-match every scored pending row at/above `threshold`, scoped by the filters.
+
+    One undoable batch (shared stamp + TIER_ACCEPT_REASON — revert via
+    `undo_bulk_clear`). Callers must still call `finish()` afterwards (same
+    contract as every verdict path).
+    """
+    where, params = _pending_where(q, source)
+    cur = conn.execute(
+        "UPDATE postings SET verdict = 'match', verdict_reason = ?, reviewed_at = ?, "
+        f"review_status = 'reviewed'{where} AND rank_score >= ?",
+        (TIER_ACCEPT_REASON, now, *params, threshold),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def dismiss_low_tier(
+    conn: sqlite3.Connection, now: str, *, threshold: float, q: str = "", source: str = ""
+) -> int:
+    """Bulk no_match every scored pending row below `threshold`, scoped by the filters.
+
+    NULL never satisfies `rank_score < ?`, so cold-start rows are untouched — only
+    the model's own "probably not" verdicts are dismissed. Undo via `undo_bulk_clear`.
+    """
+    where, params = _pending_where(q, source)
+    cur = conn.execute(
+        "UPDATE postings SET verdict = 'no_match', verdict_reason = ?, reviewed_at = ?, "
+        f"review_status = 'reviewed'{where} AND rank_score < ?",
+        (TIER_DISMISS_REASON, now, *params, threshold),
+    )
+    conn.commit()
+    return cur.rowcount
 
 
 def pending_source_keys(conn: sqlite3.Connection) -> list[str]:
@@ -219,11 +312,15 @@ def clear_closed_pending(
 
 
 def undo_bulk_clear(conn: sqlite3.Connection, reviewed_at: str, reason: str) -> int:
-    """Revert one bulk-clear batch (matched by its shared stamp + reason) to pending."""
+    """Revert one bulk batch (matched by its shared stamp + reason) to pending.
+
+    Covers both the no_match clears and the tier-accept match batch — the stamp +
+    reason pair uniquely identifies a batch regardless of its verdict.
+    """
     cur = conn.execute(
         "UPDATE postings SET verdict = NULL, verdict_reason = NULL, reviewed_at = NULL, "
         "review_status = 'pending' "
-        "WHERE verdict = 'no_match' AND reviewed_at = ? AND verdict_reason = ?",
+        "WHERE verdict IS NOT NULL AND reviewed_at = ? AND verdict_reason = ?",
         (reviewed_at, reason),
     )
     conn.commit()
@@ -234,8 +331,9 @@ def payload_summary(payload_path: str | None, *, max_chars: int = 2000) -> dict:
     """Human-readable summary of an archived raw payload, for judging a pending posting.
 
     Returns {"state": "missing"|"unreadable"|"ok", "description": str, "raw": object|None}.
-    The description is the first present key in `_DESCRIPTION_KEYS`, HTML-stripped and
-    truncated to `max_chars`; `raw` is the full parsed payload (nothing hidden).
+    The description is the first present key in `_DESCRIPTION_KEYS`, rendered to readable
+    plain text (paragraphs/bullets kept) and truncated to `max_chars`; `raw` is the full
+    parsed payload (nothing hidden).
     """
     if not payload_path:
         return {"state": "missing", "description": "", "raw": None}
@@ -247,7 +345,9 @@ def payload_summary(payload_path: str | None, *, max_chars: int = 2000) -> dict:
     if isinstance(raw, dict):
         for k in _DESCRIPTION_KEYS:
             if raw.get(k):
-                desc = text.strip_html(str(raw[k]))[:max_chars]
+                desc = text.html_to_text(str(raw[k]))
+                if len(desc) > max_chars:
+                    desc = desc[:max_chars] + "…"
                 break
     return {"state": "ok", "description": desc, "raw": raw}
 

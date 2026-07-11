@@ -1,22 +1,19 @@
-<div class="row" id="row-{{ r.posting_id }}" data-offset="{{ row_offset | default(0) }}">
+<div class="row" id="row-{{ r.posting_id }}" data-offset="{{ r.global_offset | default(0) }}">
   <div class="row-line">
     <div class="row-main">
       {% if is_candidate(r) %}<span class="star" title="keyword candidate">★</span>{% else %}<span class="star star--off"></span>{% endif %}
       <div class="row-text">
         <div class="row-title">{{ r.title }}</div>
-        <div class="row-meta">{{ r.company }}{% if r.location %} · {{ r.location }}{% endif %}</div>
+        <div class="row-meta">{{ r.company }}{% if r.location %} · {{ r.location }}{% endif %} · <span title="{{ r.source_key }}">{{ r.source_key | source_label }}</span> · {{ r.posted_at | release(r.first_seen) }}</div>
       </div>
     </div>
     <div class="row-side">
       {% if r.rank_score is not none %}
-      {% if r.rank_score >= LIKELY_MATCH_THRESHOLD %}
-      <span class="pill pill--match" title="{{ r.rank_reasons | rank_explain }}">likely match</span>
-      {% else %}
+      {% for c in r.rank_reasons | rank_chips(r.tier | default('mid')) %}
+      <span class="chip{% if c.neg %} chip--down{% endif %}">{{ '↓ ' if c.neg else '' }}{{ c.text }}</span>
+      {% endfor %}
       <span class="pill pill--neutral pill--rank" title="{{ r.rank_reasons | rank_explain }}">{{ r.rank_score | rank_pct }}</span>
       {% endif %}
-      {% endif %}
-      <span class="pill pill--neutral" title="{{ r.source_key }}">{{ r.source_key | source_label }}</span>
-      <span class="row-age">{{ r.posted_at | release(r.first_seen) }}</span>
       <a class="btn btn-ghost btn-sm row-open" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">open ↗</a>
       <button class="btn btn-secondary btn-sm btn-match"
               hx-post="/review/verdict"
