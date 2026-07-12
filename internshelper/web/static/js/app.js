@@ -33,6 +33,20 @@ document.addEventListener("DOMContentLoaded", function () {
     .addEventListener("change", applyTheme);
 });
 
+/* ---------- inbox tier chevrons: sticky open/closed state ----------
+   Every board action re-renders #board-region, which would reset each tier
+   section to its server default — localStorage remembers explicit choices.
+   (Called from x-data in board/_region.html; app.js loads before Alpine.) */
+
+window.tierOpen = function (key, def) {
+  var v = localStorage.getItem("tier-open:" + key);
+  return v === null ? def : v === "1";
+};
+
+window.tierSave = function (key, open) {
+  localStorage.setItem("tier-open:" + key, open ? "1" : "0");
+};
+
 /* ---------- keyboard router (board Inbox) ---------- */
 
 var selected = -1;

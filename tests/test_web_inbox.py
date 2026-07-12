@@ -32,6 +32,10 @@ def test_board_groups_inbox_into_tier_sections(client):
     for key in ("apply_first", "target", "everything_else", "long_shots"):
         assert f'data-tier="{key}"' in r.text
     assert "Apply first" in r.text and "Long shots" in r.text
+    # chevron state is localStorage-backed (server default as fallback) so it
+    # survives the full region re-render every board action triggers
+    assert 'tierOpen("apply_first", true)' in r.text
+    assert 'tierOpen("everything_else", false)' in r.text
     assert "Software Engineer Intern" in r.text
     assert "Line Cook" in r.text
 
