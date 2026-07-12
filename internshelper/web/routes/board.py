@@ -13,12 +13,13 @@ upsert, which would clobber notes); the drawer's Save is the full upsert.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from internshelper import clock, config, review, store, tiers
+from internshelper import clock, config, db, review, store, tiers
 from internshelper.web.deps import get_conn, nav_context
 from internshelper.web.templating import templates
 
@@ -38,6 +39,18 @@ TIER_UI = [
     {"key": "long_shots", "label": tiers.TIER_LABELS["long_shots"],
      "hint": "the model scores these low — skim, dismiss, or rescue", "open": False},
 ]
+
+
+HIDDEN_LANES_KEY = "board_hidden_lanes"
+
+
+def _hidden_lanes(conn: sqlite3.Connection) -> set[str]:
+    """Lanes the user collapsed to a strip — display state only, never data."""
+    try:
+        stored = json.loads(db.get_meta(conn, HIDDEN_LANES_KEY) or "[]")
+    except ValueError:
+        return set()
+    return {lane for lane in stored if lane in PIPELINE_LANES} if isinstance(stored, list) else set()
 
 
 def lane_of(status: str | None) -> str:
@@ -80,6 +93,7 @@ def _board_ctx(conn: sqlite3.Connection, view: str) -> dict:
         "columns": columns,
         "inbox_tiers": inbox_tiers,
         "inbox_total": sum(len(t["rows"]) for t in inbox_tiers),
+        "hidden_lanes": _hidden_lanes(conn),
         "rows": rows,
         "hygiene": _hygiene_counts(conn),
     }
@@ -279,6 +293,20 @@ def unpin(
 ):
     review.unpin(conn, posting_id)
     _refresh(conn)
+    return _region(request, conn)
+
+
+@router.post("/board/lane")
+def toggle_lane(
+    request: Request,
+    lane: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    if lane not in PIPELINE_LANES:
+        raise HTTPException(status_code=400, detail=f"unknown lane {lane!r}")
+    hidden = _hidden_lanes(conn) ^ {lane}
+    db.set_meta(conn, HIDDEN_LANES_KEY, json.dumps(sorted(hidden)))
+    # Display state only — no rescore/retier, nothing about the postings changed.
     return _region(request, conn)
 
 

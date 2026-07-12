@@ -159,6 +159,47 @@ def test_drawer_offers_pin_and_dismiss(client):
     assert "Move back to review" not in r.text
 
 
+def test_hide_lane_collapses_to_strip_and_persists(client):
+    r = client.post("/board/lane", data={"lane": "Interviewing"})
+    assert r.status_code == 200
+    assert "board-col--strip" in r.text
+    assert 'data-status="Interviewing"' not in r.text  # no drop target while hidden
+    assert 'data-status="Applied"' in r.text
+
+    # display state survives a fresh page load
+    r = client.get("/board")
+    assert "board-col--strip" in r.text
+    assert 'data-status="Interviewing"' not in r.text
+
+    # toggling again brings the full column back
+    r = client.post("/board/lane", data={"lane": "Interviewing"})
+    assert "board-col--strip" not in r.text
+    assert 'data-status="Interviewing"' in r.text
+
+
+def test_hide_lane_rejects_unknown_lane(client):
+    assert client.post("/board/lane", data={"lane": "Inbox"}).status_code == 400
+    assert client.post("/board/lane", data={"lane": "Backlog"}).status_code == 400
+
+
+def test_hidden_lane_cards_still_in_table_lens(client):
+    client.post("/board/move", data={"posting_id": "greenhouse:0", "status": "Applied"})
+    client.post("/board/lane", data={"lane": "Applied"})
+    r = client.get("/board?view=table")
+    assert "greenhouse:0" in r.text  # the applied card still appears in the table
+    r = client.get("/board")
+    assert 'data-status="Applied"' not in r.text  # strip on the board itself
+
+
+def test_garbage_hidden_lanes_meta_is_ignored(client, seeded_db):
+    c = db.connect(seeded_db)
+    db.set_meta(c, "board_hidden_lanes", "not json")
+    c.close()
+    r = client.get("/board")
+    assert r.status_code == 200
+    assert "board-col--strip" not in r.text
+
+
 def test_actions_rescore_inbox(client, seeded_db):
     # With enough seed labels, a dismissal triggers a retrain that scores inbox rows.
     c = db.connect(seeded_db)

@@ -72,7 +72,10 @@
 </div>
 {% endif %}
 {% else %}
-<div class="board board--inbox">
+{% set n_hidden = hidden_lanes | length %}
+{# 348 = the Inbox track's 300px minimum + the four 12px column gaps #}
+<div class="board board--inbox"
+     style="grid-template-columns: minmax(300px, 1.4fr){% for lane in pipeline_lanes %} {{ '34px' if lane in hidden_lanes else 'minmax(185px, 1fr)' }}{% endfor %}; min-width: {{ 348 + n_hidden * 34 + (4 - n_hidden) * 185 }}px">
   <section class="board-col board-col--inbox">
     <header class="board-col-head">
       <span class="dot dot--lane-inbox"></span>
@@ -95,16 +98,29 @@
     {% endfor %}
   </section>
   {% for lane in pipeline_lanes %}
+  {% if lane in hidden_lanes %}
+  <section class="board-col board-col--strip" title="Show {{ lane }}"
+           hx-post="/board/lane" hx-vals='{"lane": {{ lane | tojson }}}'
+           hx-target="#board-region" hx-swap="innerHTML">
+    <span class="dot dot--lane-{{ lane | lower }}"></span>
+    <span class="strip-label">{{ lane }}</span>
+    <span class="pill pill--neutral pill--count" id="col-count-{{ lane | lower }}">{{ columns[lane] | length }}</span>
+  </section>
+  {% else %}
   <section class="board-col">
     <header class="board-col-head">
       <span class="dot dot--lane-{{ lane | lower }}"></span>
       <span>{{ lane }}</span>
       <span class="pill pill--neutral pill--count" id="col-count-{{ lane | lower }}">{{ columns[lane] | length }}</span>
+      <button class="btn btn-ghost btn-sm lane-hide" title="Hide this lane"
+              hx-post="/board/lane" hx-vals='{"lane": {{ lane | tojson }}}'
+              hx-target="#board-region" hx-swap="innerHTML">›</button>
     </header>
     <ul class="board-cards" data-status="{{ lane }}">
       {% for r in columns[lane] %}{% include "board/_card.html" %}{% endfor %}
     </ul>
   </section>
+  {% endif %}
   {% endfor %}
 </div>
 {% endif %}
