@@ -18,11 +18,13 @@ an Apply-first digest** when new top-tier postings arrive. There is **no approva
 collected posting lands on the Board's Inbox, grouped into four apply-order tier sections —
 Apply first (dream companies), Then these (the approved index), Everything else, Long shots
 (low learned fit-score) — with the learned score ordering within a tier. Curation is one-click:
-**dismiss** (hidden, undoable), **pin** to a tier (sticky drag, survives re-ranking), **drag to
-Applied** — and every action trains the ranker. `/review-internships` in Claude Code is the
-agent-assisted audit of the same tiers. The web UI (`internshelper/web/` — FastAPI + Jinja +
-HTMX/Alpine, vendored, no build step) has five pages: Board (Inbox tier column + the
-Applied → Interviewing → Offer → Rejected kanban, with table + dismissed lenses), Postings
+**dismiss** (hidden, undoable), **pin** to a tier (sticky drag, survives re-ranking), **flag**
+(⚑ — park suspect data like a dead link for investigation; hidden, undoable, NO training
+signal), **drag to Applied** — and every action except flag trains the ranker.
+`/review-internships` in Claude Code is the agent-assisted audit of the same tiers. The web UI
+(`internshelper/web/` — FastAPI + Jinja + HTMX/Alpine, vendored, no build step) has five pages:
+Board (Inbox tier column + the Applied → Interviewing → Offer → Rejected kanban — pipeline
+lanes hide to thin strips — with table + dismissed + flagged lenses), Postings
 (searchable archive), Companies (approved-companies index + proposals + dream-tier toggle),
 Sources (add/remove wizard), Health — in the browser, or as a Dock-launchable native macOS app
 (`InternsHELPer.app`). The hourly cron is a dumb free collector; ranking/tiers only order —
@@ -55,7 +57,7 @@ flags likely-junk (Long shots); a user pin overrides both and is sticky.
 | Module | Responsibility |
 |--------|----------------|
 | `run` | Scheduled collector: fetch all sources, store new payloads into the Inbox, compute hint flags, retrain+rescore+retier, email the Apply-first digest (exactly-once per posting via `notified_at`). One invocation = one cycle. |
-| `review` | Inbox-actions CLI + the Board's data layer: `list_inbox` (best-first, effective-tier filter), `dismiss`/`undo_dismiss` (the no_match plumbing, reused), `pin_tier`/`unpin` (sticky + `tier_before_pin` training direction), guard-leak + closed-inbox hygiene (undoable batches), `payload_summary`, `refresh_ranking`. Driven by the `review-internships` + `deep-scan-source` skills and the board routes. |
+| `review` | Inbox-actions CLI + the Board's data layer: `list_inbox` (best-first, effective-tier filter), `dismiss`/`undo_dismiss` (the no_match plumbing, reused), `pin_tier`/`unpin` (sticky + `tier_before_pin` training direction), `flag`/`unflag`/`list_flagged` (suspect-data parking, no training label), guard-leak + closed-inbox hygiene (undoable batches), `payload_summary`, `refresh_ranking`. Driven by the `review-internships` + `deep-scan-source` + `investigate-flags` skills and the board routes. |
 | `ranking` | Learned fit ranking: weighted naive-Bayes over title tokens + company/source priors + a recency bonus. Training labels via `gather_labels` (precedence application > pin > verdict; Rejected counts positive — the user chose to apply). Scores persist on inbox rows; ranking orders, never gates. Retrained on every collect cycle and every board action. |
 | `tiers` | Apply-order tiers: `apply_first` (dream companies — built-in list + companies.yaml `tier: dream`), `target` (rest of the approved index), `everything_else`, `long_shots` (low score, any company). `normalize_company` (suffix drop + initials merge), `compute_tier`, `retier_inbox` (pin-immune). |
 | `companies` | The approved-companies index (`config/companies.yaml`, machine-managed): add/list companies, record board proposals, approve (→ writes the board into `sources.yaml` with the default guard) / reject / link / mark no-board / set-tier (dream → Apply first). Driven by the `resolve-companies` skill + the web Companies page. |
@@ -109,7 +111,7 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
   `test <url|source_key> [--json]` (`--json` dumps every parsed posting with its
   `posting_id`+`url` — used by `deep-scan-source`; `test` adopts the registered entry's extras
   (e.g. markdown `columns`) when the target is registered, so it parses exactly as collect does)
-- **`review`** — `list-inbox [--tier T] [--limit N]` · `dismiss <id> [--reason ...]` · `undo-dismiss <id>` · `pin <id> --tier T` · `unpin <id>` · `applied` (applied posting_ids — the `deep-scan-source` guard) · `list-leaks` / `clear-leaks` (inbox rows failing their source's *current* title guard)
+- **`review`** — `list-inbox [--tier T] [--limit N]` · `dismiss <id> [--reason ...]` · `undo-dismiss <id>` · `pin <id> --tier T` · `unpin <id>` · `flag <id> [--reason ...]` / `unflag <id>` / `list-flagged` (the flagged-for-review queue — `investigate-flags` drives these) · `applied` (applied posting_ids — the `deep-scan-source` guard) · `list-leaks` / `clear-leaks` (inbox rows failing their source's *current* title guard)
 - **`ranking`** — `retrain` (rescore all inbox rows) · `show` (stored model summary) · `explain <posting_id>` (score + per-feature contributions) · `labels` (the unified training set, JSON) · `eval [--holdout 0.25] [--k 10,25,50]` (time-ordered backtest over all label signals)
 - **`companies`** — `add <name>` · `list [--json]` · `propose <name> --url ... [--count N] [--evidence ...]` · `approve <name>` · `reject <name>` · `resolve-write <name> <source_key>` · `mark-no-board <name>` · `set-tier <name> dream|default` (dream → postings land in Apply first)
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
@@ -178,4 +180,8 @@ bash scripts/bootstrap.sh
   2027") by opening **every** posting's live link with a subagent, sorting each into
   match/uncertain/no_match, and writing pin/dismiss actions for a registered source. The strict, per-link
   counterpart to `review-internships`. Enumerates via `sources test --json`. Token-heavy by design.
+- **`investigate-flags`** — clears the Board's ⚑ flagged-for-review queue: opens each flagged
+  posting live (ATS JSON-API fallbacks), re-enumerates its source to compare URLs, then unflags
+  false alarms, dismisses confirmed-gone postings, and diagnoses connector/URL bugs. The deepest
+  per-posting pass of the three.
 - **`update-internshelper-guide`** — refresh THIS guide after a structural change.
