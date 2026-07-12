@@ -113,8 +113,10 @@
       <span class="pill pill--neutral pill--count" id="col-count-inbox">{{ inbox_total }}</span>
     </header>
     {% for tier in inbox_tiers %}
-    <section class="tier tier--{{ tier.key }}" x-data="{ open: tierOpen({{ tier.key | tojson }}, {{ 'true' if tier.open else 'false' }}) }">
-      <div class="tier-head" x-on:click="open = !open; tierSave({{ tier.key | tojson }}, open)" title="{{ tier.hint }}">
+    {# tier.key is a constant slug — single-quote it inside these double-quoted attributes
+       (tojson doesn't escape double quotes and would terminate the attribute early) #}
+    <section class="tier tier--{{ tier.key }}" x-data="{ open: tierOpen('{{ tier.key }}', {{ 'true' if tier.open else 'false' }}) }">
+      <div class="tier-head" x-on:click="open = !open; tierSave('{{ tier.key }}', open)" title="{{ tier.hint }}">
         <span class="tier-chevron" :class="{ 'is-open': open }">▸</span>
         <span class="tier-label">{{ tier.label }}</span>
         <span class="tier-count" id="tier-count-{{ tier.key }}">{{ tier.rows | length }}</span>

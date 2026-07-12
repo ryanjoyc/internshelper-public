@@ -34,8 +34,11 @@ def test_board_groups_inbox_into_tier_sections(client):
     assert "Apply first" in r.text and "Long shots" in r.text
     # chevron state is localStorage-backed (server default as fallback) so it
     # survives the full region re-render every board action triggers
-    assert 'tierOpen("apply_first", true)' in r.text
-    assert 'tierOpen("everything_else", false)' in r.text
+    assert "tierOpen('apply_first', true)" in r.text
+    assert "tierOpen('everything_else', false)" in r.text
+    # a raw double quote here would terminate the double-quoted x-data attribute
+    # early and kill Alpine for the whole section (the "inbox stuck closed" bug)
+    assert 'tierOpen("' not in r.text and 'tierSave("' not in r.text
     assert "Software Engineer Intern" in r.text
     assert "Line Cook" in r.text
 
