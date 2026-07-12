@@ -11,6 +11,13 @@ bad *data* is not a preference. This skill is the investigator that clears the q
 flagged posting it must answer one question with evidence: **is our data wrong, or is the posting
 really gone?** — and then resolve it in the app.
 
+**The `flag_reason` is a lead, not ground truth.** It's the user's report of a symptom, filed in
+one click, possibly mistaken (a slow page, a mis-click, an SPA shell that later loads). Use it to
+decide what to check *first* — "link shows nothing" → start by fetching that link — but the
+verdict must rest entirely on what the investigation actually finds. Concluding the opposite of
+the reason ("the link works fine") is a perfectly good outcome, and never skip a verification
+step just because the stated reason seems to explain everything.
+
 Three root causes to distinguish (this is the whole game):
 
 1. **`working`** — the page is actually fine (SPA that needs the JSON API, transient outage,
@@ -82,8 +89,12 @@ the session scratchpad directory, never the repo.
 ```
 Read the JSON file at <SCRATCHPAD>/flag_batch_<N>.json — a list of flagged postings
 {posting_id, company, title, url, flag_reason, still_listed, current_url}. The user flagged each
-one as suspect (flag_reason says why — usually "the link showed nothing"). For EACH, determine
-with evidence which of these is true: working | gone | bad_link | blocked.
+one as suspect; flag_reason is THEIR one-click report of a symptom (usually "the link showed
+nothing"). Treat flag_reason as a HYPOTHESIS to test first, never as an established fact — the
+user may have hit a slow load, an SPA shell, or simply been mistaken. Check what it describes
+first, then verify independently either way; your verdict must rest only on what YOU observe,
+and contradicting the flag_reason is a valid, common outcome. For EACH posting, determine with
+evidence which of these is true: working | gone | bad_link | blocked.
 
 Per posting:
 1. WebFetch the stored `url`. A blank/near-empty page is NOT proof of anything — Ashby / Lever /
