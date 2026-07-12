@@ -312,6 +312,15 @@ def test_flagged_rows_excluded_from_inbox(tmp_path):
     # a flag is not a dismissal
     assert store.dismissed_rows(conn) == []
 
+    # a flag resolved by dismissal ("confirmed gone") leaves the queue; undoing the
+    # dismissal resurfaces it (the flag columns are untouched)
+    conn.execute("UPDATE postings SET verdict='no_match' WHERE posting_id='g:1'")
+    conn.commit()
+    assert store.flagged_rows(conn) == [] and store.flagged_count(conn) == 0
+    conn.execute("UPDATE postings SET verdict=NULL WHERE posting_id='g:1'")
+    conn.commit()
+    assert store.flagged_count(conn) == 1
+
 
 def test_flagged_rows_newest_first(tmp_path):
     conn = db.connect(tmp_path / "t.db")

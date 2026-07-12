@@ -283,13 +283,17 @@ def unflag(conn: sqlite3.Connection, posting_id: str) -> None:
 
 
 def list_flagged(conn: sqlite3.Connection) -> list[dict]:
-    """The flagged queue for the investigate-flags skill, newest flag first."""
+    """The flagged queue for the investigate-flags skill, newest flag first.
+
+    Excludes dismissed rows: a flag resolved as "confirmed gone" is off the queue
+    (and comes back if the dismissal is undone).
+    """
     return [
         dict(r)
         for r in conn.execute(
             "SELECT posting_id, source_key, company, title, url, payload_path, "
             "is_active, flag_reason, flagged_at FROM postings "
-            "WHERE flagged_at IS NOT NULL ORDER BY flagged_at DESC, posting_id"
+            f"WHERE {store.FLAGGED_SQL} ORDER BY flagged_at DESC, posting_id"
         )
     ]
 

@@ -408,10 +408,15 @@ def dismissed_rows(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.R
     ).fetchall()
 
 
+# A flag resolved by dismissal ("confirmed gone") leaves the queue — dismissed wins
+# for visibility. The flag columns stay, so an undo-dismiss resurfaces the flag.
+FLAGGED_SQL = "(flagged_at IS NOT NULL AND (verdict IS NULL OR verdict != 'no_match'))"
+
+
 def flagged_rows(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:
     """Postings flagged for review, newest flag first — the board's flagged view."""
     return conn.execute(
-        "SELECT * FROM postings WHERE flagged_at IS NOT NULL "
+        f"SELECT * FROM postings WHERE {FLAGGED_SQL} "
         "ORDER BY flagged_at DESC, posting_id LIMIT ?",
         (limit,),
     ).fetchall()
@@ -419,7 +424,7 @@ def flagged_rows(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row
 
 def flagged_count(conn: sqlite3.Connection) -> int:
     return conn.execute(
-        "SELECT COUNT(*) FROM postings WHERE flagged_at IS NOT NULL"
+        f"SELECT COUNT(*) FROM postings WHERE {FLAGGED_SQL}"
     ).fetchone()[0]
 
 
