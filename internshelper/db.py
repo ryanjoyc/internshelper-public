@@ -109,6 +109,14 @@ _POSTINGS_V4_COLUMNS = [
     ("notified_at", "TEXT"),
 ]
 
+# v5: flag-for-review — suspect data (dead link, wrong info) parked out of the Inbox
+# for the investigate-flags skill. Orthogonal to verdict: a flag is not a preference
+# signal and never trains the ranker. Flagged iff flagged_at IS NOT NULL.
+_POSTINGS_V5_COLUMNS = [
+    ("flagged_at", "TEXT"),
+    ("flag_reason", "TEXT"),
+]
+
 # Columns added to `runs` after its original v2 shape, for additive migration of older DBs.
 _RUNS_COLUMNS = [
     ("dropped", "INTEGER NOT NULL DEFAULT 0"),
@@ -121,6 +129,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     _migrate_columns(conn, "postings", _POSTINGS_V2_COLUMNS)
     _migrate_columns(conn, "postings", _POSTINGS_V3_COLUMNS)
     _migrate_columns(conn, "postings", _POSTINGS_V4_COLUMNS)
+    _migrate_columns(conn, "postings", _POSTINGS_V5_COLUMNS)
     _migrate_columns(conn, "runs", _RUNS_COLUMNS)
     conn.commit()
     _migrate_to_inbox(conn)

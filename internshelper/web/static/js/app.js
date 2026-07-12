@@ -81,6 +81,7 @@ document.addEventListener("keydown", function (e) {
     case "j": case "ArrowDown": e.preventDefault(); select(selected + 1); break;
     case "k": case "ArrowUp": e.preventDefault(); select(selected - 1); break;
     case "x": click(selectedCard(), ".card-dismiss"); break;
+    case "f": click(selectedCard(), ".card-flag"); break;
     case "u": undoNewestToast(); break;
     case "o": {
       var card = selectedCard();

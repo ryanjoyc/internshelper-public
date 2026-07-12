@@ -159,6 +159,55 @@ def test_drawer_offers_pin_and_dismiss(client):
     assert "Move back to review" not in r.text
 
 
+def test_flag_from_board_hides_card_with_undo_toast(client, seeded_db):
+    r = client.post("/board/flag", data={"posting_id": "greenhouse:1"})
+    assert r.status_code == 200
+    row = _posting(seeded_db, "greenhouse:1")
+    assert row["flagged_at"] is not None
+    assert row["flag_reason"] == review.FLAG_REASON_DEFAULT
+    assert row["verdict"] is None  # not a dismissal, no training label
+    assert "/board/unflag" in r.text  # undo toast
+    assert "Flagged for review" in r.text
+    # the badge count drops (4 seeded -> 3 inbox)
+    assert ">3<" in r.text
+
+    r = client.post("/board/unflag", data={"posting_id": "greenhouse:1"})
+    assert r.status_code == 200
+    assert _posting(seeded_db, "greenhouse:1")["flagged_at"] is None
+
+
+def test_flag_with_reason_and_unknown_ids(client, seeded_db):
+    r = client.post("/board/flag",
+                    data={"posting_id": "greenhouse:2", "reason": "careers page 404s"})
+    assert r.status_code == 200
+    assert _posting(seeded_db, "greenhouse:2")["flag_reason"] == "careers page 404s"
+    assert client.post("/board/flag", data={"posting_id": "nope:1"}).status_code == 404
+    assert client.post("/board/unflag", data={"posting_id": "nope:1"}).status_code == 404
+
+
+def test_flagged_view_lists_and_restores(client, seeded_db):
+    client.post("/board/flag",
+                data={"posting_id": "greenhouse:1", "reason": "link shows nothing"})
+    r = client.get("/board?show=flagged")
+    assert r.status_code == 200
+    assert "Software Engineer Intern" in r.text
+    assert "link shows nothing" in r.text
+    assert "Flagged (1)" in r.text  # seg link carries the count
+    assert "/board/unflag" in r.text
+    client.post("/board/unflag", data={"posting_id": "greenhouse:1"})
+    r = client.get("/board?show=flagged")
+    assert "Nothing flagged" in r.text
+    assert "Flagged (" not in r.text  # count hidden at zero
+
+
+def test_cards_and_drawer_offer_flag(client):
+    r = client.get("/board")
+    assert "card-flag" in r.text
+    r = client.get("/board/card/greenhouse:1")
+    assert "/board/flag" in r.text
+    assert "Flag for review" in r.text
+
+
 def test_hide_lane_collapses_to_strip_and_persists(client):
     r = client.post("/board/lane", data={"lane": "Interviewing"})
     assert r.status_code == 200

@@ -59,6 +59,23 @@
   {% endif %}
 </div>
 
+{% if (r.status or 'Untracked') not in ('Applied', 'Interviewing', 'Offer', 'Rejected') %}
+<div class="drawer-danger" x-data="{ showFlag: false }">
+  <button class="btn btn-ghost btn-sm" x-show="!showFlag"
+          x-on:click="showFlag = true">⚑ Flag for review…</button>
+  <span x-show="showFlag" style="display: none">
+    <span class="page-sub">Something looks off (dead link, wrong info)? Parks it in the Flagged view for a double-check — no effect on ranking.</span>
+    <form class="drawer-inline-form" hx-post="/board/flag"
+          hx-target="#board-region" hx-swap="innerHTML">
+      <input type="hidden" name="posting_id" value="{{ r.posting_id }}">
+      <input class="input" type="text" name="reason" placeholder="why? e.g. link shows nothing">
+      <button class="btn btn-secondary btn-sm" type="button" x-on:click="showFlag = false">Cancel</button>
+      <button class="btn btn-primary btn-sm" type="submit">Flag</button>
+    </form>
+  </span>
+</div>
+{% endif %}
+
 <div class="drawer-danger" x-data="{ confirmDismiss: false }">
   <button class="btn btn-ghost btn-sm btn-danger-text" x-show="!confirmDismiss"
           x-on:click="confirmDismiss = true">Dismiss — not for me…</button>

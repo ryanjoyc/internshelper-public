@@ -401,6 +401,67 @@ def test_pin_tier_validates(tmp_path):
         review.pin_tier(c, "g:nope", "apply_first", now="t")
 
 
+def test_flag_parks_out_of_inbox_without_verdict(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1", cs=True), now="2026-07-11T10:00:00+00:00")
+    review.flag(c, "g:1", "link shows nothing", now="2026-07-11T11:00:00+00:00")
+
+    row = c.execute("SELECT flagged_at, flag_reason, verdict FROM postings "
+                    "WHERE posting_id='g:1'").fetchone()
+    assert row["flagged_at"] == "2026-07-11T11:00:00+00:00"
+    assert row["flag_reason"] == "link shows nothing"
+    assert row["verdict"] is None  # a flag is not a preference signal
+    assert review.list_inbox(c) == []
+    assert [r["posting_id"] for r in review.list_flagged(c)] == ["g:1"]
+
+    review.unflag(c, "g:1")
+    assert [r["posting_id"] for r in review.list_inbox(c)] == ["g:1"]
+    assert review.list_flagged(c) == []
+
+
+def test_flag_defaults_reason_and_validates_posting(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1"), now="2026-07-11T10:00:00+00:00")
+    review.flag(c, "g:1", "", now="t")
+    assert c.execute("SELECT flag_reason FROM postings WHERE posting_id='g:1'"
+                     ).fetchone()[0] == review.FLAG_REASON_DEFAULT
+    with pytest.raises(ValueError, match="unknown posting"):
+        review.flag(c, "g:nope", "x", now="t")
+
+
+def test_flag_keeps_hygiene_hands_off(tmp_path):
+    # A flagged closed posting must NOT be swept by the closed-hygiene bulk dismiss —
+    # it's parked for investigation, not eligible for cleanup.
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1"), now="2026-07-11T10:00:00+00:00")
+    c.execute("UPDATE postings SET is_active=0")
+    c.commit()
+    review.flag(c, "g:1", "dead link", now="t")
+    assert review.find_closed_inbox(c) == []
+
+
+def test_cli_flag_verbs(tmp_path, capsys, monkeypatch):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:1", title="Quant Intern", cs=True), now="2026-07-10T10:00:00+00:00")
+    c.close()
+    monkeypatch.setenv("INTERNSHELPER_DB", str(tmp_path / "t.db"))
+
+    assert review.main(["flag", "g:1", "--reason", "careers page 404s"]) == 0
+    assert "flagged for review" in capsys.readouterr().out
+    assert review.main(["list-flagged"]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    assert rows[0]["posting_id"] == "g:1"
+    assert rows[0]["flag_reason"] == "careers page 404s"
+    assert {"url", "source_key", "payload_path", "is_active"} <= set(rows[0])
+    assert review.main(["list-inbox"]) == 0
+    assert json.loads(capsys.readouterr().out) == []
+
+    assert review.main(["unflag", "g:1"]) == 0
+    assert "back in the inbox" in capsys.readouterr().out
+    assert review.main(["list-flagged"]) == 0
+    assert json.loads(capsys.readouterr().out) == []
+
+
 def test_cli_inbox_verbs(tmp_path, capsys, monkeypatch):
     c = _conn(tmp_path)
     store.upsert(c, _p("g:1", title="Quant Intern", cs=True), now="2026-07-10T10:00:00+00:00")

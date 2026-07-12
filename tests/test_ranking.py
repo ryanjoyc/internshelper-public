@@ -202,6 +202,13 @@ def test_gather_labels_sorted_by_labeled_at(tmp_path):
     assert [r["posting_id"] for r in ranking.gather_labels(c)] == ["g:old", "g:new"]
 
 
+def test_gather_labels_flag_is_not_a_signal(tmp_path):
+    c = _conn(tmp_path)
+    _seed_one(c, "g:1")
+    review.flag(c, "g:1", "link shows nothing", now="2026-07-11T10:00:00+00:00")
+    assert ranking.gather_labels(c) == []  # suspect data never trains the ranker
+
+
 # ---------- rescore_inbox ----------
 
 def _seed_history(c, n_match=20, n_no_match=15):

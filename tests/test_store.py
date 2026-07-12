@@ -294,6 +294,36 @@ def test_inbox_count_excludes_pipeline_and_dismissed(tmp_path):
     assert store.inbox_count(conn) == 2  # g:3 (Interested) + g:4
 
 
+def test_flagged_rows_excluded_from_inbox(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    db.init_db(conn)
+    for pid in ("g:1", "g:2"):
+        store.upsert(conn, _post(pid), now="2026-07-11T10:00:00+00:00")
+    conn.execute("UPDATE postings SET flagged_at='2026-07-11T11:00:00+00:00', "
+                 "flag_reason='link shows nothing' WHERE posting_id='g:1'")
+    conn.commit()
+
+    assert {r["posting_id"] for r in store.inbox_with_status(conn)} == {"g:2"}
+    assert store.inbox_count(conn) == 1
+    flagged = store.flagged_rows(conn)
+    assert [r["posting_id"] for r in flagged] == ["g:1"]
+    assert flagged[0]["flag_reason"] == "link shows nothing"
+    assert store.flagged_count(conn) == 1
+    # a flag is not a dismissal
+    assert store.dismissed_rows(conn) == []
+
+
+def test_flagged_rows_newest_first(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    db.init_db(conn)
+    for pid, ts in (("g:1", "2026-07-01T10:00:00+00:00"), ("g:2", "2026-07-02T10:00:00+00:00")):
+        store.upsert(conn, _post(pid), now="2026-07-01T09:00:00+00:00")
+        conn.execute("UPDATE postings SET flagged_at=? WHERE posting_id=?", (ts, pid))
+    conn.commit()
+    assert [r["posting_id"] for r in store.flagged_rows(conn)] == ["g:2", "g:1"]
+    assert [r["posting_id"] for r in store.flagged_rows(conn, limit=1)] == ["g:2"]
+
+
 def test_dismissed_rows_newest_first(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     db.init_db(conn)

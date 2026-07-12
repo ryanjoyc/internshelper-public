@@ -3,7 +3,7 @@ from pathlib import Path
 
 import httpx
 
-from internshelper import db, run, store
+from internshelper import db, review, run, store
 from internshelper.config import Settings, SourceEntry
 from internshelper.models import Posting
 
@@ -152,6 +152,23 @@ def test_digest_fires_for_new_apply_first_and_stamps_exactly_once(tmp_path, monk
     _wire(monkeypatch, {e.source_key: _FakeConnector(posts=posts)})
     res2 = _collect(c, tmp_path, _settings(), [e], "2026-06-18T13:00:00+00:00", send)
     assert res2.sent is False and res2.digested == 0 and len(send.calls) == 1
+
+
+def test_flagged_posting_is_not_digested(tmp_path, monkeypatch):
+    monkeypatch.setenv("INTERNSHELPER_COMPANIES", str(tmp_path / "companies.yaml"))
+    c = _conn(tmp_path)
+    e = SourceEntry(type="greenhouse", token="google")
+    posts = [_raw("greenhouse:1", e.source_key, company="Google")]
+    # already collected + flagged as suspect before the digest cycle runs
+    store.upsert(c, posts[0], now="2026-06-18T08:00:00+00:00")
+    review.flag(c, "greenhouse:1", "link shows nothing", now="2026-06-18T09:00:00+00:00")
+    _wire(monkeypatch, {e.source_key: _FakeConnector(posts=posts)})
+    send = _Send()
+    res = _collect(c, tmp_path, _settings(), [e], "2026-06-18T12:00:00+00:00", send)
+    # a dream-company row, but flagged: never emailed (and left unstamped for later)
+    assert res.sent is False and res.digested == 0 and send.calls == []
+    assert c.execute("SELECT notified_at FROM postings WHERE posting_id='greenhouse:1'"
+                     ).fetchone()[0] is None
 
 
 def test_no_digest_for_lower_tiers(tmp_path, monkeypatch):

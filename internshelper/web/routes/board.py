@@ -94,6 +94,7 @@ def _board_ctx(conn: sqlite3.Connection, view: str) -> dict:
         "inbox_tiers": inbox_tiers,
         "inbox_total": sum(len(t["rows"]) for t in inbox_tiers),
         "hidden_lanes": _hidden_lanes(conn),
+        "flagged_count": store.flagged_count(conn),
         "rows": rows,
         "hygiene": _hygiene_counts(conn),
     }
@@ -151,6 +152,9 @@ def board_page(
     if show == "dismissed":
         ctx["view"] = "dismissed"
         ctx["dismissed"] = store.dismissed_rows(conn)
+    elif show == "flagged":
+        ctx["view"] = "flagged"
+        ctx["flagged"] = store.flagged_rows(conn)
     return templates.TemplateResponse(request, "board/index.html", ctx)
 
 
@@ -255,6 +259,40 @@ def undo_dismiss(
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     review.undo_dismiss(conn, posting_id)
+    _refresh(conn)
+    return _region(request, conn)
+
+
+@router.post("/board/flag")
+def flag_posting(
+    request: Request,
+    posting_id: str = Form(...),
+    reason: str = Form(""),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    r = _board_row(conn, posting_id)
+    review.flag(conn, posting_id, reason.strip(), now=clock.now_iso())
+    _refresh(conn)  # the row left the inbox scope; keep scores/tiers honest
+    toast = {
+        "text": f"Flagged for review — {r['company']}: {r['title']}",
+        "undo_url": "/board/unflag",
+        "fields": {"posting_id": posting_id},
+    }
+    response = _region(request, conn, toast=toast)
+    response.headers["HX-Trigger"] = "drawer-close"  # flagging from the drawer closes it
+    return response
+
+
+@router.post("/board/unflag")
+def unflag_posting(
+    request: Request,
+    posting_id: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    # Flagged rows aren't in the inbox query — validate against the flagged queue.
+    if not any(r["posting_id"] == posting_id for r in store.flagged_rows(conn, limit=100000)):
+        raise HTTPException(status_code=404, detail=f"no flagged posting {posting_id!r}")
+    review.unflag(conn, posting_id)
     _refresh(conn)
     return _region(request, conn)
 

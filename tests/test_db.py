@@ -187,6 +187,14 @@ def test_fresh_db_has_v4_tier_columns(tmp_path):
     assert {"tier", "pinned_tier", "tier_before_pin", "pinned_at", "notified_at"} <= cols
 
 
+def test_fresh_db_has_v5_flag_columns_and_is_idempotent(tmp_path):
+    conn = _conn(tmp_path)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(postings)")}
+    assert {"flagged_at", "flag_reason"} <= cols
+    db.init_db(conn)  # re-running the migration is a no-op
+    assert {r[1] for r in conn.execute("PRAGMA table_info(postings)")} == cols
+
+
 def test_inbox_migration_stamps_notified_and_is_idempotent(tmp_path):
     p = tmp_path / "old.db"
     conn = db.connect(p)

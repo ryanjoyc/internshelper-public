@@ -8,6 +8,7 @@
       <a class="seg-item{% if view == 'board' %} is-active{% endif %}" href="/board">Board</a>
       <a class="seg-item{% if view == 'table' %} is-active{% endif %}" href="/board?view=table">Table</a>
       <a class="seg-item{% if view == 'dismissed' %} is-active{% endif %}" href="/board?show=dismissed">Dismissed</a>
+      <a class="seg-item{% if view == 'flagged' %} is-active{% endif %}" href="/board?show=flagged">Flagged{% if flagged_count %} ({{ flagged_count }}){% endif %}</a>
     </div>
     {% if view != 'dismissed' and (hygiene.closed or hygiene.leaks) %}
     <div class="page-head-actions">

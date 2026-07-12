@@ -461,12 +461,17 @@ kbd {
 .board-col-head:hover .lane-hide { opacity: 1; }
 
 .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
-.card-dismiss { height: 20px; padding: 0 5px; font-size: 12px; opacity: 0; flex-shrink: 0; }
-.board-card:hover .card-dismiss, tr:hover .card-dismiss { opacity: 1; }
+.card-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.card-dismiss, .card-flag { height: 20px; padding: 0 5px; font-size: 12px; opacity: 0; flex-shrink: 0; }
+.board-card:hover .card-dismiss, tr:hover .card-dismiss,
+.board-card:hover .card-flag, tr:hover .card-flag { opacity: 1; }
 .card-star { color: var(--pending-fg); }
 .board-card.is-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 .page-head-actions { display: flex; gap: 8px; }
+
+.drawer-inline-form { display: flex; gap: 6px; margin-top: 6px; align-items: center; }
+.drawer-inline-form .input { flex: 1; min-width: 0; }
 
 /* ---------- segmented control ---------- */
 

@@ -3,9 +3,14 @@
   <div class="card-top">
     <div class="card-company">{{ r.company }}</div>
     {% if (r.status or 'Untracked') not in pipeline_lanes %}
-    <button class="card-dismiss btn btn-ghost btn-sm" title="Dismiss — not for me" x-on:click.stop
-            hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
-            hx-target="#board-region" hx-swap="innerHTML">✕</button>
+    <div class="card-actions">
+      <button class="card-flag btn btn-ghost btn-sm" title="Flag for review — something looks off (dead link, wrong info)" x-on:click.stop
+              hx-post="/board/flag" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+              hx-target="#board-region" hx-swap="innerHTML">⚑</button>
+      <button class="card-dismiss btn btn-ghost btn-sm" title="Dismiss — not for me" x-on:click.stop
+              hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+              hx-target="#board-region" hx-swap="innerHTML">✕</button>
+    </div>
     {% endif %}
   </div>
   <div class="card-title">{{ r.title }}</div>

@@ -1,10 +1,12 @@
 """Inbox actions — the testable layer the Board routes and the tier-auditor skills drive.
 
 There is no approval gate: every collected posting is in the Inbox, and curation is
-dismiss (hide + negative label), pin (sticky tier + directional label), and the bulk
-hygiene sweeps (guard leaks, closed postings — undoable batches). The agent skills
-call `list-inbox`, read payloads, then `pin`/`dismiss` per posting. `set_verdict`/
-`reset_verdict` survive as the internal verdict primitives dismiss is built on.
+dismiss (hide + negative label), pin (sticky tier + directional label), flag (park
+suspect data for investigation — hidden, NO label), and the bulk hygiene sweeps
+(guard leaks, closed postings — undoable batches). The agent skills call
+`list-inbox`/`list-flagged`, read payloads, then `pin`/`dismiss`/`unflag` per
+posting. `set_verdict`/`reset_verdict` survive as the internal verdict primitives
+dismiss is built on.
 """
 
 from __future__ import annotations
@@ -252,6 +254,46 @@ def unpin(conn: sqlite3.Connection, posting_id: str) -> None:
     conn.commit()
 
 
+FLAG_REASON_DEFAULT = "flagged: check this posting"
+
+
+def flag(conn: sqlite3.Connection, posting_id: str, reason: str, now: str) -> None:
+    """Park a posting in the flagged-for-review queue (suspect data, e.g. dead link).
+
+    Orthogonal to dismiss: the verdict is untouched and NO ranking label is created —
+    bad data is not a preference signal. Hidden from the Inbox until `unflag` (or a
+    dismiss, if the investigation confirms the posting is gone).
+    """
+    cur = conn.execute(
+        "UPDATE postings SET flagged_at = ?, flag_reason = ? WHERE posting_id = ?",
+        (now, reason or FLAG_REASON_DEFAULT, posting_id),
+    )
+    if cur.rowcount == 0:
+        raise ValueError(f"unknown posting {posting_id!r}")
+    conn.commit()
+
+
+def unflag(conn: sqlite3.Connection, posting_id: str) -> None:
+    """Restore a flagged posting to the Inbox (the flag was a false alarm)."""
+    conn.execute(
+        "UPDATE postings SET flagged_at = NULL, flag_reason = NULL WHERE posting_id = ?",
+        (posting_id,),
+    )
+    conn.commit()
+
+
+def list_flagged(conn: sqlite3.Connection) -> list[dict]:
+    """The flagged queue for the investigate-flags skill, newest flag first."""
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT posting_id, source_key, company, title, url, payload_path, "
+            "is_active, flag_reason, flagged_at FROM postings "
+            "WHERE flagged_at IS NOT NULL ORDER BY flagged_at DESC, posting_id"
+        )
+    ]
+
+
 def refresh_ranking(conn: sqlite3.Connection) -> None:
     """Best-effort rescore + retier after an action — never blocks the action itself."""
     try:
@@ -333,6 +375,15 @@ def main(argv=None) -> int:
     up = sub.add_parser("unpin", help="release a pin — the computed tier applies again")
     up.add_argument("posting_id")
 
+    fl = sub.add_parser("flag", help="flag one posting for review (suspect data; no ranking label)")
+    fl.add_argument("posting_id")
+    fl.add_argument("--reason", default=FLAG_REASON_DEFAULT)
+
+    uf = sub.add_parser("unflag", help="restore a flagged posting to the inbox")
+    uf.add_argument("posting_id")
+
+    sub.add_parser("list-flagged", help="the flagged-for-review queue (JSON)")
+
     sub.add_parser("applied", help="posting_ids the user has applied to (JSON) — deep-scan guard")
     sub.add_parser("list-leaks", help="inbox rows failing their source's current title guard (JSON)")
     sub.add_parser("clear-leaks", help="bulk-dismiss every guard leak (undoable batch)")
@@ -370,6 +421,16 @@ def main(argv=None) -> int:
         unpin(conn, args.posting_id)
         refresh_ranking(conn)
         print(f"{args.posting_id}: unpinned")
+    elif args.cmd == "flag":
+        flag(conn, args.posting_id, args.reason, now=clock.now_iso())
+        refresh_ranking(conn)  # flagged rows leave the inbox scope
+        print(f"{args.posting_id}: flagged for review")
+    elif args.cmd == "unflag":
+        unflag(conn, args.posting_id)
+        refresh_ranking(conn)
+        print(f"{args.posting_id}: back in the inbox")
+    elif args.cmd == "list-flagged":
+        print(json.dumps(list_flagged(conn), indent=2))
     elif args.cmd == "applied":
         print(json.dumps(applied(conn), indent=2))
     return 0

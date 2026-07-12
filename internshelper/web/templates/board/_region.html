@@ -28,6 +28,36 @@
   </table>
 </div>
 {% endif %}
+{% elif view == 'flagged' %}
+{% if not flagged %}
+{{ m.empty_state("Nothing flagged for review.",
+                 "Flag a posting (⚑ on its card) when something looks off — a dead link, wrong info — and it parks here for a double-check.",
+                 "/board", "Back to board") }}
+{% else %}
+<div class="table-wrap">
+  <table class="table">
+    <thead>
+      <tr><th>Company</th><th>Title</th><th>Reason</th><th>Flagged</th><th></th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in flagged %}
+      <tr>
+        <td>{{ r.company }}</td>
+        <td class="cell-strong">{{ r.title }}</td>
+        <td>{{ r.flag_reason or "—" }}</td>
+        <td class="cell-num">{{ r.flagged_at | release }}</td>
+        <td><a class="btn btn-ghost btn-sm" title="Open the posting" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        <td>
+          <button class="btn btn-secondary btn-sm" hx-post="/board/unflag"
+                  hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+                  hx-target="#board-region" hx-swap="innerHTML">Restore</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% elif view == 'table' %}
 {% if not rows %}
 {{ m.empty_state("Nothing collected yet.",

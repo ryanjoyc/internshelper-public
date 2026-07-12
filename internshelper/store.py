@@ -27,9 +27,11 @@ PIPELINE_STATUSES = ("Applied", "Interviewing", "Offer", "Rejected")
 # `is_candidate` is the same predicate for a fetched row (sqlite3.Row or dict).
 CANDIDATE_SQL = "(is_cs_relevant = 1 OR is_internship = 1 OR is_newgrad = 1)"
 
-# Not dismissed — there is no approval gate, so this is the whole Inbox universe
-# (pipeline rows are excluded per-query where it matters).
-INBOX_SQL = "(verdict IS NULL OR verdict != 'no_match')"
+# Not dismissed and not flagged-for-review — there is no approval gate, so this is
+# the whole Inbox universe (pipeline rows are excluded per-query where it matters).
+# Flagged rows are suspect data parked for investigation: out of the board, the nav
+# badge, hygiene sweeps, rescoring, and the apply-first digest — but never deleted.
+INBOX_SQL = "((verdict IS NULL OR verdict != 'no_match') AND flagged_at IS NULL)"
 
 # Best-first ordering, shared by the Inbox and the review CLI: learned rank_score
 # dominates when present (NULL = unscored/cold-start sorts last); keyword-candidate
@@ -404,6 +406,21 @@ def dismissed_rows(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.R
         "ORDER BY reviewed_at DESC, posting_id LIMIT ?",
         (limit,),
     ).fetchall()
+
+
+def flagged_rows(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:
+    """Postings flagged for review, newest flag first — the board's flagged view."""
+    return conn.execute(
+        "SELECT * FROM postings WHERE flagged_at IS NOT NULL "
+        "ORDER BY flagged_at DESC, posting_id LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
+def flagged_count(conn: sqlite3.Connection) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) FROM postings WHERE flagged_at IS NOT NULL"
+    ).fetchone()[0]
 
 
 def inbox_count(conn: sqlite3.Connection) -> int:
