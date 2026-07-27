@@ -33,7 +33,15 @@ CREATE TABLE IF NOT EXISTS postings (
     verdict_reason  TEXT,
     reviewed_at     TEXT,
     -- v2.3: source's own posted/added date (recency); NULL if the source gives none
-    posted_at       TEXT
+    posted_at       TEXT,
+    -- v3: graded term classifier ("is this my target term, e.g. Summer 2027?").
+    -- Written by the on-demand term pass, not the collector. Orthogonal to verdict.
+    term_season         TEXT,
+    term_year           INTEGER,
+    term_verdict        TEXT,
+    term_evidence       TEXT,
+    term_source         TEXT,
+    term_classified_at  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS applications (
@@ -86,6 +94,13 @@ _POSTINGS_V2_COLUMNS = [
     ("verdict_reason", "TEXT"),
     ("reviewed_at", "TEXT"),
     ("posted_at", "TEXT"),
+    # v3 term classifier columns (additive — old DBs migrate with no rewrite).
+    ("term_season", "TEXT"),
+    ("term_year", "INTEGER"),
+    ("term_verdict", "TEXT"),
+    ("term_evidence", "TEXT"),
+    ("term_source", "TEXT"),
+    ("term_classified_at", "TEXT"),
 ]
 
 # Columns added to `runs` after its original v2 shape, for additive migration of older DBs.

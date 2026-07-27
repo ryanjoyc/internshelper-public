@@ -15,7 +15,7 @@ import streamlit as st
 from urllib.parse import urlsplit
 
 from internshelper import (
-    clock, config, db, display, github_repo, review, sniffer, sources, store, text,
+    clock, config, db, display, github_repo, review, sniffer, sources, store, term, text,
 )
 from internshelper.dotenv import load_dotenv
 from internshelper.sourceurl import SourceDetectionError
@@ -208,6 +208,83 @@ def _tracker_tab(conn) -> None:
           "Applied": r["applied_date"], "Notes": r["notes"], "URL": r["url"]} for r in rows],
         width="stretch", hide_index=True,
     )
+
+
+_TERM_VERDICT_HELP = {
+    "EXPLICIT": "text literally states the target term",
+    "LIKELY": "strong implicit cue for the target cohort",
+    "POSSIBLE": "internship, no term stated — not excluded, not shown",
+    "NOT": "an explicit different term, or a new-grad/full-time role",
+    "UNREADABLE": "no readable description — honest non-answer",
+}
+
+
+def _terms_tab(conn) -> None:
+    """Graded term classifier surface — 'which postings are my target term (e.g. Summer 2027)?'.
+
+    Display-only (no silent drops). The app NEVER calls a model here: ambiguous rows are handed
+    off to the free /classify-terms skill (interactive Claude Code, subscription). An in-app
+    metered upgrade hint appears only when [term.llm] is enabled in settings.
+    """
+    st.subheader("Terms")
+    try:
+        settings = config.load_settings(
+            config.default_path("INTERNSHELPER_SETTINGS", "config/settings.toml"))
+    except config.ConfigError as e:
+        st.error(f"Couldn't read settings: {e}")
+        return
+    target = (settings.term_season, settings.term_year)
+    st.caption(f"Target term: **{target[0].title()} {target[1]}** "
+               f"(set in `[term]`; override per-run with `term classify --target`).")
+
+    counts = term.summary(conn, target)["counts"]
+    if not counts:
+        st.info("No postings classified yet. Run "
+                "`.venv/bin/python -m internshelper.term classify` to grade the queue "
+                "(enriches description-less rows, then applies the free heuristic).")
+        return
+
+    cols = st.columns(len(term.TERM_VERDICTS))
+    for col, v in zip(cols, term.TERM_VERDICTS):
+        col.metric(v.title(), counts.get(v, 0), help=_TERM_VERDICT_HELP[v])
+
+    chosen = st.multiselect("Show verdicts", list(term.TERM_VERDICTS),
+                            default=["EXPLICIT", "LIKELY", "POSSIBLE"], key="term-facet")
+    rows = conn.execute(
+        "SELECT company, title, location, url, term_verdict, term_season, term_year, "
+        "term_evidence, term_source, posted_at, first_seen FROM postings "
+        "WHERE is_active = 1 AND term_verdict IS NOT NULL "
+        "ORDER BY first_seen DESC, company"
+    ).fetchall()
+    rows = [r for r in rows if r["term_verdict"] in chosen] if chosen else []
+    st.caption(f"{len(rows)} posting(s)")
+    st.dataframe(
+        [{"Posted": display.format_release(r["posted_at"], r["first_seen"]),
+          "Verdict": r["term_verdict"],
+          "Term": (f"{(r['term_season'] or '').title()} {r['term_year']}".strip()
+                   if r["term_year"] else "—"),
+          "Company": r["company"], "Title": r["title"], "Location": r["location"] or "—",
+          "Evidence": r["term_evidence"] or "—", "Src": r["term_source"], "Apply": r["url"]}
+         for r in rows],
+        width="stretch", hide_index=True,
+        column_order=["Posted", "Verdict", "Term", "Company", "Title", "Location",
+                      "Evidence", "Src", "Apply"],
+        column_config={"Apply": st.column_config.LinkColumn("Apply", display_text="open ↗")},
+    )
+
+    gray = counts.get("POSSIBLE", 0) + counts.get("UNREADABLE", 0)
+    if gray:
+        st.divider()
+        st.markdown(f"**{gray} posting(s) need a judgment call** (POSSIBLE / UNREADABLE).")
+        st.caption("Upgrade them for **free** in an interactive Claude Code session — run "
+                   "**/classify-terms** (uses your subscription, no per-token charge):")
+        st.code(".venv/bin/python -m internshelper.term list-candidates", language="bash")
+        if settings.term_llm_enabled:
+            st.warning("In-app metered upgrade is **enabled** (`[term.llm]`). "
+                       "`term classify --llm` bills your Anthropic API account per token.")
+        else:
+            st.caption("In-app LLM upgrade is off (`[term.llm] enabled = false`). It would be "
+                       "pay-per-token; the free skill above is preferred.")
 
 
 def _health_tab(conn) -> None:
@@ -512,10 +589,12 @@ def main() -> None:
     _inject_css()
     st.title("🎯 internsHELPer")
     conn = _open_conn()
-    feed, tracker, health, srcs, accuracy = st.tabs(
-        ["Feed", "Tracker", "Health", "Sources", "Accuracy"])
+    feed, terms, tracker, health, srcs, accuracy = st.tabs(
+        ["Feed", "Terms", "Tracker", "Health", "Sources", "Accuracy"])
     with feed:
         _feed_tab(conn)
+    with terms:
+        _terms_tab(conn)
     with tracker:
         _tracker_tab(conn)
     with health:

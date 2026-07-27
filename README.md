@@ -160,6 +160,39 @@ Manual CLI (what the skill drives) if you want it without the skill:
 .venv/bin/python -m internshelper.review summary
 ```
 
+## 5b. Classify by term — "is this Summer 2027?"
+
+A separate, **graded** classifier answers a different question than match/no-match: *which
+season + year is each posting for?* It's configurable (`[term]` in `settings.toml`, default
+**Summer 2027**) and runs on demand:
+
+```bash
+.venv/bin/python -m internshelper.term classify --target summer:2027
+```
+
+Each posting gets a **5-tier verdict** with an evidence quote: `EXPLICIT` (text literally says
+the target), `LIKELY` (strong implicit cue), `POSSIBLE` (an internship with no stated term —
+not excluded, not shown), `NOT` (an explicit different term, or a new-grad/full-time role), or
+`UNREADABLE` (no description we could read). Postings that arrive description-less (markdown /
+GitHub lists like speedyapply) are **enriched first** — the pass fetches the JD from the ATS's
+JSON API (Greenhouse/Lever/Ashby/SmartRecruiters/Workday) so there's text to read.
+
+Two layers, split by **billing**, not capability:
+- **Tier-0 (free, deterministic, offline):** the heuristic above. Resolves the clear cases;
+  leaves a `POSSIBLE`/`UNREADABLE` gray zone.
+- **Tier-1 upgrade of the gray zone — two ways:**
+  - **Free:** run **`/classify-terms`** in your interactive Claude Code session — the agent
+    reads each candidate and records a graded verdict on your subscription, no per-token charge.
+  - **Metered (opt-in, off by default):** `term classify --llm` lets the app judge the
+    remainder itself via `ANTHROPIC_API_KEY`. This **bills per token** — headless/SDK LLM use
+    is not covered by a Claude subscription — so it's gated behind `[term.llm] enabled = true`
+    and prints the cost first.
+
+```bash
+.venv/bin/python -m internshelper.term summary           # verdict counts + EXPLICIT/LIKELY shortlist
+.venv/bin/python -m internshelper.term list-candidates   # the POSSIBLE/UNREADABLE queue (JSON)
+```
+
 ## 6. Dashboard
 
 ```bash
@@ -169,6 +202,9 @@ Manual CLI (what the skill drives) if you want it without the skill:
 - **Feed** — *Confirmed matches* (your verdicts, with an apply-status form), *Pending review*
   (queue awaiting the skill), or *All postings* (the full archive). A "Pending review" count shows
   when a batch is waiting.
+- **Terms** — the graded term classifier (§5b): verdict counts for the target term, a filterable
+  table with evidence, and a free **/classify-terms** handoff for the gray-zone rows. The app
+  never calls a model here — paid in-app upgrade only surfaces when `[term.llm]` is enabled.
 - **Tracker** — everything you've given a status (Interested → Offer) + notes + applied date.
 - **Health** — last run per source, pending count, and the last nudge.
 

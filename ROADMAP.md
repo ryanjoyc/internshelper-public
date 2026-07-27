@@ -43,9 +43,22 @@ No version split. Today, two actions lean on Claude Code skills:
   careers page to a real board slug. Code can handle most of this deterministically
   (most careers pages embed a Greenhouse/Lever/Ashby widget whose slug is sniffable
   from the page HTML); only the genuine long tail benefits from an agent/LLM.
+- **Grading a posting's term** (`/classify-terms`) — *is this Summer 2027?* A
+  deterministic heuristic (`internshelper/term.py`) reads season/year from the JD and
+  resolves the clear cases with no AI; only the genuinely ambiguous `POSSIBLE`/`UNREADABLE`
+  remainder benefits from an agent. **Delivered** (see README §5b).
 
 So: **standalone core for correctness, optional AI-assist for convenience and the
 long tail.** Same codebase, same accuracy floor for everyone.
+
+> **Billing reality that shapes the AI-assist layer (verified 2026-06-24):** there is **no
+> free programmatic LLM path**. Interactive Claude Code runs on your subscription, but
+> anything the app invokes itself — an `ANTHROPIC_API_KEY`, headless `claude -p`, or the
+> Agent SDK credit pool — is **metered, pay-per-token** (the June 15 2026 billing change;
+> `claude -p` bills as API usage even on a Max plan). So the split is a **billing** boundary:
+> the app's free intelligence is deterministic, and the free *AI* upgrade is a deliberate
+> handoff to the user's interactive session — never a silent metered call. Any in-app LLM
+> (`--llm`, BYO key) stays opt-in, off by default, and shows its cost.
 
 ---
 

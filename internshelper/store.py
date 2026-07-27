@@ -270,6 +270,56 @@ def record_run(
     conn.commit()
 
 
+def update_description(
+    conn: sqlite3.Connection,
+    posting_id: str,
+    description: str,
+    payload_path: str | None = None,
+) -> None:
+    """Backfill a posting's description (and optionally its payload_path) after enrichment.
+
+    Used by the on-demand term pass when a posting arrived description-less (markdown/github)
+    and we fetched the JD from its ATS. Only touches the description/payload — never review or
+    term state. A no-op caller (empty fetch) simply doesn't call this.
+    """
+    if payload_path is not None:
+        conn.execute(
+            "UPDATE postings SET description = ?, payload_path = ? WHERE posting_id = ?",
+            (description, payload_path, posting_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE postings SET description = ? WHERE posting_id = ?",
+            (description, posting_id),
+        )
+    conn.commit()
+
+
+def set_term(
+    conn: sqlite3.Connection,
+    posting_id: str,
+    *,
+    verdict: str,
+    season: str | None,
+    year: int | None,
+    evidence: str,
+    source: str,
+    now: str,
+) -> None:
+    """Record a graded term verdict for one posting (in place, like review.set_verdict).
+
+    Orthogonal to the match/no_match review verdict: this answers "is this my target term
+    (e.g. Summer 2027)?". `source` is "heuristic" | "agent" | "api". Idempotent — a re-run
+    (e.g. an agent upgrade over a heuristic verdict) overwrites the prior term fields.
+    """
+    conn.execute(
+        "UPDATE postings SET term_verdict = ?, term_season = ?, term_year = ?, "
+        "term_evidence = ?, term_source = ?, term_classified_at = ? WHERE posting_id = ?",
+        (verdict, season, year, evidence, source, now, posting_id),
+    )
+    conn.commit()
+
+
 def set_application(
     conn: sqlite3.Connection,
     posting_id: str,

@@ -83,6 +83,13 @@ class Settings:
     keywords: dict[str, list[str]] = field(default_factory=dict)
     # v2: send the review nudge once >= this many postings are pending.
     notify_threshold: int = 10
+    # v3 term classifier: the default target term (season + year) to grade against.
+    term_season: str = "summer"
+    term_year: int = 2027
+    # Opt-in, METERED in-app LLM upgrade. Off by default — the free path is the
+    # /classify-terms skill run in an interactive Claude Code session.
+    term_llm_enabled: bool = False
+    term_llm_model: str = "claude-opus-4-8"
 
 
 def load_sources(path: str | Path) -> tuple[list[SourceEntry], list[dict]]:
@@ -160,6 +167,8 @@ def load_settings(path: str | Path) -> Settings:
     filters = data.get("filters", {})
     keywords = data.get("keywords", {})
     review = data.get("review", {})
+    term = data.get("term", {})
+    term_llm = term.get("llm", {})
     for key in ("internship", "newgrad", "cs"):
         if not keywords.get(key):
             raise ConfigError(f"{path}: missing required [keywords] {key} list")
@@ -173,4 +182,8 @@ def load_settings(path: str | Path) -> Settings:
         require_intern_or_newgrad=bool(filters.get("require_intern_or_newgrad", True)),
         keywords={k: list(keywords[k]) for k in ("internship", "newgrad", "cs")},
         notify_threshold=int(review.get("notify_threshold", 10)),
+        term_season=str(term.get("default_target_season", "summer")).lower(),
+        term_year=int(term.get("default_target_year", 2027)),
+        term_llm_enabled=bool(term_llm.get("enabled", False)),
+        term_llm_model=str(term_llm.get("model", "claude-opus-4-8")),
     )

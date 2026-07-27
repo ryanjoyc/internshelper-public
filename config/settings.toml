@@ -11,6 +11,21 @@ port = 587
 # Email a review nudge once at least this many postings are pending classification.
 notify_threshold = 10
 
+[term]
+# The default target term the graded classifier asks "is this posting THIS term?" against.
+# Reusable each cycle: bump to 2028 next year. Override per-run with `term classify --target`.
+default_target_season = "summer"
+default_target_year = 2027
+
+[term.llm]
+# OPT-IN, METERED in-app LLM upgrade of the POSSIBLE/UNREADABLE remainder. OFF by default.
+# There is no free programmatic LLM path: anything the app calls itself (API key, headless
+# `claude -p`, Agent SDK credit) is pay-per-token. The FREE path is the /classify-terms skill
+# run in an interactive Claude Code session (your subscription). Only enable this if you
+# accept per-token API charges and have ANTHROPIC_API_KEY set.
+enabled = false
+model = "claude-opus-4-8"
+
 [filters]
 # Keyword flags are PRIORITY HINTS for the review queue (candidates first) — not a gate.
 # These booleans tune the dashboard's keyword-based "All postings" filtering only.
