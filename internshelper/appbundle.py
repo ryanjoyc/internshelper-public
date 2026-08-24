@@ -29,6 +29,7 @@ ICON_PNG = _REPO_ROOT / "internshelper" / "assets" / "icon-1024.png"
 
 _LAUNCHER_TEMPLATE = """\
 #!/bin/bash
+cd "__REPO_DIR__" || exit 1
 exec "__REPO_DIR__/.venv/bin/python" -m internshelper.app
 """
 

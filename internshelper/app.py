@@ -157,6 +157,14 @@ def trim_log(path: str | Path, max_bytes: int = LOG_MAX_BYTES) -> None:
         pass
 
 
+def log_event(message: str, repo_root: str | Path = _REPO_ROOT) -> None:
+    """Append a launcher lifecycle event to the Dock app log."""
+    log_path = Path(repo_root) / "data" / "app.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as log:
+        log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+
+
 def launch_server(port: int, repo_root: Path = _REPO_ROOT) -> subprocess.Popen:
     """Start the server under the watchdog. cwd stays the repo root so relative
     data/config paths and the log land in the right place."""
@@ -240,6 +248,7 @@ def main() -> int:
             shutdown(proc)
             return fail("The app server did not start in time. "
                         f"See {_REPO_ROOT / 'data' / 'app.log'} for details.")
+        log_event(f"Dock app server ready on http://127.0.0.1:{port}")
     elif mode == ATTACH_OWN:
         owned_pid = read_pidfile()
 

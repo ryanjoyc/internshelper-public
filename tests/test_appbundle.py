@@ -13,6 +13,7 @@ from internshelper import appbundle
 
 def test_render_launcher_substitutes_repo_dir():
     out = appbundle.render_launcher("/repo/here")
+    assert 'cd "/repo/here" || exit 1' in out
     assert '"/repo/here/.venv/bin/python" -m internshelper.app' in out
     assert "__" not in out
     assert out.startswith("#!/bin/bash")

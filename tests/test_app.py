@@ -46,6 +46,14 @@ def test_trim_log_caps_oversized_file(tmp_path):
     app.trim_log(tmp_path / "missing.log", max_bytes=10)  # no-op on absent file
 
 
+def test_log_event_appends_to_app_log(tmp_path):
+    app.log_event("server ready", tmp_path)
+    app.log_event("second event", tmp_path)
+    lines = (tmp_path / "data" / "app.log").read_text().splitlines()
+    assert lines[0].endswith(" server ready")
+    assert lines[1].endswith(" second event")
+
+
 def test_wait_for_server_succeeds_on_nth_probe():
     calls = iter([False, False, True])
     assert app.wait_for_server(lambda: next(calls), timeout=10,
