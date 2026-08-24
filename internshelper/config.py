@@ -45,6 +45,7 @@ ID_FIELD = {
     "github": "url",
     "markdown": "url",  # raw README.md URL of a Markdown-table internship list
     "workday": "url",  # canonical board URL, e.g. https://{tenant}.wd1.myworkdayjobs.com/{Site}
+    "amazon": "query",  # amazon.jobs search query (the "board" is a search — e.g. intern)
 }
 
 

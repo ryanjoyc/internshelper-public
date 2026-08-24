@@ -9,7 +9,7 @@ a bare company name) raises `SourceDetectionError` — that's the `/add-source` 
 
 from __future__ import annotations
 
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from internshelper.config import SourceEntry
 from internshelper.connectors.workday import parse_board_url
@@ -20,11 +20,13 @@ _ASHBY_HOST = "jobs.ashbyhq.com"
 _GITHUB_HOST = "github.com"
 _RAW_HOST = "raw.githubusercontent.com"
 _WORKDAY_HOST_SUFFIX = ".myworkdayjobs.com"
+_AMAZON_HOSTS = {"amazon.jobs", "www.amazon.jobs"}
 
 _SUPPORTED = (
     "boards.greenhouse.io/<token>, job-boards.greenhouse.io/<token>, "
     "jobs.lever.co/<token>, jobs.ashbyhq.com/<org>, "
     "<tenant>.wd<N>.myworkdayjobs.com/<site>, "
+    "amazon.jobs/en/search?base_query=<query>, "
     "github.com/<u>/<r>/blob/<branch>/<file>, raw.githubusercontent.com/.../<file>"
 )
 
@@ -80,6 +82,12 @@ def detect_source(url: str, *, label: str | None = None) -> SourceEntry:
         if not segs:
             raise SourceDetectionError("ashby URL needs an org slug: jobs.ashbyhq.com/<org>")
         return _make("ashby", segs[0])  # Ashby orgs are case-sensitive: preserve case
+
+    if host in _AMAZON_HOSTS:
+        # Amazon has no enumerable board — the "source" is a search query. Take it from
+        # ?base_query=… (default "intern"); scope is US-only in the connector.
+        query = (parse_qs(parts.query).get("base_query") or ["intern"])[0].strip() or "intern"
+        return SourceEntry(type="amazon", token=query, label=label or "Amazon")
 
     if host.endswith(_WORKDAY_HOST_SUFFIX):
         # Canonicalize any board / locale-variant / single-job link to the bare board URL,

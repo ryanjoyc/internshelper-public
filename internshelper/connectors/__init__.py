@@ -8,6 +8,7 @@ from internshelper.connectors.base import Connector, build_connector, register
 
 # Import side effect: each module registers its connector class.
 from internshelper.connectors import (  # noqa: E402,F401
+    amazon,
     ashby,
     github_list,
     greenhouse,
