@@ -8,8 +8,8 @@ port = 587
 # SMTP_SENDER/RECIPIENT" error instead of silently trying to mail a placeholder address.
 
 [filters]
-# Keyword flags are PRIORITY HINTS for the review queue (candidates first) — not a gate.
-# These booleans tune keyword-based feed filtering only.
+# Keyword flags are classification hints only — they do not choose a company group or hide a role.
+# These booleans tune keyword-based feed metadata only.
 require_cs = true
 require_intern_or_newgrad = true
 

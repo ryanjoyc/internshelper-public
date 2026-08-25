@@ -1,12 +1,10 @@
-"""Inbox actions — the testable layer the Board routes and the tier-auditor skills drive.
+"""Inbox actions — the testable layer used by Board routes and posting-audit skills.
 
 There is no approval gate: every collected posting is in the Inbox, and curation is
-dismiss (hide + negative label), pin (sticky tier + directional label), flag (park
-suspect data for investigation — hidden, NO label), and the bulk hygiene sweeps
-(guard leaks, closed postings — undoable batches). The agent skills call
-`list-inbox`/`list-flagged`, read payloads, then `pin`/`dismiss`/`unflag` per
-posting. `set_verdict`/`reset_verdict` survive as the internal verdict primitives
-dismiss is built on.
+dismiss (hide + negative label), flag (park suspect data for investigation — hidden,
+NO label), application movement, duplicate review, and bulk hygiene sweeps. Company
+groups are managed separately. The legacy pin/verdict primitives remain for schema and
+CLI compatibility; dismiss is built on the verdict fields.
 """
 
 from __future__ import annotations
@@ -45,13 +43,7 @@ def set_verdict(
 
 
 def reset_verdict(conn: sqlite3.Connection, posting_id: str) -> None:
-    """Undo a verdict: the posting returns to the pending queue as if never reviewed.
-
-    Never touches meta. If the undone verdict was the one that emptied the queue,
-    `finish()` already reset `pending_notified` — that's fine: the nudge only re-fires
-    when pending reaches the notify threshold again, so a lone undone item can't
-    trigger a duplicate email by itself.
-    """
+    """Clear the legacy verdict fields so the posting returns to the Inbox."""
     conn.execute(
         "UPDATE postings SET verdict = NULL, verdict_reason = NULL, reviewed_at = NULL, "
         "review_status = 'pending' WHERE posting_id = ?",

@@ -5,7 +5,7 @@ description: Exhaustively verify EVERY posting on one internsHELPer source again
 
 # Deep-scan a source for a term
 
-`/review-internships` audits the Inbox tiers **generously** for CS-relevance, judging from the
+`/review-internships` audits Inbox postings **generously** for CS-relevance, judging from the
 saved payload. This skill is the opposite tool: given **one source** and **one or more terms**
 (e.g. "Summer 2027"), it opens **every posting's live link** and confirms the term from the actual
 page — so the user can trust that no matching role was missed and no stale/mislabeled one slipped in.
@@ -115,11 +115,11 @@ POSTING_ID | match|no_match|uncertain | <term found> | open|closed|unknown | fit
 ## Notes
 
 - **This is free** — it runs in the current Codex session (subagents, no API key).
-- Complements the other skills: `/add-source` *adds* a board; `/review-internships` *audits* the
-  Inbox tiers generously for CS-relevance from payloads; **this** *verifies* ONE specified term
+- Complements the other skills: `/add-source` *adds* a board; `/review-internships` *audits*
+  Inbox postings generously for CS-relevance from payloads; **this** *verifies* ONE specified term
   strictly, per live link, across a whole source. They can disagree on purpose — a later generous
   `/review-internships` pass could restore something this skill dismissed.
 - Mirrors the user's preferred pattern (fan out one subagent per ambiguous posting to confirm the term
   from the source) and the Workday-CXS `startDate` caveat — both are baked into the agent prompt above.
-- The DB writes are reversible in the app (unpin / restore from the Dismissed view) — the strict
+- The DB writes are reversible in the app (restore from the Dismissed view) — the strict
   pass never deletes postings.

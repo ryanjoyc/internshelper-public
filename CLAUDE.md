@@ -2,6 +2,17 @@
 
 This repo ships its own onboarding skills. Use them rather than re-deriving the layout from scratch.
 
+For code work, check `.code-review-graph/` first and use `code-review-graph` to narrow the affected
+files and symbols. The graph may be stale or built on another branch, so report that condition and
+verify changed code directly before editing.
+
+## New-instance reading order
+
+1. **`STATE.md`** — current focus, runtime caveats, Git snapshot, and active-doc index.
+2. **`internshelper-guide` skill** — module map, data flow, CLIs, config/data, and conventions.
+3. **`docs/README.md`** — documentation catalog and lifecycle rules.
+4. **`README.md`** for setup/operation or **`ROADMAP.md`** for future direction, as needed.
+
 - **Where are we right now?** Read **`STATE.md`** (repo root) or invoke the **`project-state`** skill
   first — it's the living dashboard (current focus, git/VCS status, planning-doc index). Keep it
   current with **`update-project-state`**, and run **`session-state-check`** before wrapping up.
@@ -10,11 +21,11 @@ This repo ships its own onboarding skills. Use them rather than re-deriving the 
   right source file instead of scanning the whole tree.
 - **Made a structural change?** Before finishing, invoke the **`update-internshelper-guide`** skill
   if you added/renamed a module, connector, or CLI subcommand, or changed the data flow, schema, or
-  config — so the guide stays accurate for the next agent.
+  config. Keep both `.agents/` and `.claude/` guide copies semantically synchronized.
 - **Task-specific skills:** `add-source` (add a job board from messy input),
   `resolve-companies` (research pending approved-index companies into board proposals for
-  the user's approval), `review-internships` (classify the pending queue generously against
-  `config/profile.md`), `deep-scan-source` (exhaustively verify one source against a
+  the user's approval), `review-internships` (audit Inbox postings generously while leaving
+  company browsing groups user-controlled), `deep-scan-source` (exhaustively verify one source against a
   specific term — e.g. Summer 2027 — plus profile fit, by opening every posting's live link),
   and `investigate-flags` (resolve the Board's ⚑ flagged-for-review queue: dead links,
   suspect data, connector-bug diagnosis).

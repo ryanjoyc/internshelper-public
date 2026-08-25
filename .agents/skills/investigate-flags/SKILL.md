@@ -86,7 +86,7 @@ the session scratchpad directory, never the repo.
 7. **Report.** One table: company — title — verdict (working/gone/bad_link/blocked) — action
    taken (unflagged / dismissed / left flagged) — one-line evidence. Then counts, the
    connector-bug diagnosis section (if any), and a reminder that the Board's Flagged view now
-   reflects the resolutions (restored cards are back in their tiers; confirmed-gone under
+   reflects the resolutions (restored cards are back in their company groups; confirmed-gone under
    Dismissed).
 
 ## The investigation-agent prompt (bake this in; substitute the batch path)
@@ -132,6 +132,6 @@ POSTING_ID | working|gone|bad_link|blocked | <working URL or "-"> | high|med|low
   verifies a *term* across one whole source; **this** clears the *flagged* queue by verifying
   the postings' existence and our data quality — per-posting, deepest of the three.
 - The flag itself never trains the ranker; only the `gone → dismiss` resolution creates a
-  (legitimate) negative label. `unflag` restores the card to its computed tier automatically.
+  (legitimate) negative label. `unflag` restores the card to its configured company group.
 - Everything written here is reversible in the app: Restore on the Flagged view, undo-dismiss
   on the Dismissed view.

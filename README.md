@@ -17,6 +17,16 @@ only a hint, and an agent can audit saved payloads or research lesser-known comp
   **hints only**; they never choose a company group or hide a posting.
 - **Runs locally**, scheduled hourly by macOS `launchd`.
 
+## Documentation
+
+- [`STATE.md`](STATE.md) — current focus, runtime caveats, Git snapshot, and active-doc index.
+- [`docs/README.md`](docs/README.md) — reading order and documentation lifecycle rules.
+- [`ROADMAP.md`](ROADMAP.md) — forward-looking product direction.
+- [`docs/source-coverage.md`](docs/source-coverage.md) — connector support and known boundaries.
+
+Agents should start with `AGENTS.md` (or `CLAUDE.md`) and the repository-local
+`internshelper-guide` skill rather than scanning the tree from scratch.
+
 ## Quick start (clone-and-go)
 
 On a fresh clone, one command sets everything up — creates the venv, installs deps, and
@@ -273,5 +283,5 @@ Connector tests run against frozen real fixtures (no live calls); store/run/noti
 and schema migrations) is unit-tested. The portability layer is covered too: URL→source detection
 (`test_sourceurl`), the sources CLI incl. comment-preserving writes (`test_sources`), the `.env`
 loader + feature toggles (`test_dotenv`), and the bootstrap/`.env`-scaffold/plist guard
-(`test_setup`). The agent's classification judgment is the deliberate human-in-the-loop step and
-is not unit-tested — but the CLI it drives is.
+(`test_setup`). Agent research and fit judgment remain deliberate human-in-the-loop steps; the
+deterministic CLIs and web mutations they drive are tested.

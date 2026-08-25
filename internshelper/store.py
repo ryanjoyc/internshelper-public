@@ -30,7 +30,7 @@ CANDIDATE_SQL = "(is_cs_relevant = 1 OR is_internship = 1 OR is_newgrad = 1)"
 # Not dismissed and not flagged-for-review — there is no approval gate, so this is
 # the whole Inbox universe (pipeline rows are excluded per-query where it matters).
 # Flagged rows are suspect data parked for investigation: out of the board, the nav
-# badge, hygiene sweeps, rescoring, and the apply-first digest — but never deleted.
+# badge, hygiene sweeps, rescoring, and the Top-target digest — but never deleted.
 INBOX_SQL = (
     "((verdict IS NULL OR verdict != 'no_match') AND flagged_at IS NULL "
     "AND duplicate_of IS NULL)"

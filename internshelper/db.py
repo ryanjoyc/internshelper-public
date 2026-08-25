@@ -98,9 +98,8 @@ _POSTINGS_V3_COLUMNS = [
     ("rank_reasons", "TEXT"),
 ]
 
-# v4: tiered inbox — computed tier, sticky user pin (pinned_tier wins at read time,
-# tier_before_pin makes the pin a promotion/demotion training label), and the
-# apply-first digest watermark (notified_at: NULL = never emailed about this posting).
+# v4 legacy tiered-inbox columns. `tier` now stores the company group; pin fields remain for
+# compatibility but do not control Board grouping. `notified_at` is the Top-target digest watermark.
 _POSTINGS_V4_COLUMNS = [
     ("tier", "TEXT"),
     ("pinned_tier", "TEXT"),
@@ -147,7 +146,7 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_to_inbox(conn: sqlite3.Connection) -> None:
-    """One-time data migration to the tiered-inbox model (meta-gated, idempotent).
+    """Historical one-time migration from the approval queue to the Inbox model.
 
     Stamps `notified_at` on every existing posting so the first digest only covers
     NEW arrivals (the Board shows the backlog — no first-run email blast; each row's

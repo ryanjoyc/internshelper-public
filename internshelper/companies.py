@@ -40,7 +40,7 @@ _HEADER = (
 )
 
 
-COMPANY_TIERS = ("", "dream")  # "" = default (target tier); "dream" = apply-first
+COMPANY_TIERS = ("", "dream")  # legacy compatibility only; Board groups live elsewhere
 
 
 @dataclass

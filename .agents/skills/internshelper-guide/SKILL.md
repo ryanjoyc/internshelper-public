@@ -33,14 +33,15 @@ accurate, no API key, $0 ongoing.
 ## Architecture & data flow
 
 ```
-collect (run.py) → store (store.py / db.py) → rank (ranking.py) + company group (tiers.py)
+collect (run.py) → store (store.py / db.py) → deduplicate (dedup.py)
+    → rank hint (ranking.py) + company group (tiers.py / companygroups.py)
     → digest new Top-target arrivals (notify.py)
     → browse by company; dismiss / flag / drag-to-Applied (review.py + applications table)
 ```
 
 Each collect cycle: scrape every source → save each new posting's raw payload to
-`data/payloads/{id}.json` → store it straight into the Inbox → retrain + rescore + apply the
-company-group map → email the Top-target digest for rows never digested before
+`data/payloads/{id}.json` → store it straight into the Inbox → collapse strong cross-source URL
+duplicates → retrain + rescore + apply the company-group map → email the Top-target digest for rows never digested before
 (`notified_at` watermark, exactly-once per posting). **Nothing is gated.**
 
 Keyword flags (`is_internship` / `is_newgrad` / `is_cs_relevant`) are computed at collect time
@@ -61,6 +62,7 @@ Discovery suggestions carry reason/evidence and require user approval.
 | `tiers` | Compatibility bridge that applies the authoritative company-group map to posting `tier` values. Rank and candidate flags are deliberately ignored. |
 | `companygroups` | Independent Board browsing index (`config/company-groups.yaml`): Top target/Known assignments, neutral Unclassified default, aliases, and evidence-backed Discovery proposals with approve/reject. |
 | `companies` | Separate board-resolution index (`config/companies.yaml`): add/list companies, record board proposals, approve (→ `sources.yaml`) / reject / link / mark no-board. It does not classify Board priority. |
+| `dedup` | Cross-source duplicate handling: automatically collapse strong canonical-URL matches, surface same-company/title lookalikes for review, and preserve reversible keep/merge overrides. |
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
 | `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the launchd plist and install the Dock app on macOS. Idempotent. |
 | `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). A package, not a single file — `create_app()` factory in `__init__.py`, per-request DB connections in `deps.py`, routes/ (board — incl. the `/` and `/review` redirects, postings, health incl. `/healthz`, sources, companies), templates/ (Jinja + HTMX partials), static/ (app.css design tokens, app.js, vendored htmx/alpine/sortable, Geist fonts). UI only; data logic lives in `store` / `review` / `sources`. |
@@ -139,6 +141,16 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
   `_SOURCES`/`_SETTINGS`). A real exported env var always overrides the file.
 - `data/` — **gitignored**: `data/internshelper.db` (SQLite) and `data/payloads/{id}.json` (raw
   payloads). Paths resolve off the repo root, so the scheduler's working directory doesn't matter.
+
+## Documentation entrypoints
+
+- `STATE.md` — living current-focus, runtime, Git, and active-doc dashboard. Read first; verify its
+  time-sensitive claims live when they matter.
+- `docs/README.md` — documentation catalog and lifecycle rules.
+- `README.md` — setup and operator workflows.
+- `ROADMAP.md` — forward-looking product direction only.
+- `docs/source-coverage.md` — connector support, boundaries, and acceptance criteria.
+- Completed or superseded plans are intentionally absent from the active tree; use Git history.
 
 ## Run & test
 

@@ -23,7 +23,7 @@ from internshelper.dotenv import feature_enabled, load_dotenv
 @dataclass
 class CollectResult:
     inbox: int
-    digested: int   # apply-first rows emailed (and stamped) this cycle
+    digested: int   # Top-target rows emailed (and stamped) this cycle
     sent: bool
     rescored: int = 0
     deduped: int = 0   # duplicate rows collapsed (hidden) this cycle

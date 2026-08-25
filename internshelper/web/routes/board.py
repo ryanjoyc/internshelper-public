@@ -171,7 +171,7 @@ def root() -> RedirectResponse:
 
 @router.get("/review")
 def legacy_review() -> RedirectResponse:
-    # The review queue is gone — the Board's Inbox tiers replaced it.
+    # The old Review page is gone; the company-grouped Board replaced it.
     return RedirectResponse("/board", status_code=303)
 
 
