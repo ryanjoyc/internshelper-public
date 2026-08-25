@@ -114,7 +114,7 @@ POSTING_ID | match|no_match|uncertain | <term found> | open|closed|unknown | fit
 
 ## Notes
 
-- **This is free** — it runs in the current Claude Code session (subagents, no API key).
+- **This is free** — it runs in the current Codex session (subagents, no API key).
 - Complements the other skills: `/add-source` *adds* a board; `/review-internships` *audits* the
   Inbox tiers generously for CS-relevance from payloads; **this** *verifies* ONE specified term
   strictly, per live link, across a whole source. They can disagree on purpose — a later generous

@@ -21,7 +21,7 @@ one expandable card containing all broadly collected roles; rank score cannot mo
 company or role. Curation is one-click: **dismiss** (hidden, undoable), **flag**
 (⚑ — park suspect data like a dead link for investigation; hidden, undoable, NO training
 signal), **drag to Applied** — and application/dismiss actions train the ranker.
-`/review-internships` in Claude Code is the agent-assisted posting audit. The web UI
+`/review-internships` in Codex is the agent-assisted posting audit. The web UI
 (`internshelper/web/` — FastAPI + Jinja + HTMX/Alpine, vendored, no build step) has five pages:
 Board (company-grouped Inbox + the Applied → Interviewing → Offer → Rejected kanban — pipeline
 lanes hide to thin strips — with table + dismissed + flagged + duplicate lenses), Postings
