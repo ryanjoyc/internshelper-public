@@ -297,6 +297,65 @@ def list_flagged(conn: sqlite3.Connection) -> list[dict]:
     ]
 
 
+def confirm_duplicates(
+    conn: sqlite3.Connection, survivor_id: str, dup_ids: list[str]
+) -> int:
+    """Mark `dup_ids` as duplicates of `survivor_id` (hidden from the Inbox, reversible).
+
+    Orthogonal to dismiss/flag: no ranking label — a duplicate is not a preference signal.
+    The survivor is never pointed at itself. Returns the number of rows hidden.
+    """
+    targets = [pid for pid in dup_ids if pid != survivor_id]
+    if not targets:
+        return 0
+    conn.executemany(
+        "UPDATE postings SET duplicate_of = ? WHERE posting_id = ?",
+        [(survivor_id, pid) for pid in targets],
+    )
+    conn.commit()
+    return len(targets)
+
+
+def keep_separate(conn: sqlite3.Connection, posting_ids: list[str]) -> int:
+    """Record a "these are distinct roles" decision so the fuzzy group stops resurfacing."""
+    if not posting_ids:
+        return 0
+    conn.executemany(
+        "UPDATE postings SET dedup_keep = 1 WHERE posting_id = ?",
+        [(pid,) for pid in posting_ids],
+    )
+    conn.commit()
+    return len(posting_ids)
+
+
+def undo_duplicate(conn: sqlite3.Connection, posting_id: str) -> None:
+    """Un-merge a duplicate: clear the pointer so the posting returns to the Inbox."""
+    conn.execute(
+        "UPDATE postings SET duplicate_of = NULL WHERE posting_id = ?", (posting_id,)
+    )
+    conn.commit()
+
+
+def merged_duplicates(conn: sqlite3.Connection, limit: int = 200) -> list[dict]:
+    """Confirmed duplicates (the hidden losers), newest-survived first — the Merged view."""
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT posting_id, source_key, company, title, location, url, duplicate_of "
+            "FROM postings WHERE duplicate_of IS NOT NULL "
+            "ORDER BY company, title, posting_id LIMIT ?",
+            (limit,),
+        )
+    ]
+
+
+def count_possible_duplicates(conn: sqlite3.Connection) -> int:
+    """Number of company/title lookalike groups awaiting review (nav badge)."""
+    from internshelper import dedup
+
+    return len(dedup.find_possible_duplicates(conn))
+
+
 def refresh_ranking(conn: sqlite3.Connection) -> None:
     """Best-effort rescore + retier after an action — never blocks the action itself."""
     try:
@@ -391,6 +450,12 @@ def main(argv=None) -> int:
     sub.add_parser("list-leaks", help="inbox rows failing their source's current title guard (JSON)")
     sub.add_parser("clear-leaks", help="bulk-dismiss every guard leak (undoable batch)")
 
+    dd = sub.add_parser("dedup", help="cross-source de-duplication (URL auto-collapse / suggestions)")
+    dd.add_argument("--run", action="store_true",
+                    help="auto-collapse strong URL-match duplicates (writes)")
+    dd.add_argument("--list", action="store_true",
+                    help="list company/title lookalike groups awaiting review (JSON)")
+
     args = parser.parse_args(argv)
     conn = _open()
 
@@ -436,6 +501,17 @@ def main(argv=None) -> int:
         print(json.dumps(list_flagged(conn), indent=2))
     elif args.cmd == "applied":
         print(json.dumps(applied(conn), indent=2))
+    elif args.cmd == "dedup":
+        from internshelper import dedup
+
+        did = False
+        if args.run:
+            n = dedup.collapse_url_duplicates(conn)
+            refresh_ranking(conn)
+            print(f"collapsed {n} URL-match duplicate(s)")
+            did = True
+        if args.list or not did:
+            print(json.dumps(dedup.find_possible_duplicates(conn), indent=2))
     return 0
 
 

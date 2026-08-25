@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from internshelper import classify, clock, config, db, mailer, notify, ranking, store, tiers
+from internshelper import classify, clock, config, db, dedup, mailer, notify, ranking, store, tiers
 from internshelper.config import Settings, SourceEntry
 from internshelper.connectors import build_connector
 from internshelper.dotenv import feature_enabled, load_dotenv
@@ -26,6 +26,7 @@ class CollectResult:
     digested: int   # apply-first rows emailed (and stamped) this cycle
     sent: bool
     rescored: int = 0
+    deduped: int = 0   # duplicate rows collapsed (hidden) this cycle
 
 
 def process_source(
@@ -80,6 +81,15 @@ def run_cycle(
     for entry in sources:
         process_source(conn, entry, compiled, now, payloads_dir)
 
+    # Cross-source de-dup: collapse strong URL-match duplicates before ranking/tiers so the
+    # user (and the digest) never see the same job twice. Best-effort — never break the collect.
+    deduped = 0
+    try:
+        deduped = dedup.collapse_url_duplicates(conn)
+    except Exception as e:
+        store.record_run(conn, "dedup", ok=False, count=0,
+                         error=f"{type(e).__name__}: {e}", now=now)
+
     # Learned ranking + tiers: score and tier every inbox row before the user sees it.
     # A ranking failure must never break the collect — record it and move on.
     rescored = 0
@@ -112,7 +122,7 @@ def run_cycle(
         except Exception as e:
             store.record_run(conn, "notify", ok=False, count=0, error=str(e), now=now)
     return CollectResult(inbox=store.inbox_count(conn), digested=digested, sent=sent,
-                         rescored=rescored)
+                         rescored=rescored, deduped=deduped)
 
 
 def main(argv=None) -> int:
@@ -142,7 +152,7 @@ def main(argv=None) -> int:
                        email_enabled=feature_enabled("EMAIL"))
     print(
         f"internsHELPer: collected — sources={len(sources)} inbox={result.inbox} "
-        f"rescored={result.rescored} digested={result.digested}"
+        f"deduped={result.deduped} rescored={result.rescored} digested={result.digested}"
     )
     return 0
 

@@ -53,6 +53,41 @@ def _posting_row(db_path, pid):
     return row
 
 
+def _dup_count(db_path, survivor):
+    c = sqlite3.connect(db_path)
+    n = c.execute("SELECT count(*) FROM postings WHERE duplicate_of = ?", (survivor,)).fetchone()[0]
+    c.close()
+    return n
+
+
+def test_duplicates_lens_merge_and_unmerge(client, seeded_db):
+    # greenhouse:0/1/2 are all "Stripe / Software Engineer Intern" -> one fuzzy group.
+    r = client.get("/board?show=duplicates")
+    assert r.status_code == 200
+    assert "Possible duplicates" in r.text and "Software Engineer Intern" in r.text
+
+    # Merge the group into survivor greenhouse:0.
+    r = client.post("/board/dedup/confirm", data={
+        "survivor_id": "greenhouse:0",
+        "posting_ids": "greenhouse:0,greenhouse:1,greenhouse:2",
+    })
+    assert r.status_code == 200
+    assert _dup_count(seeded_db, "greenhouse:0") == 2  # two losers hidden, survivor kept
+
+    # The losers are gone from the Inbox query (INBOX_SQL excludes duplicate_of).
+    from internshelper import db as _db, store
+    c = _db.connect(seeded_db)
+    inbox_ids = {row["posting_id"] for row in store.inbox_with_status(c)}
+    assert "greenhouse:1" not in inbox_ids and "greenhouse:2" not in inbox_ids
+    assert "greenhouse:0" in inbox_ids
+    c.close()
+
+    # Un-merge one -> it returns.
+    r = client.post("/board/dedup/undo", data={"posting_id": "greenhouse:1"})
+    assert r.status_code == 200
+    assert _dup_count(seeded_db, "greenhouse:0") == 1
+
+
 def test_drawer_renders_posting_and_form(client):
     r = client.get("/board/card/greenhouse:0")
     assert r.status_code == 200

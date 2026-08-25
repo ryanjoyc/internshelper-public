@@ -31,7 +31,10 @@ CANDIDATE_SQL = "(is_cs_relevant = 1 OR is_internship = 1 OR is_newgrad = 1)"
 # the whole Inbox universe (pipeline rows are excluded per-query where it matters).
 # Flagged rows are suspect data parked for investigation: out of the board, the nav
 # badge, hygiene sweeps, rescoring, and the apply-first digest — but never deleted.
-INBOX_SQL = "((verdict IS NULL OR verdict != 'no_match') AND flagged_at IS NULL)"
+INBOX_SQL = (
+    "((verdict IS NULL OR verdict != 'no_match') AND flagged_at IS NULL "
+    "AND duplicate_of IS NULL)"
+)
 
 # Best-first ordering, shared by the Inbox and the review CLI: learned rank_score
 # dominates when present (NULL = unscored/cold-start sorts last); keyword-candidate

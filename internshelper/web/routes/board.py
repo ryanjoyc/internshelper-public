@@ -18,7 +18,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from internshelper import clock, companygroups, config, db, review, store, tiers
+from internshelper import clock, companygroups, config, db, dedup, review, store, tiers
 from internshelper.web.deps import get_conn, nav_context
 from internshelper.web.templating import templates
 
@@ -130,6 +130,7 @@ def _board_ctx(conn: sqlite3.Connection, view: str, groups_path: str) -> dict:
         "inbox_total": sum(len(g["rows"]) for g in inbox_groups),
         "hidden_lanes": _hidden_lanes(conn),
         "flagged_count": store.flagged_count(conn),
+        "dup_count": review.count_possible_duplicates(conn),
         "rows": rows,
         "hygiene": _hygiene_counts(conn),
     }
@@ -190,6 +191,10 @@ def board_page(
     elif show == "flagged":
         ctx["view"] = "flagged"
         ctx["flagged"] = store.flagged_rows(conn)
+    elif show == "duplicates":
+        ctx["view"] = "duplicates"
+        ctx["possible"] = dedup.find_possible_duplicates(conn)
+        ctx["merged"] = review.merged_duplicates(conn)
     return templates.TemplateResponse(request, "board/index.html", ctx)
 
 
@@ -330,6 +335,58 @@ def unflag_posting(
     review.unflag(conn, posting_id)
     _refresh(conn)
     return _region(request, conn)
+
+
+def _dedup_region(request: Request, conn: sqlite3.Connection, *, toast: dict | None = None):
+    """Re-render the Duplicates lens region so the user can keep working the queue."""
+    ctx = _board_ctx(conn, "board", request.app.state.company_groups_path)
+    ctx["view"] = "duplicates"
+    ctx["possible"] = dedup.find_possible_duplicates(conn)
+    ctx["merged"] = review.merged_duplicates(conn)
+    ctx["oob_nav"] = True
+    if toast:
+        ctx["toast"] = toast
+    return templates.TemplateResponse(request, "board/_region.html", ctx)
+
+
+@router.post("/board/dedup/confirm")
+def dedup_confirm(
+    request: Request,
+    survivor_id: str = Form(...),
+    posting_ids: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    ids = [pid for pid in posting_ids.split(",") if pid]
+    n = review.confirm_duplicates(conn, survivor_id, ids)
+    _refresh(conn)
+    toast = {
+        "text": f"Merged {n} duplicate{'' if n == 1 else 's'} — kept 1",
+        "undo_url": "/board?show=duplicates", "fields": {},
+    } if n else None
+    return _dedup_region(request, conn, toast=toast)
+
+
+@router.post("/board/dedup/keep")
+def dedup_keep(
+    request: Request,
+    posting_ids: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    ids = [pid for pid in posting_ids.split(",") if pid]
+    review.keep_separate(conn, ids)
+    _refresh(conn)
+    return _dedup_region(request, conn)
+
+
+@router.post("/board/dedup/undo")
+def dedup_undo(
+    request: Request,
+    posting_id: str = Form(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    review.undo_duplicate(conn, posting_id)
+    _refresh(conn)
+    return _dedup_region(request, conn)
 
 
 @router.post("/board/company-group")

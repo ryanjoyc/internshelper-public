@@ -58,6 +58,76 @@
   </table>
 </div>
 {% endif %}
+{% elif view == 'duplicates' %}
+{% if not possible and not merged %}
+{{ m.empty_state("No duplicates to review.",
+                 "The same job on more than one list is collapsed automatically when the apply links match. Lookalikes (same company + title) show up here to confirm.",
+                 "/board", "Back to board") }}
+{% else %}
+<div class="dup-lens">
+  {% if possible %}
+  <h2 class="dup-section-title">Possible duplicates — confirm or keep separate</h2>
+  <p class="dup-hint">These share a company and title. Check the locations/links: merge if they're the same job, keep separate if they're distinct roles.</p>
+  {% for g in possible %}
+  {% set ids = g.rows | map(attribute='posting_id') | join(',') %}
+  <section class="dup-group">
+    <div class="dup-group-head">
+      <span class="dup-group-co">{{ g.company }}</span>
+      <span class="dup-group-title">{{ g.title }}</span>
+      <span class="dup-group-count">{{ g.rows | length }} copies</span>
+    </div>
+    <table class="table dup-table">
+      <tbody>
+        {% for r in g.rows %}
+        <tr>
+          <td class="cell-strong">{{ r.company }}{% if r.is_survivor %} <span class="dup-keep-badge">keep</span>{% endif %}</td>
+          <td>{{ r.title }}</td>
+          <td>{{ r.location or "—" }}</td>
+          <td class="dup-src">{{ r.source_key.split(':')[0] }}</td>
+          <td><a class="btn btn-ghost btn-sm" title="Open the posting" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="dup-group-actions">
+      <button class="btn btn-primary btn-sm" hx-post="/board/dedup/confirm"
+              hx-vals='{"survivor_id": {{ g.survivor_id | tojson }}, "posting_ids": {{ ids | tojson }}}'
+              hx-target="#board-region" hx-swap="innerHTML">Merge — keep {{ g.company }}</button>
+      <button class="btn btn-secondary btn-sm" hx-post="/board/dedup/keep"
+              hx-vals='{"posting_ids": {{ ids | tojson }}}'
+              hx-target="#board-region" hx-swap="innerHTML">Keep separate</button>
+    </div>
+  </section>
+  {% endfor %}
+  {% endif %}
+
+  {% if merged %}
+  <h2 class="dup-section-title">Merged — hidden as duplicates</h2>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>Company</th><th>Title</th><th>Location</th><th></th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in merged %}
+        <tr>
+          <td>{{ r.company }}</td>
+          <td class="cell-strong">{{ r.title }}</td>
+          <td>{{ r.location or "—" }}</td>
+          <td><a class="btn btn-ghost btn-sm" title="Open the posting" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+          <td>
+            <button class="btn btn-secondary btn-sm" hx-post="/board/dedup/undo"
+                    hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+                    hx-target="#board-region" hx-swap="innerHTML">Un-merge</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
 {% elif view == 'table' %}
 {% if not rows %}
 {{ m.empty_state("Nothing collected yet.",

@@ -348,6 +348,30 @@ p { margin: 0; }
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* ---------- duplicates review lens ---------- */
+.dup-lens { display: flex; flex-direction: column; gap: 14px; }
+.dup-section-title {
+  font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--text-2); margin: 6px 0 0;
+}
+.dup-hint { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
+.dup-group {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; background: var(--surface-2);
+}
+.dup-group-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.dup-group-co { font-weight: 600; }
+.dup-group-title { color: var(--text-2); font-size: 13px; }
+.dup-group-count { margin-left: auto; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.dup-table { margin: 8px 0; font-size: 13px; }
+.dup-src { color: var(--muted); font-size: 12px; }
+.dup-keep-badge {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--accent, #2563eb); border: 1px solid currentColor; border-radius: 4px;
+  padding: 0 4px; vertical-align: middle;
+}
+.dup-group-actions { display: flex; gap: 8px; }
+
 /* company sub-groups nested inside a tier: tier -> company -> cards */
 .co-head {
   display: flex;

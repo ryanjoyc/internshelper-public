@@ -117,6 +117,16 @@ _POSTINGS_V5_COLUMNS = [
     ("flag_reason", "TEXT"),
 ]
 
+# v6: cross-source de-duplication. `duplicate_of` points at the survivor posting this row
+# duplicates (NULL = not a duplicate); a non-NULL row is hidden from the Inbox + digest but
+# never deleted (reversible). `dedup_keep=1` means the user reviewed a fuzzy suggestion and
+# said "keep separate" — suppresses re-suggesting that row. Strong URL matches auto-collapse;
+# company/title lookalikes go to the human-confirmed Duplicates review lens. See dedup.py.
+_POSTINGS_V6_COLUMNS = [
+    ("duplicate_of", "TEXT"),
+    ("dedup_keep", "INTEGER NOT NULL DEFAULT 0"),
+]
+
 # Columns added to `runs` after its original v2 shape, for additive migration of older DBs.
 _RUNS_COLUMNS = [
     ("dropped", "INTEGER NOT NULL DEFAULT 0"),
@@ -130,6 +140,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     _migrate_columns(conn, "postings", _POSTINGS_V3_COLUMNS)
     _migrate_columns(conn, "postings", _POSTINGS_V4_COLUMNS)
     _migrate_columns(conn, "postings", _POSTINGS_V5_COLUMNS)
+    _migrate_columns(conn, "postings", _POSTINGS_V6_COLUMNS)
     _migrate_columns(conn, "runs", _RUNS_COLUMNS)
     conn.commit()
     _migrate_to_inbox(conn)
