@@ -2,6 +2,100 @@
 {% for err in errors %}
 <div class="notice notice--warn">Skipped a malformed entry: {{ err.reason }}</div>
 {% endfor %}
+
+{% for err in priority_errors %}
+<div class="notice notice--warn">Skipped a malformed company-group entry: {{ err.reason }}</div>
+{% endfor %}
+
+<h2 class="section-title">Board browsing groups</h2>
+<div class="company-group-overview" aria-label="Companies currently visible on the Board">
+  {% for key in ['top_target', 'known', 'discovery', 'unclassified'] %}
+  <div class="company-group-stat">
+    <strong>{{ priority_counts[key] }}</strong>
+    <span>{{ priority_labels[key] }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<section class="discovery-review" aria-labelledby="discovery-review-title">
+  <div class="discovery-review-head">
+    <div>
+      <h3 id="discovery-review-title">Worth discovering proposals</h3>
+      <p>Nothing moves to the Board's discovery section until you approve it.</p>
+    </div>
+    <span class="pill pill--pending pill--count">{{ priority_proposals | length }} pending</span>
+  </div>
+
+  {% if priority_proposals %}
+  <div class="discovery-proposals">
+    {% for c in priority_proposals %}
+    <article class="card discovery-proposal" id="proposal-{{ c.name | dom_id }}">
+      <div class="discovery-proposal-head">
+        <div class="discovery-company-mark" aria-hidden="true">{{ c.name[:1] }}</div>
+        <div>
+          <h4>{{ c.name }}</h4>
+          <span>Proposed · Worth discovering</span>
+        </div>
+      </div>
+      <p class="discovery-reason">{{ c.proposal.reason }}</p>
+      <div class="discovery-meta">
+        <span>{{ posting_counts.get(c.name, 0) }} active posting{% if posting_counts.get(c.name, 0) != 1 %}s{% endif %}</span>
+        <details class="discovery-evidence">
+          <summary>View evidence</summary>
+          <div>
+            <strong>Evidence reviewed</strong>
+            <p>{{ c.proposal.evidence }}</p>
+          </div>
+        </details>
+      </div>
+      <div class="discovery-actions">
+        <button class="btn btn-ghost btn-sm btn-danger-text" type="button"
+                hx-post="/companies/group/reject"
+                hx-vals='{"name": {{ c.name | tojson }}}'
+                hx-target="#company-list" hx-swap="innerHTML">Reject</button>
+        <button class="btn btn-primary btn-sm" type="button"
+                hx-post="/companies/group/approve"
+                hx-vals='{"name": {{ c.name | tojson }}}'
+                hx-target="#company-list" hx-swap="innerHTML">Approve</button>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="discovery-empty">
+    <strong>All proposals reviewed</strong>
+    <span>Newly researched companies will appear here.</span>
+  </div>
+  {% endif %}
+</section>
+
+{% for group, items in priority_groups.items() %}
+{% if items %}
+<h3 class="section-title">{{ priority_labels[group] }}</h3>
+{% for c in items %}
+<div class="card source-card">
+  <div class="source-main">
+    <div class="source-label">{{ c.name }}</div>
+    {% if c.reason %}<div class="source-key">{{ c.reason }}</div>{% endif %}
+  </div>
+  <div class="source-side">
+    <form hx-post="/companies/group/set" hx-target="#company-list" hx-swap="innerHTML">
+      <input type="hidden" name="name" value="{{ c.name }}">
+      <select class="input" name="group" x-on:change="$el.form.requestSubmit()">
+        {% for key in ['top_target', 'known', 'discovery', 'unclassified'] %}
+        {% if key != 'discovery' or group == 'discovery' %}
+        <option value="{{ key }}"{% if key == group %} selected{% endif %}>{{ priority_labels[key] }}</option>
+        {% endif %}
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+<h2 class="section-title">Career-board resolution</h2>
 {% for name in dangling %}
 <div class="notice notice--err">{{ name }} points at a board missing from sources.yaml</div>
 {% endfor %}
@@ -21,12 +115,7 @@
     {% endif %}
   </div>
   <div class="source-side">
-    {% if c.tier == 'dream' %}{{ m.pill('★ dream', 'pending', title='postings land in Apply first') }}{% endif %}
     {{ m.pill(c.status) }}
-    <button class="btn btn-ghost btn-sm" title="dream companies land in the Apply-first tier"
-            hx-post="/companies/set-tier"
-            hx-vals='{"name": {{ c.name | tojson }}, "tier": {{ ('' if c.tier == 'dream' else 'dream') | tojson }}}'
-            hx-target="#company-list" hx-swap="innerHTML">{{ 'Undream' if c.tier == 'dream' else '★ Dream' }}</button>
     {% if c.proposal %}
     <button class="btn btn-primary btn-sm" hx-post="/companies/approve"
             hx-vals='{"name": {{ c.name | tojson }}}'
@@ -44,10 +133,18 @@
 <p class="page-sub">No companies yet — add one below, then run /resolve-companies.</p>
 {% endif %}
 
-{% if flash %}
+{% if toast %}
 <div hx-swap-oob="beforeend:#toast-region">
   <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
-    <span class="toast-text">{{ flash }}</span>
+    <span class="toast-text">{{ toast.text }}</span>
+    {% if toast.undo_url %}
+    <form hx-post="{{ toast.undo_url }}" hx-target="#company-list" hx-swap="innerHTML">
+      {% for name, value in toast.fields.items() %}
+      <input type="hidden" name="{{ name }}" value="{{ value }}">
+      {% endfor %}
+      <button class="btn btn-ghost btn-sm" type="submit">Undo</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 {% endif %}

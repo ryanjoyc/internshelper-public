@@ -662,6 +662,101 @@ select.input { padding-right: 26px; }
 .health-error { color: var(--rejected-fg); }
 .health-age { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 
+/* ---------- company discovery proposals ---------- */
+
+.company-group-overview {
+  max-width: 1100px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 22px;
+}
+.company-group-stat {
+  padding: 10px 12px;
+  border-top: 2px solid var(--border-strong);
+  background: var(--surface-2);
+}
+.company-group-stat strong {
+  display: block;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.company-group-stat span { color: var(--muted); font-size: 11px; }
+
+.discovery-review { max-width: 1100px; margin-bottom: 26px; }
+.discovery-review-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.discovery-review-head h3 { font-size: 15px; font-weight: 600; }
+.discovery-review-head p { margin-top: 2px; color: var(--muted); font-size: 12px; }
+.discovery-proposals { display: flex; flex-direction: column; gap: 10px; }
+.discovery-proposal { padding: 14px; }
+.discovery-proposal-head { display: flex; align-items: center; gap: 10px; }
+.discovery-company-mark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-weight: 700;
+}
+.discovery-proposal-head h4 { margin: 0; font-size: 15px; font-weight: 600; }
+.discovery-proposal-head span { color: var(--ok); font-size: 11px; }
+.discovery-reason { margin: 11px 0 9px 44px; color: var(--text-2); line-height: 1.5; }
+.discovery-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: 44px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.discovery-evidence summary {
+  color: var(--text-2);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.discovery-evidence > div {
+  margin-top: 9px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.discovery-evidence strong { font-size: 11px; }
+.discovery-evidence p { margin-top: 4px; color: var(--muted); }
+.discovery-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+}
+.discovery-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 24px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-size: 12px;
+}
+.discovery-empty strong { color: var(--text-2); font-size: 13px; }
+
 /* ---------- sources ---------- */
 
 .source-list { max-width: 1100px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }

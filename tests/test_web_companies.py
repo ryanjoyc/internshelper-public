@@ -1,6 +1,6 @@
-"""Companies page: index (Approval A) — add, approve, reject."""
+"""Companies page: browsing groups plus board-resolution Approval A."""
 
-from internshelper import companies, config
+from internshelper import companies, companygroups, config
 
 
 def test_companies_page_renders_groups(client, companies_file):
@@ -61,11 +61,86 @@ def test_reject_proposal_marks_no_board(client, companies_file):
     assert e.status == "no-board" and e.proposal == {}
 
 
-def test_set_tier_toggle_round_trip(client, companies_file):
-    client.post("/companies/add", data={"name": "Jane Street Capital"})
-    r = client.post("/companies/set-tier", data={"name": "Jane Street Capital", "tier": "dream"})
+def test_set_company_group_round_trip(client, company_groups_file):
+    r = client.post("/companies/group/set", data={"name": "Capital One", "group": "known"})
     assert r.status_code == 200
-    assert "tier: dream" in companies_file.read_text()
-    assert "Undream" in r.text
-    r = client.post("/companies/set-tier", data={"name": "Jane Street Capital", "tier": ""})
-    assert "tier" not in companies_file.read_text()
+    assert companygroups.find(companygroups.load_company_groups(company_groups_file)[0],
+                              "Capital One").group == "known"
+    assert "Capital One" in r.text and "Known companies" in r.text
+
+
+def test_discovery_proposal_approve_and_reject(client, company_groups_file):
+    reason = "Developer platform"
+    evidence = "Public products and a supported careers board"
+    companygroups.propose_discovery(
+        company_groups_file, "Cloudflare", reason=reason, evidence=evidence,
+    )
+    r = client.get("/companies")
+    assert "Cloudflare" in r.text and "Worth discovering proposals" in r.text
+    assert "View evidence" in r.text and "1 pending" in r.text
+    assert "0 active postings" in r.text
+
+    r = client.post("/companies/group/approve", data={"name": "Cloudflare"})
+    assert "approved" in r.text and "/companies/group/undo-approve" in r.text
+    entry = companygroups.find(companygroups.load_company_groups(company_groups_file)[0],
+                               "Cloudflare")
+    assert entry.group == "discovery" and entry.reason == "Developer platform"
+
+    r = client.post("/companies/group/undo-approve", data={
+        "name": "Cloudflare", "reason": reason, "evidence": evidence,
+    })
+    assert "restored discovery proposal" in r.text and "Cloudflare" in r.text
+    entry = companygroups.find(companygroups.load_company_groups(company_groups_file)[0],
+                               "Cloudflare")
+    assert entry.group == "" and entry.proposal["reason"] == reason
+
+    companygroups.propose_discovery(
+        company_groups_file, "Acme", reason="Interesting", evidence="Evidence")
+    r = client.post("/companies/group/reject", data={"name": "Acme"})
+    assert "rejected" in r.text and "/companies/group/undo-reject" in r.text
+    assert companygroups.find(companygroups.load_company_groups(company_groups_file)[0],
+                              "Acme") is None
+
+    r = client.post("/companies/group/undo-reject", data={
+        "name": "Acme", "reason": "Interesting", "evidence": "Evidence",
+    })
+    assert "restored discovery proposal" in r.text and "Acme" in r.text
+    entry = companygroups.find(companygroups.load_company_groups(company_groups_file)[0],
+                               "Acme")
+    assert entry.group == "" and entry.proposal["evidence"] == "Evidence"
+
+
+def test_undo_discovery_approval_restores_previous_group(
+    client, company_groups_file
+):
+    companygroups.set_group(company_groups_file, "Cloudflare", "known")
+    companygroups.propose_discovery(
+        company_groups_file,
+        "Cloudflare",
+        reason="Developer platform",
+        evidence="Official product and careers evidence",
+    )
+    client.post("/companies/group/approve", data={"name": "Cloudflare"})
+
+    r = client.post("/companies/group/undo-approve", data={
+        "name": "Cloudflare",
+        "reason": "Developer platform",
+        "evidence": "Official product and careers evidence",
+        "previous_group": "known",
+        "previous_reason": "",
+    })
+    assert r.status_code == 200
+    entry = companygroups.find(
+        companygroups.load_company_groups(company_groups_file)[0], "Cloudflare"
+    )
+    assert entry.group == "known"
+    assert entry.proposal["group"] == "discovery"
+
+
+def test_companies_page_cannot_bypass_discovery_approval(client, company_groups_file):
+    r = client.post(
+        "/companies/group/set", data={"name": "Acme", "group": "discovery"}
+    )
+    assert "proposal and approval" in r.text
+    assert companygroups.find(companygroups.load_company_groups(company_groups_file)[0],
+                              "Acme") is None
