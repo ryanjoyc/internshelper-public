@@ -1,22 +1,20 @@
 # internsHELPer
 
 A local, $0 tool that **collects** internship / new-grad postings from the boards you list,
-keeps a de-duplicated archive (full raw payloads saved to disk), and — when a batch piles up —
-**emails you a nudge**. You then classify the batch **on demand**, for free, by opening this repo
-in Claude Code and running **`/review-internships`** (the agent reads each posting and records a
-match/no-match verdict). A local web dashboard (FastAPI + HTMX, no build step) gives you a
-keyboard-driven review queue with undo, a kanban board for tracking applications, the full
-postings archive, and source health.
+keeps a de-duplicated archive (full raw payloads saved to disk), and groups the live Board by
+company priority: Top targets, Known companies, Worth discovering, and neutral Unclassified.
+Each company is one expandable card containing all broadly collected roles. A local web dashboard
+(FastAPI + HTMX, no build step) also tracks applications, the full archive, source health, and
+evidence-backed discovery proposals.
 
-**Why this shape:** keyword matching alone is too noisy to trust (it flags full-time roles whose
-JDs merely mention "interns", and misses real ones), and a paid LLM-API classifier adds a key +
-per-call cost. So the hourly cron is a dumb, free collector; the agent in your Claude Code session
-is the classifier, on demand, on an accumulated batch — accurate, and $0 ongoing.
+**Why this shape:** keyword matching alone is too noisy to decide what the user should see. The hourly
+collector therefore stays broad and free; company groups are explicit user choices, rank score is
+only a hint, and an agent can audit saved payloads or research lesser-known companies on demand.
 
-- **Sources:** Greenhouse, Lever, Ashby (public JSON APIs) + community GitHub listings. You
-  maintain the list in `config/sources.yaml`.
+- **Sources:** Greenhouse, Lever, Ashby, Workday, Amazon Jobs, and community GitHub listings.
+  You maintain the list in `config/sources.yaml`.
 - **Keyword flags** (`is_internship`/`is_newgrad`/`is_cs_relevant`) are computed at collect time as
-  **priority hints only** — they order the review queue (candidates first); they never gate.
+  **hints only**; they never choose a company group or hide a posting.
 - **Runs locally**, scheduled hourly by macOS `launchd`.
 
 ## Quick start (clone-and-go)
@@ -68,7 +66,7 @@ appends it to `config/sources.yaml` (your comments are preserved):
 ```
 
 Accepted URLs: `boards.greenhouse.io/<token>`, `jobs.lever.co/<token>`,
-`jobs.ashbyhq.com/<org>`, and GitHub lists (a `…/blob/…/listings.json` → `github`, a
+`jobs.ashbyhq.com/<org>`, Workday careers sites, and GitHub lists (a `…/blob/…/listings.json` → `github`, a
 `…/blob/…/README.md` → `markdown`). For a **company name**, a **careers page**, or a **single
 job link** instead of a clean board URL, open the repo in Claude Code and run **`/add-source`**
 — the agent researches it, resolves it to a board, and calls the CLI for you.
@@ -98,9 +96,10 @@ sources:
   #   title_must_match: [engineer, intern, developer, data, software]
 ```
 
-**Source types:** `greenhouse`/`lever` (`token`), `ashby` (`org`), `github` (structured
-`listings.json` `url`), and `markdown` (a curated README-table list — `url` is the RAW README;
-columns auto-detect, `↳` continuation rows + `🔒` closed markers handled). Prefer focused ATS
+**Source types:** `greenhouse`/`lever` (`token`), `ashby` (`org`), `workday` (`url` plus optional
+server-side `search`), `amazon` (`query`), `github` (structured `listings.json` `url`), and
+`markdown` (a curated README-table list — `url` is the RAW README; columns auto-detect, `↳`
+continuation rows + `🔒` closed markers handled). Prefer focused ATS
 boards / curated Markdown lists over the 16k-entry Simplify JSON list (which would flood the queue).
 
 ## 3. Configure email (Gmail)
@@ -121,9 +120,9 @@ INTERNSHELPER_SMTP_PASSWORD=your-16-char-app-password
 ```
 
 Don't want email at all? Set `INTERNSHELPER_FEATURE_EMAIL=0` (see [§8](#8-env--feature-toggles))
-and skip the creds — the dashboard's pending count still tells you when a batch is ready.
+and skip the creds — the Board remains fully usable.
 
-Set `[review] notify_threshold` (default 10) — the nudge fires once that many postings are pending.
+When email is enabled, each newly collected Top-target posting is included once in the digest.
 
 ## 4. Run the collector
 
@@ -133,32 +132,31 @@ With creds in `.env`, the collector loads them itself — no inline env var need
 .venv/bin/python -m internshelper.run
 ```
 
-Each run: scrape → save each new posting's raw payload to `data/payloads/{id}.json` → store it as
-`pending` → if `≥ notify_threshold` are pending (and you haven't already been nudged), email a
-one-line "N postings ready to review". No classification happens here. Data lives in
+Each run: scrape → apply each source's coarse title guard → save raw payloads under
+`data/payloads/` → upsert the local archive → collapse strong URL duplicates → refresh ranking
+hints and company groups → send the exactly-once Top-target digest. Data lives in
 `data/internshelper.db` (gitignored). Set `INTERNSHELPER_FEATURE_COLLECT=0` to disable a machine's
-collector, or `INTERNSHELPER_FEATURE_EMAIL=0` to collect without ever emailing.
+collector, or `INTERNSHELPER_FEATURE_EMAIL=0` to collect without emailing.
 
-## 5. Review the queue (the classifier)
+## 5. Audit postings with the agent (optional)
 
-When you get the nudge (or whenever), open this repo in Claude Code and run:
+To inspect saved payloads for obvious junk without narrowing the Board prematurely, run:
 
 ```
 /review-internships
 ```
 
-The agent pulls the pending queue (keyword-candidates first, then everything), reads each posting's
-raw payload, records a `match`/`no_match` verdict, resets the nudge flag, and prints your curated
-shortlist. It's free — it runs in your Claude Code session, no API key, no per-posting charge.
-Safe to stop and resume: it only ever sees what's still `pending`.
+The agent reads the current Inbox payloads and dismisses only confirmed junk. It does not choose
+company groups or filter out uncertain roles. It's free — it runs in the current coding-agent
+session, with no API key or per-posting charge.
 
 Manual CLI (what the skill drives) if you want it without the skill:
 
 ```bash
-.venv/bin/python -m internshelper.review list-pending
-.venv/bin/python -m internshelper.review set-verdict <posting_id> --verdict match --reason "..."
-.venv/bin/python -m internshelper.review finish
-.venv/bin/python -m internshelper.review summary
+.venv/bin/python -m internshelper.review list-inbox
+.venv/bin/python -m internshelper.review dismiss <posting_id> --reason "..."
+.venv/bin/python -m internshelper.review undo-dismiss <posting_id>
+.venv/bin/python -m internshelper.review list-flagged
 ```
 
 ## 6. Dashboard
@@ -170,14 +168,12 @@ Manual CLI (what the skill drives) if you want it without the skill:
 A local web app (FastAPI + Jinja + HTMX/Alpine, all vendored — no Node, no build step),
 system-aware dark/light theme, served on 127.0.0.1 only:
 
-- **Review** — the pending queue. Triage inline (row buttons) or hit **Focus mode** for one
-  rich card at a time with keyboard shortcuts: `M` match, `X` no-match, `U` undo, `R` reason,
-  `O` open posting, arrows to skip, `Esc` back. Every verdict gets an undo toast; bulk-clear
-  non-candidates has a single confirm and a batch undo.
-- **Board** — confirmed matches as a kanban (Matched → Applied → Interviewing → Offer /
-  Rejected). Drag cards between columns (dropping into Applied stamps today's date); click a
-  card for the detail drawer — status, date picker, notes, and a "move back to review" escape
-  hatch. A table lens (`Board | Table`) shows the same data sortable.
+- **Board** — every broadly collected posting, organized into Top targets, Known companies,
+  Worth discovering, and neutral Unclassified. Each company is one expandable card containing
+  all of its roles; rank score never hides or demotes them. Drag roles into Applied →
+  Interviewing → Offer / Rejected, or use the table/dismissed/flagged/duplicates lenses.
+- **Companies** — manage the separate browsing-group index and approve evidence-backed
+  "Worth discovering" proposals; career-board resolution remains an independent workflow.
 - **Postings** — the full archive with search and state filters; no-match verdicts are
   archived (dimmed, reachable), never deleted.
 - **Sources** — add a board with a live fetch-test wizard (sniffer fallback for careers
@@ -232,7 +228,7 @@ launchctl kickstart -k gui/$(id -u)/com.internshelper.run   # fire one cycle now
 ```
 
 > `launchd` does not fire while the Mac is asleep; overnight postings are collected on the first
-> cycle after wake (`RunAtLoad=true`). The collector is unattended; you review in batches when nudged.
+> cycle after wake (`RunAtLoad=true`). The collector is unattended; refresh the Board when convenient.
 
 To stop: `launchctl unload ~/Library/LaunchAgents/com.internshelper.run.plist`.
 
@@ -256,7 +252,7 @@ INTERNSHELPER_SMTP_SENDER=you@gmail.com
 INTERNSHELPER_SMTP_RECIPIENT=you@gmail.com
 INTERNSHELPER_SMTP_PASSWORD=your-16-char-app-password
 INTERNSHELPER_FEATURE_COLLECT=1     # run the hourly collector on this machine
-INTERNSHELPER_FEATURE_EMAIL=1       # send review nudges (needs the SMTP creds above)
+INTERNSHELPER_FEATURE_EMAIL=1       # send Top-target digests (needs the SMTP creds above)
 INTERNSHELPER_FEATURE_SCHEDULE=1    # install the launchd schedule (macOS)
 INTERNSHELPER_FEATURE_DASHBOARD=1   # use the web dashboard
 INTERNSHELPER_FEATURE_APP=1         # install the Dock app (macOS; needs DASHBOARD)
@@ -273,8 +269,8 @@ curates sources + views the dashboard can set `COLLECT=0` and `EMAIL=0`. Other p
 ```
 
 Connector tests run against frozen real fixtures (no live calls); store/run/notify/review logic
-(close-detection, payload capture, threshold nudge, the review queue + verdicts, the v1→v2 schema
-migration) is unit-tested. The portability layer is covered too: URL→source detection
+(close-detection, payload capture, Top-target digest, company grouping, reversible deduplication,
+and schema migrations) is unit-tested. The portability layer is covered too: URL→source detection
 (`test_sourceurl`), the sources CLI incl. comment-preserving writes (`test_sources`), the `.env`
 loader + feature toggles (`test_dotenv`), and the bootstrap/`.env`-scaffold/plist guard
 (`test_setup`). The agent's classification judgment is the deliberate human-in-the-loop step and
