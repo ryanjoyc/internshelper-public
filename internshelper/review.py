@@ -149,13 +149,13 @@ def undo_bulk_clear(conn: sqlite3.Connection, reviewed_at: str, reason: str) -> 
     return cur.rowcount
 
 
-# ---------- inbox actions (the tiered-board model: no gate, just curation) ----------
+# ---------- inbox actions (company-grouped Board: no gate, just curation) ----------
 
 _INBOX_FIELDS = (
     "p.posting_id, p.source_key, p.title, p.company, p.location, p.url, p.payload_path, "
     "p.posted_at, p.first_seen, p.is_internship, p.is_newgrad, p.is_cs_relevant, "
     "p.rank_score, p.rank_reasons, p.is_active, "
-    "COALESCE(p.pinned_tier, p.tier) AS tier, p.pinned_tier"
+    "p.tier, p.pinned_tier"
 )
 
 
@@ -173,7 +173,7 @@ def _inbox_where(
         clauses.append("p.source_key = ?")
         params.append(source)
     if tier:
-        clauses.append("COALESCE(p.pinned_tier, p.tier) = ?")
+        clauses.append("p.tier = ?")
         params.append(tier)
     return " WHERE " + " AND ".join(clauses), params
 
@@ -189,9 +189,8 @@ def list_inbox(
 ) -> list[dict]:
     """Inbox postings (non-dismissed, not yet in the pipeline), best-first.
 
-    `tier` filters on the EFFECTIVE tier (pin wins); the returned `tier` key is the
-    effective tier too, with `pinned_tier` alongside so a pin is visible. Ordering
-    and paging semantics match the old pending queue (stable posting_id tiebreak).
+    `tier` filters on the authoritative company group. Legacy `pinned_tier` remains
+    visible for compatibility but cannot override company classification.
     """
     where, params = _inbox_where(q, source, tier)
     sql = (
@@ -222,10 +221,10 @@ def undo_dismiss(conn: sqlite3.Connection, posting_id: str) -> None:
 
 
 def pin_tier(conn: sqlite3.Connection, posting_id: str, tier: str, now: str) -> None:
-    """Pin a posting to a tier (sticky: re-ranking never moves it; 'unpin' releases).
+    """Legacy per-posting pin API retained for old CLI callers and training history.
 
-    Records the effective tier at pin time as `tier_before_pin` — the promotion/
-    demotion direction is the ranker's training label (see ranking._signal).
+    Pins no longer override Board company groups. Records the previous legacy pin or
+    company group as `tier_before_pin` for the historical ranking signal.
     """
     if tier not in tiers.TIERS:
         raise ValueError(f"tier must be one of {tiers.TIERS}, got {tier!r}")

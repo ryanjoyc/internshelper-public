@@ -36,12 +36,13 @@ def create_app() -> FastAPI:
         conn.close()
         yield
 
-    from internshelper import companies as companies_mod
+    from internshelper import companies as companies_mod, companygroups
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db_path = db_path
     app.state.sources_path = sources_path
     app.state.companies_path = companies_mod.companies_path()
+    app.state.company_groups_path = companygroups.company_groups_path()
     app.mount(
         "/static",
         StaticFiles(directory=Path(__file__).parent / "static"),

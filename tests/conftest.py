@@ -61,7 +61,15 @@ def companies_file(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(seeded_db, sources_file, companies_file):
+def company_groups_file(tmp_path, monkeypatch):
+    p = tmp_path / "company-groups.yaml"
+    p.write_text("companies:\n  - name: Stripe\n    group: top_target\n")
+    monkeypatch.setenv("INTERNSHELPER_COMPANY_GROUPS", str(p))
+    return p
+
+
+@pytest.fixture
+def client(seeded_db, sources_file, companies_file, company_groups_file):
     from fastapi.testclient import TestClient
 
     from internshelper.web import create_app

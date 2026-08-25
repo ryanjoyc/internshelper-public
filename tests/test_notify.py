@@ -1,4 +1,4 @@
-"""The Apply-first digest email: rendering + SMTP-cred validation."""
+"""The Top-target digest email: rendering + SMTP-cred validation."""
 
 import pytest
 
@@ -23,7 +23,7 @@ def _rows():
 
 def test_render_digest_lists_titles_companies_links():
     subject, html = notify.render_digest(_rows())
-    assert subject == "internsHELPer: 2 new Apply-first postings"
+    assert subject == "internsHELPer: 2 new Top-target postings"
     assert '<a href="https://x/1">SWE Intern</a>' in html
     assert "Google" in html and "Jane Street" in html
     # HTML in scraped titles/urls is escaped, never rendered
@@ -33,7 +33,7 @@ def test_render_digest_lists_titles_companies_links():
 
 def test_render_digest_singular_subject():
     subject, _ = notify.render_digest(_rows()[:1])
-    assert subject == "internsHELPer: 1 new Apply-first posting"
+    assert subject == "internsHELPer: 1 new Top-target posting"
 
 
 def test_send_digest_missing_password_raises():

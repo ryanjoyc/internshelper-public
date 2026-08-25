@@ -1,136 +1,55 @@
-"""Apply-order tiers: which postings to apply to FIRST.
+"""Company-authoritative browsing groups for Inbox postings.
 
-There is no approval gate — every collected posting is in the Inbox. The tiers order
-the work: the company decides the tier, the learned rank_score orders within it (and
-demotes likely-junk to "Long shots" regardless of company).
+Every broadly relevant posting stays visible. A company's explicit group decides
+where all of its postings appear; rank scores only order roles within the company
+and never classify or demote them. Missing companies are neutrally unclassified.
 
-    apply_first      "Apply first"      dream companies (built-in list + companies.yaml
-                                        entries marked `tier: dream`)
-    target           "Then these"       every other company in the approved index
-    everything_else  "Everything else"  unlisted companies
-    long_shots       "Long shots"       rank_score < LONG_SHOT_THRESHOLD (any company),
-                                        or unscored cold-start non-candidates
-
-`tier` on a posting row is always the COMPUTED tier; a user drag pins `pinned_tier`,
-and the effective tier is COALESCE(pinned_tier, tier) — `retier_inbox` rewrites only
-`tier`, so a pinned card never moves.
-
-Company matching is exact on `normalize_company` output — deliberately no substring
-matching ("Citadel" and "Citadel Securities" are two real firms; both are listed
-explicitly). If real misses appear (e.g. "Google DeepMind"), add aliases then.
+The historical ``tier`` database column is retained as a compatibility/storage
+field, but its values now mirror the four company browsing groups.
 """
 
 from __future__ import annotations
 
 import sqlite3
 
-from internshelper import companies as companies_mod
-from internshelper import store
+from internshelper import companygroups
 
-TIERS = ("apply_first", "target", "everything_else", "long_shots")
-
-TIER_LABELS = {
-    "apply_first": "Apply first",
-    "target": "Then these",
-    "everything_else": "Everything else",
-    "long_shots": "Long shots",
-}
-
-# Same value as the old review "probably not" cutoff (ranking's sigmoid output).
-LONG_SHOT_THRESHOLD = 0.35
-
-# Corporate-suffix tokens dropped from the END of a name ("Uber Technologies, Inc."
-# still won't match "Uber" — the list below names companies the way boards do).
-_SUFFIX_TOKENS = frozenset(
-    {"inc", "llc", "ltd", "corp", "corporation", "co", "company", "plc", "gmbh"}
-)
-
-_PUNCT = str.maketrans({c: " " for c in ".,'\"&()/"})
-
-_DREAM_RAW = (
-    "Google", "Meta", "Apple", "Amazon", "Microsoft", "Netflix", "NVIDIA",
-    "OpenAI", "Anthropic", "Stripe", "Jane Street", "Citadel", "Citadel Securities",
-    "Two Sigma", "D. E. Shaw", "Hudson River Trading", "Jump Trading",
-    "Databricks", "Palantir", "SpaceX", "Airbnb", "Uber", "Figma", "Ramp",
-)
+TIERS = companygroups.ALL_GROUPS
+TIER_LABELS = companygroups.GROUP_LABELS
+TIER_HINTS = companygroups.GROUP_HINTS
+normalize_company = companygroups.normalize_company
 
 
-def normalize_company(name: str) -> str:
-    """Canonical form for company matching: lowercase, punctuation stripped, trailing
-    legal suffixes dropped, consecutive single-letter initials merged (so
-    "D. E. Shaw & Co." and "DE Shaw" both become "de shaw")."""
-    tokens = (name or "").lower().translate(_PUNCT).split()
-    while len(tokens) > 1 and tokens[-1] in _SUFFIX_TOKENS:
-        tokens.pop()
-    merged: list[str] = []
-    run: list[str] = []  # consecutive single-letter tokens fuse: "d e shaw" -> "de shaw"
-    for t in tokens:
-        if len(t) == 1:
-            run.append(t)
-        else:
-            if run:
-                merged.append("".join(run))
-                run = []
-            merged.append(t)
-    if run:
-        merged.append("".join(run))
-    return " ".join(merged)
+def company_tier_map(entries) -> dict[str, companygroups.CompanyGroupEntry]:
+    """Return canonical and alias identities mapped to their configured entry."""
+    return companygroups.group_map(entries)
 
 
-DEFAULT_DREAM_COMPANIES = frozenset(normalize_company(n) for n in _DREAM_RAW)
-
-
-def company_tier_map(entries) -> dict[str, str]:
-    """normalized company name -> "dream" | "target".
-
-    Built-ins are dream; approved-index entries are target unless marked
-    `tier: dream`. A built-in dream is never demoted by a plain index entry.
-    """
-    tier_map = {n: "dream" for n in DEFAULT_DREAM_COMPANIES}
-    for e in entries:
-        key = normalize_company(e.name)
-        if not key:
-            continue
-        if getattr(e, "tier", "") == "dream":
-            tier_map[key] = "dream"
-        else:
-            tier_map.setdefault(key, "target")
-    return tier_map
-
-
-def load_tier_map(path=None) -> dict[str, str]:
-    """The tier map from the approved-companies index (malformed entries skipped —
-    tiering must not break when one yaml entry does)."""
-    entries, _errors = companies_mod.load_companies(path or companies_mod.companies_path())
+def load_tier_map(path=None) -> dict[str, companygroups.CompanyGroupEntry]:
+    """Load the independent company browsing-group index."""
+    entries, _errors = companygroups.load_company_groups(
+        path or companygroups.company_groups_path()
+    )
     return company_tier_map(entries)
 
 
-def compute_tier(row, tier_map: dict[str, str]) -> str:
-    """The computed tier for one posting row (pins are the caller's concern)."""
-    score = row["rank_score"]
-    if score is not None and score < LONG_SHOT_THRESHOLD:
-        return "long_shots"
-    if score is None and not store.is_candidate(row):
-        return "long_shots"  # cold start: the keyword heuristic is all we have
-    company_tier = tier_map.get(normalize_company(row["company"] or ""))
-    if company_tier == "dream":
-        return "apply_first"
-    if company_tier == "target":
-        return "target"
-    return "everything_else"
+def compute_tier(row, tier_map) -> str:
+    """Return the company's explicit group, or the neutral default.
 
-
-def retier_inbox(conn: sqlite3.Connection, tier_map: dict[str, str]) -> int:
-    """Recompute `tier` for every non-dismissed posting (one transaction, idempotent).
-
-    Pinned rows get their computed tier refreshed too — `pinned_tier` wins at read
-    time, so this never moves a pinned card. Returns the number of rows updated.
+    Deliberately does not inspect rank_score or role flags: collection guards decide
+    broad relevance, while company organization remains a user-controlled lens.
     """
+    group, _entry = companygroups.classify(row["company"] or "", tier_map)
+    return group
+
+
+def retier_inbox(conn: sqlite3.Connection, tier_map) -> int:
+    """Persist company groups for every non-dismissed posting, idempotently."""
     rows = conn.execute(
-        "SELECT posting_id, company, rank_score, is_internship, is_newgrad, is_cs_relevant "
-        "FROM postings WHERE verdict IS NULL OR verdict != 'no_match'"
+        "SELECT posting_id, company FROM postings "
+        "WHERE verdict IS NULL OR verdict != 'no_match'"
     ).fetchall()
-    updates = [(compute_tier(r, tier_map), r["posting_id"]) for r in rows]
+    updates = [(compute_tier(row, tier_map), row["posting_id"]) for row in rows]
     conn.executemany("UPDATE postings SET tier = ? WHERE posting_id = ?", updates)
     conn.commit()
     return len(updates)

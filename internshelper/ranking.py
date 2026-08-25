@@ -5,8 +5,11 @@ hides, filters, or auto-decides. Training labels come from what the user actuall
 does (`gather_labels`, precedence application > tier pin > verdict): applying —
 including later rejections — is positive, dismissing or demoting is negative, and
 the historical match/no_match verdicts remain as seed data. Per-term weights over
-title+description tokens, plus company and source priors, are learned as a weighted
-Bernoulli NB, with a fixed deterministic recency bonus on top. Cold start
+title+description tokens, plus a per-source prior, are learned as a weighted
+Bernoulli NB, with a fixed deterministic recency bonus on top. There is deliberately
+no company prior — fit is judged on the role, and company preference lives in the
+tier system — so dismissing one role type at a company never drags down its others.
+Cold start
 (< MIN_STRONG_LABELS full-weight labels, or < MIN_CLASS_LABELS per class) leaves
 rank_score NULL and the Inbox falls back to the keyword candidates-first heuristic.
 
@@ -22,7 +25,7 @@ import json
 import math
 import re
 import sqlite3
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 
 from internshelper import clock, config, db, store, text
@@ -83,7 +86,6 @@ class Model:
     n_no_match: float = 0.0
     n_strong: int = 0           # raw full-weight label count (cold-start bookkeeping)
     tokens: dict = field(default_factory=dict)     # token -> [match_w, no_match_w]
-    companies: dict = field(default_factory=dict)  # normalized company -> [m, n]
     sources: dict = field(default_factory=dict)    # source_key -> [m, n]
 
     def to_json(self) -> str:
@@ -91,15 +93,20 @@ class Model:
 
     @classmethod
     def from_json(cls, s: str) -> "Model":
-        return cls(**json.loads(s))
+        # Tolerate keys from older persisted models (e.g. the dropped company prior).
+        d = json.loads(s)
+        keep = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in keep})
 
 
 def _row_features(row) -> list[tuple[str, str]]:
-    """(table, key) feature pairs for one posting row (tokens + company/source priors)."""
+    """(table, key) feature pairs for one posting row (tokens + source prior).
+
+    No company prior: fit is judged on the role (title/JD tokens), never the company.
+    Company preference lives in the separate company-group system, so
+    dismissing one role type at a company must not drag down its other roles.
+    """
     feats = [("tokens", t) for t in tokenize(row["title"], row["description"] or "")]
-    company = (row["company"] or "").strip().lower()
-    if company:
-        feats.append(("companies", f"company:{company}"))
     if row["source_key"]:
         feats.append(("sources", f"source:{row['source_key']}"))
     return feats
@@ -107,7 +114,7 @@ def _row_features(row) -> list[tuple[str, str]]:
 
 # Tier order for pin direction: pinning to a LOWER index than the tier the card sat
 # in is a promotion (positive label); higher is a demotion (negative).
-_TIER_RANK = {"apply_first": 0, "target": 1, "everything_else": 2, "long_shots": 3}
+_TIER_RANK = {"top_target": 0, "known": 1, "discovery": 2, "unclassified": 3}
 
 
 def _signal(r) -> tuple[int, float, str | None] | None:
@@ -177,8 +184,8 @@ def train_rows(rows: list, now: str) -> Model | None:
         for table, key in _row_features(r):
             counts = getattr(model, table).setdefault(key, [0.0, 0.0])
             counts[cls] += w
-    # Rare tokens are noise — drop below the weighted doc-frequency floor. Company and
-    # source priors are few and deliberate; they stay regardless of count.
+    # Rare tokens are noise — drop below the weighted doc-frequency floor. Source
+    # priors are few and deliberate; they stay regardless of count.
     model.tokens = {
         t: c for t, c in model.tokens.items() if c[0] + c[1] >= TOKEN_MIN_DF
     }
@@ -419,7 +426,7 @@ def main(argv=None) -> int:
             "trained_at": m["trained_at"],
             "n_match": m["n_match"], "n_no_match": m["n_no_match"],
             "n_strong": m["n_strong"], "vocab": len(m["tokens"]),
-            "companies": len(m["companies"]), "sources": len(m["sources"]),
+            "sources": len(m["sources"]),
         }, indent=2))
     elif args.cmd == "explain":
         now = clock.now_iso()

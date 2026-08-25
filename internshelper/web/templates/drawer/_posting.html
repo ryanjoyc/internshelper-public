@@ -10,21 +10,6 @@
 <p class="page-sub">{{ m.pill(r.source_key | source_label, title=r.source_key) }} <span class="row-age">{{ r.posted_at | release(r.first_seen) }}</span>
   {% if not r.is_active %}{{ m.pill('closed', 'nomatch') }}{% endif %}</p>
 
-{% if (r.status or 'Untracked') not in ('Applied', 'Interviewing', 'Offer', 'Rejected') %}
-<p class="page-sub">Tier: {{ r.tier or '—' }}{% if r.pinned_tier %} 📌 pinned{% endif %}
-  {% for t in tier_ui %}{% if t.key != r.tier %}
-  <button class="btn btn-ghost btn-sm" title="Pin to {{ t.label }}"
-          hx-post="/board/pin"
-          hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "tier": {{ t.key | tojson }}}'
-          hx-target="#board-region" hx-swap="innerHTML">→ {{ t.label }}</button>
-  {% endif %}{% endfor %}
-  {% if r.pinned_tier %}
-  <button class="btn btn-ghost btn-sm" hx-post="/board/unpin"
-          hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
-          hx-target="#board-region" hx-swap="innerHTML">Unpin</button>
-  {% endif %}</p>
-{% endif %}
-
 <form class="drawer-form"
       hx-post="/board/card/{{ r.posting_id }}" hx-target="#drawer-body" hx-swap="innerHTML">
   <input type="hidden" name="view" value="{{ view }}">

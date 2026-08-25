@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", function () {
     .addEventListener("change", applyTheme);
 });
 
-/* ---------- inbox tier chevrons: sticky open/closed state ----------
+/* ---------- inbox group chevrons: sticky open/closed state ----------
    Every board action re-renders #board-region, which would reset each tier
    section to its server default — localStorage remembers explicit choices.
    (Called from x-data in board/_region.html; app.js loads before Alpine.) */
@@ -114,7 +114,7 @@ document.body.addEventListener("htmx:afterSwap", function () {
   if (selected >= 0 && document.querySelector(".board-col--inbox")) select(selected);
 });
 
-/* ---------- board: SortableJS drag -> POST /board/move | /board/pin ---------- */
+/* ---------- board: SortableJS drag -> POST /board/move ---------- */
 
 var lastDragAt = 0;
 
@@ -133,9 +133,6 @@ function initBoard() {
         if (evt.to.dataset.status) {           // pipeline lane -> status move
           url = "/board/move";
           values.status = evt.to.dataset.status;
-        } else if (evt.to.dataset.tier) {      // tier section -> sticky pin
-          url = "/board/pin";
-          values.tier = evt.to.dataset.tier;
         } else {
           return;
         }
@@ -165,8 +162,8 @@ document.addEventListener("DOMContentLoaded", initBoard);
 document.body.addEventListener("htmx:afterSwap", initBoard);
 document.body.addEventListener("htmx:oobAfterSwap", initBoard);
 
-// If a move/pin fails server-side, the optimistic drag is stale — resync from the DB.
+// If a move fails server-side, the optimistic drag is stale — resync from the DB.
 document.body.addEventListener("htmx:responseError", function (evt) {
   var path = evt.detail && evt.detail.pathInfo && evt.detail.pathInfo.requestPath;
-  if (path === "/board/move" || path === "/board/pin") window.location.reload();
+  if (path === "/board/move") window.location.reload();
 });

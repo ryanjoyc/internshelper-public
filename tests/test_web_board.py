@@ -5,7 +5,36 @@ Seeded population: all four seeded postings are inbox rows (no application rows)
 
 import sqlite3
 
-from internshelper import clock, db, store
+from internshelper import clock, companygroups, db, store, tiers
+from internshelper.web.routes.board import _group_by_company
+
+
+def test_group_by_company_preserves_best_fit_order_and_merges_suffix():
+    # Rows arrive best-fit-first; groups should keep that company order, and
+    # "Stripe Inc" must merge with "Stripe" (canonical company identity).
+    rows = [
+        {"company": "Jane Street", "posting_id": "a", "posted_at": "", "first_seen": "1"},
+        {"company": "Stripe", "posting_id": "b", "posted_at": "", "first_seen": "1"},
+        {"company": "Jane Street", "posting_id": "c", "posted_at": "", "first_seen": "1"},
+        {"company": "Stripe Inc", "posting_id": "d", "posted_at": "", "first_seen": "1"},
+    ]
+    mapping = tiers.company_tier_map([
+        companygroups.CompanyGroupEntry("Stripe", "top_target", aliases=["Stripe Inc"])
+    ])
+    groups = _group_by_company(rows, mapping)
+    assert [g["company"] for g in groups] == ["Jane Street", "Stripe"]
+    assert [len(g["rows"]) for g in groups] == [2, 2]
+    assert [r["posting_id"] for r in groups[1]["rows"]] == ["b", "d"]
+
+
+def test_group_by_company_blank_company_falls_back_to_unknown():
+    groups = _group_by_company([
+        {"company": "", "posting_id": "x", "posted_at": "", "first_seen": "1"},
+        {"company": None, "posting_id": "y", "posted_at": "", "first_seen": "1"},
+    ], {})
+    assert len(groups) == 1
+    assert groups[0]["company"] == "Unknown"
+    assert len(groups[0]["rows"]) == 2
 
 
 def _app_row(db_path, pid):

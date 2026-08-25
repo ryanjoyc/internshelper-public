@@ -91,12 +91,14 @@ def test_train_rows_counts_weak_labels_at_quarter_weight():
     assert m.tokens["quant"] == [20.0, 0.0]
 
 
-def test_train_rows_drops_rare_tokens_but_keeps_priors():
+def test_train_rows_drops_rare_tokens_but_keeps_source_prior():
     rows = _labels(20, 15)
-    rows.append(_row("Singleton Zebra Role", "match", company="OneOff", posting_id="m:z"))
+    rows.append(_row("Singleton Zebra Role", "match",
+                     source_key="lever:oneoff", posting_id="m:z"))
     m = ranking.train_rows(rows, NOW)
-    assert "zebra" not in m.tokens          # weighted df 1.0 < TOKEN_MIN_DF
-    assert "company:oneoff" in m.companies  # priors are exempt from the floor
+    assert "zebra" not in m.tokens                 # weighted df 1.0 < TOKEN_MIN_DF
+    assert "source:lever:oneoff" in m.sources      # source priors are exempt from the floor
+    assert not hasattr(m, "companies")             # company prior is gone from the model
 
 
 # ---------- scoring ----------
@@ -123,16 +125,14 @@ def test_score_orders_match_leaning_above_no_match_leaning():
     assert 0.0 < lo < hi < 1.0
 
 
-def test_score_priors_shift_direction():
+def test_score_source_prior_shifts_direction():
     rows = _labels(20, 5)
     rows += _labels(0, 10, no_title="Whatever Role")
-    for i, r in enumerate(rows[-10:]):
-        r["company"] = "badco"
+    for r in rows[-10:]:
         r["source_key"] = "lever:bad"
     m = ranking.train_rows(rows, NOW)
-    neutral, _ = ranking.score(m, _row("Zzz", company="", source_key=""), NOW, recency=False)
-    with_bad, _ = ranking.score(m, _row("Zzz", company="BadCo", source_key="lever:bad"),
-                                NOW, recency=False)
+    neutral, _ = ranking.score(m, _row("Zzz", source_key=""), NOW, recency=False)
+    with_bad, _ = ranking.score(m, _row("Zzz", source_key="lever:bad"), NOW, recency=False)
     assert with_bad < neutral
 
 
@@ -176,9 +176,9 @@ def test_gather_labels_pin_direction_and_weights(tmp_path):
     c = _conn(tmp_path)
     for pid in ("g:promo", "g:demo", "g:weak", "g:silent"):
         _seed_one(c, pid)
-    c.execute("UPDATE postings SET pinned_tier='apply_first', tier_before_pin='everything_else',"
+    c.execute("UPDATE postings SET pinned_tier='top_target', tier_before_pin='unclassified',"
               " pinned_at='2026-07-11T09:00:00+00:00' WHERE posting_id='g:promo'")
-    c.execute("UPDATE postings SET pinned_tier='long_shots', tier_before_pin='target',"
+    c.execute("UPDATE postings SET pinned_tier='unclassified', tier_before_pin='known',"
               " pinned_at='2026-07-11T09:01:00+00:00' WHERE posting_id='g:demo'")
     c.commit()
     review.set_verdict(c, "g:weak", "no_match", "bulk: guard leak", now=NOW)

@@ -348,19 +348,19 @@ def test_list_inbox_includes_matches_excludes_dismissed_and_pipeline(tmp_path):
     assert ids == {"g:new", "g:match", "g:interested"}
 
 
-def test_list_inbox_tier_filter_uses_effective_tier(tmp_path):
+def test_list_inbox_tier_filter_uses_company_group_not_legacy_pin(tmp_path):
     c = _conn(tmp_path)
     store.upsert(c, _p("g:a", cs=True), now="2026-07-10T10:00:00+00:00")
     store.upsert(c, _p("g:b", cs=True), now="2026-07-10T10:01:00+00:00")
-    c.execute("UPDATE postings SET tier='everything_else'")
+    c.execute("UPDATE postings SET tier='unclassified'")
     c.commit()
-    review.pin_tier(c, "g:b", "apply_first", now="2026-07-10T11:00:00+00:00")
+    review.pin_tier(c, "g:b", "top_target", now="2026-07-10T11:00:00+00:00")
 
-    top = review.list_inbox(c, tier="apply_first")
-    assert [r["posting_id"] for r in top] == ["g:b"]
-    assert top[0]["tier"] == "apply_first" and top[0]["pinned_tier"] == "apply_first"
-    rest = review.list_inbox(c, tier="everything_else")
-    assert [r["posting_id"] for r in rest] == ["g:a"]
+    top = review.list_inbox(c, tier="top_target")
+    assert top == []
+    rest = review.list_inbox(c, tier="unclassified")
+    assert {r["posting_id"] for r in rest} == {"g:a", "g:b"}
+    assert next(r for r in rest if r["posting_id"] == "g:b")["pinned_tier"] == "top_target"
 
 
 def test_dismiss_and_undo_round_trip(tmp_path):
@@ -377,16 +377,16 @@ def test_dismiss_and_undo_round_trip(tmp_path):
 def test_pin_tier_records_direction_and_unpin_clears(tmp_path):
     c = _conn(tmp_path)
     store.upsert(c, _p("g:1", cs=True), now="2026-07-10T10:00:00+00:00")
-    c.execute("UPDATE postings SET tier='long_shots'")
+    c.execute("UPDATE postings SET tier='unclassified'")
     c.commit()
-    review.pin_tier(c, "g:1", "apply_first", now="2026-07-10T11:00:00+00:00")
+    review.pin_tier(c, "g:1", "top_target", now="2026-07-10T11:00:00+00:00")
     row = c.execute("SELECT pinned_tier, tier_before_pin, pinned_at FROM postings").fetchone()
-    assert (row["pinned_tier"], row["tier_before_pin"]) == ("apply_first", "long_shots")
+    assert (row["pinned_tier"], row["tier_before_pin"]) == ("top_target", "unclassified")
     assert row["pinned_at"] == "2026-07-10T11:00:00+00:00"
     # re-pinning records the previous EFFECTIVE tier as the new before
-    review.pin_tier(c, "g:1", "target", now="2026-07-10T12:00:00+00:00")
+    review.pin_tier(c, "g:1", "known", now="2026-07-10T12:00:00+00:00")
     row = c.execute("SELECT pinned_tier, tier_before_pin FROM postings").fetchone()
-    assert (row["pinned_tier"], row["tier_before_pin"]) == ("target", "apply_first")
+    assert (row["pinned_tier"], row["tier_before_pin"]) == ("known", "top_target")
     review.unpin(c, "g:1")
     row = c.execute("SELECT pinned_tier, tier_before_pin, pinned_at FROM postings").fetchone()
     assert tuple(row) == (None, None, None)
@@ -398,7 +398,7 @@ def test_pin_tier_validates(tmp_path):
     with pytest.raises(ValueError, match="tier"):
         review.pin_tier(c, "g:1", "mega", now="t")
     with pytest.raises(ValueError, match="unknown posting"):
-        review.pin_tier(c, "g:nope", "apply_first", now="t")
+        review.pin_tier(c, "g:nope", "top_target", now="t")
 
 
 def test_flag_parks_out_of_inbox_without_verdict(tmp_path):
@@ -445,6 +445,7 @@ def test_cli_flag_verbs(tmp_path, capsys, monkeypatch):
     store.upsert(c, _p("g:1", title="Quant Intern", cs=True), now="2026-07-10T10:00:00+00:00")
     c.close()
     monkeypatch.setenv("INTERNSHELPER_DB", str(tmp_path / "t.db"))
+    monkeypatch.setenv("INTERNSHELPER_COMPANY_GROUPS", str(tmp_path / "groups.yaml"))
 
     assert review.main(["flag", "g:1", "--reason", "careers page 404s"]) == 0
     assert "flagged for review" in capsys.readouterr().out
@@ -465,16 +466,19 @@ def test_cli_flag_verbs(tmp_path, capsys, monkeypatch):
 def test_cli_inbox_verbs(tmp_path, capsys, monkeypatch):
     c = _conn(tmp_path)
     store.upsert(c, _p("g:1", title="Quant Intern", cs=True), now="2026-07-10T10:00:00+00:00")
+    c.execute("UPDATE postings SET tier='unclassified'")
+    c.commit()
     c.close()
     monkeypatch.setenv("INTERNSHELPER_DB", str(tmp_path / "t.db"))
+    monkeypatch.setenv("INTERNSHELPER_COMPANY_GROUPS", str(tmp_path / "groups.yaml"))
 
     assert review.main(["list-inbox"]) == 0
     rows = json.loads(capsys.readouterr().out)
     assert rows[0]["posting_id"] == "g:1" and "tier" in rows[0]
 
-    assert review.main(["pin", "g:1", "--tier", "apply_first"]) == 0
-    assert "pinned to apply_first" in capsys.readouterr().out
-    assert review.main(["list-inbox", "--tier", "apply_first"]) == 0
+    assert review.main(["pin", "g:1", "--tier", "top_target"]) == 0
+    assert "pinned to top_target" in capsys.readouterr().out
+    assert review.main(["list-inbox", "--tier", "unclassified"]) == 0
     assert json.loads(capsys.readouterr().out)[0]["posting_id"] == "g:1"
     assert review.main(["unpin", "g:1"]) == 0
     capsys.readouterr()

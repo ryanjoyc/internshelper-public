@@ -50,7 +50,7 @@ class CompanyEntry:
     board: str = ""    # source_key in sources.yaml when resolved
     notes: str = ""
     proposal: dict = field(default_factory=dict)  # {url, count, evidence} awaiting approval
-    tier: str = ""     # "dream" promotes this company's postings to Apply first
+    tier: str = ""     # legacy only; Board priority lives in companygroups.py
 
 
 def companies_path() -> str:
@@ -205,7 +205,7 @@ def resolve_write(path, sources_path, name: str, source_key: str) -> None:
 
 
 def set_tier(path, name: str, tier: str) -> None:
-    """Mark a company dream-tier (postings land in Apply first) or back to default."""
+    """Retain the legacy field for config/CLI compatibility; Board ignores it."""
     if tier not in COMPANY_TIERS:
         raise ValueError(f"tier must be one of {COMPANY_TIERS}, got {tier!r}")
     entries = _load_or_raise(path)
@@ -268,7 +268,7 @@ def main(argv=None) -> int:
     nb = sub.add_parser("mark-no-board", help="no public board found; remember that")
     nb.add_argument("name")
     nb.add_argument("--notes", default="")
-    st = sub.add_parser("set-tier", help="dream = postings go to Apply first; default = target")
+    st = sub.add_parser("set-tier", help="legacy compatibility field; Board ignores it")
     st.add_argument("name")
     st.add_argument("tier", choices=("dream", "default"))
 

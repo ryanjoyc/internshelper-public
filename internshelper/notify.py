@@ -1,4 +1,4 @@
-"""The Apply-first digest: an email listing new postings that landed in the top tier.
+"""The Top-target digest: new postings from explicitly prioritized companies.
 
 "Here's what to apply to today" — not "come do review work". Fired by the collect
 cycle only for rows never digested before (postings.notified_at IS NULL); the caller
@@ -15,9 +15,9 @@ from internshelper.config import Settings
 
 
 def render_digest(rows) -> tuple[str, str]:
-    """(subject, html) for the apply-first digest. `rows` need title/company/url."""
+    """(subject, html) for the top-target digest. `rows` need title/company/url."""
     n = len(rows)
-    subject = f"internsHELPer: {n} new Apply-first posting{'' if n == 1 else 's'}"
+    subject = f"internsHELPer: {n} new Top-target posting{'' if n == 1 else 's'}"
     items = "".join(
         f'<li><a href="{html.escape(r["url"] or "", quote=True)}">'
         f"{html.escape(r['title'] or '')}</a>"
@@ -26,9 +26,9 @@ def render_digest(rows) -> tuple[str, str]:
     )
     body = (
         "<html><body>"
-        f"<h2>{n} new posting{'' if n == 1 else 's'} in Apply first</h2>"
+        f"<h2>{n} new posting{'' if n == 1 else 's'} from Top targets</h2>"
         f"<ul>{items}</ul>"
-        "<p>Open the internsHELPer Board to work the tier (dismiss what's not you, "
+        "<p>Open the internsHELPer Board to browse the company (dismiss what's not you, "
         "drag to Applied when you've applied).</p>"
         "</body></html>"
     )

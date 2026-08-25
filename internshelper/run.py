@@ -1,6 +1,6 @@
 """Scheduled collector: fetch every source (isolated), capture raw payloads, store
 straight into the Inbox (no approval gate), compute keyword priority-hint flags,
-rescore + retier, and email the Apply-first digest for never-digested top-tier rows.
+rescore + regroup, and email the Top-target digest for never-digested rows.
 
 One invocation = one cycle. Run hourly via launchd. Per-source failures are isolated and
 recorded; only a source that succeeded (ok AND count>0) has its postings closed.
@@ -90,11 +90,11 @@ def run_cycle(
         store.record_run(conn, "rank", ok=False, count=0,
                          error=f"{type(e).__name__}: {e}", now=now)
 
-    # Apply-first digest: exactly-once per posting (notified_at watermark). A send
+    # Top-target digest: exactly-once per posting (notified_at watermark). A send
     # failure leaves the rows unstamped, so the next cycle retries them.
     new_top = conn.execute(
         "SELECT posting_id, title, company, url FROM postings "
-        "WHERE COALESCE(pinned_tier, tier) = 'apply_first' AND notified_at IS NULL "
+        "WHERE tier = 'top_target' AND notified_at IS NULL "
         f"AND is_active = 1 AND {store.INBOX_SQL} ORDER BY posting_id"
     ).fetchall()
     sent = False

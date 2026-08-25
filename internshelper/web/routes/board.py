@@ -1,9 +1,8 @@
 """The Board: the whole product on one page.
 
 There is no approval gate — every collected posting lands in the first column (the
-Inbox, grouped into apply-order tier sections), and the pipeline lanes to its right
+Inbox, grouped by company-priority sections), and the pipeline lanes to its right
 track what the user acted on. Dragging a card Inbox → Applied IS the apply action;
-dragging between tier sections pins the card there (sticky + a training signal);
 Dismiss hides it (undoable). Every mutation ends with a best-effort rescore+retier —
 each action is a new ranking label.
 
@@ -19,7 +18,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from internshelper import clock, config, db, review, store, tiers
+from internshelper import clock, companygroups, config, db, review, store, tiers
 from internshelper.web.deps import get_conn, nav_context
 from internshelper.web.templating import templates
 
@@ -27,17 +26,11 @@ router = APIRouter()
 
 PIPELINE_LANES = store.PIPELINE_STATUSES  # ("Applied", "Interviewing", "Offer", "Rejected")
 
-# Tier sections inside the Inbox column, in display order. Empty sections still render:
-# they are the drop targets for pinning.
+# Company sections inside the Inbox column, in fixed display order.
 TIER_UI = [
-    {"key": "apply_first", "label": tiers.TIER_LABELS["apply_first"],
-     "hint": "dream companies — apply to these today", "open": True},
-    {"key": "target", "label": tiers.TIER_LABELS["target"],
-     "hint": "companies on your list", "open": True},
-    {"key": "everything_else", "label": tiers.TIER_LABELS["everything_else"],
-     "hint": "unlisted companies, best fit first", "open": False},
-    {"key": "long_shots", "label": tiers.TIER_LABELS["long_shots"],
-     "hint": "the model scores these low — skim, dismiss, or rescue", "open": False},
+    {"key": key, "label": tiers.TIER_LABELS[key], "hint": tiers.TIER_HINTS[key],
+     "open": key != "unclassified"}
+    for key in tiers.TIERS
 ]
 
 
@@ -65,34 +58,76 @@ def _refresh(conn: sqlite3.Connection) -> None:
     review.refresh_ranking(conn)
 
 
-def _self_heal_tiers(conn: sqlite3.Connection) -> None:
-    """Populate tiers on first load after a migration (cheap no-op otherwise)."""
-    untiered = conn.execute(
-        f"SELECT 1 FROM postings WHERE tier IS NULL AND {store.INBOX_SQL} LIMIT 1"
+def _self_heal_tiers(conn: sqlite3.Connection, groups_path: str) -> None:
+    """Migrate old posting-tier values on first load after this redesign."""
+    marks = ",".join("?" for _ in tiers.TIERS)
+    stale = conn.execute(
+        f"SELECT 1 FROM postings WHERE (tier IS NULL OR tier NOT IN ({marks})) "
+        f"AND {store.INBOX_SQL} LIMIT 1",
+        tiers.TIERS,
     ).fetchone()
-    if untiered:
-        tiers.retier_inbox(conn, tiers.load_tier_map())
+    if stale:
+        tiers.retier_inbox(conn, tiers.load_tier_map(groups_path))
 
 
-def _board_ctx(conn: sqlite3.Connection, view: str) -> dict:
+def _group_by_company(rows: list, tier_map) -> list[dict]:
+    """Group newest-first postings by canonical configured company identity."""
+    def value(row, key):
+        return row.get(key) if isinstance(row, dict) else row[key]
+
+    groups: dict[str, dict] = {}
+    for r in rows:
+        raw = (r["company"] or "").strip()
+        group, entry = companygroups.classify(raw, tier_map)
+        display = entry.name if entry else (raw or "Unknown")
+        slug = tiers.normalize_company(display) or "—unknown"
+        g = groups.get(slug)
+        if g is None:
+            groups[slug] = {
+                "company": display, "slug": slug, "group": group,
+                "reason": entry.reason if entry else "", "rows": [r],
+                "newest": value(r, "posted_at") or value(r, "first_seen"),
+            }
+        else:
+            g["rows"].append(r)
+    return list(groups.values())
+
+
+def _inbox_date_key(r) -> tuple:
+    """Newest-first sort key: actual post date if known, else when we first saw it."""
+    return (r["posted_at"] or r["first_seen"] or "", r["first_seen"] or "", r["posting_id"])
+
+
+def _board_ctx(conn: sqlite3.Connection, view: str, groups_path: str) -> dict:
     rows = store.inbox_with_status(conn)
     columns: dict[str, list] = {lane: [] for lane in PIPELINE_LANES}
-    by_tier: dict[str, list] = {t["key"]: [] for t in TIER_UI}
+    inbox_rows: list = []
     for r in rows:
         lane = lane_of(r["status"])
         if lane == "Inbox":
-            # NULL tier only happens pre-first-retier; bucket with the unlisted crowd.
-            by_tier.setdefault(r["tier"] or "everything_else", []).append(r)
+            inbox_rows.append(r)
         else:
             columns[lane].append(r)
-    inbox_tiers = [{**t, "rows": by_tier[t["key"]]} for t in TIER_UI]
+    # Company group is authoritative. Rank score cannot move or hide a role.
+    inbox_rows.sort(key=_inbox_date_key, reverse=True)
+    tier_map = tiers.load_tier_map(groups_path)
+    inbox_groups = _group_by_company(inbox_rows, tier_map)
+    inbox_tiers = []
+    for item in TIER_UI:
+        groups = [g for g in inbox_groups if g["group"] == item["key"]]
+        inbox_tiers.append({
+            **item, "groups": groups, "company_count": len(groups),
+            "posting_count": sum(len(g["rows"]) for g in groups),
+        })
     return {
         "nav": nav_context(conn),
         "view": "table" if view == "table" else "board",
         "pipeline_lanes": PIPELINE_LANES,
         "columns": columns,
+        "inbox_groups": inbox_groups,
         "inbox_tiers": inbox_tiers,
-        "inbox_total": sum(len(t["rows"]) for t in inbox_tiers),
+        "company_group_options": TIER_UI,
+        "inbox_total": sum(len(g["rows"]) for g in inbox_groups),
         "hidden_lanes": _hidden_lanes(conn),
         "flagged_count": store.flagged_count(conn),
         "rows": rows,
@@ -121,7 +156,7 @@ def _board_row(conn: sqlite3.Connection, posting_id: str) -> sqlite3.Row:
 
 def _region(request: Request, conn: sqlite3.Connection, *, view: str = "board",
             toast: dict | None = None) -> object:
-    ctx = _board_ctx(conn, view)
+    ctx = _board_ctx(conn, view, request.app.state.company_groups_path)
     ctx["oob_nav"] = True
     if toast:
         ctx["toast"] = toast
@@ -146,8 +181,8 @@ def board_page(
     show: str = "",
     conn: sqlite3.Connection = Depends(get_conn),
 ):
-    _self_heal_tiers(conn)
-    ctx = _board_ctx(conn, view)
+    _self_heal_tiers(conn, request.app.state.company_groups_path)
+    ctx = _board_ctx(conn, view, request.app.state.company_groups_path)
     ctx["active"] = "board"
     if show == "dismissed":
         ctx["view"] = "dismissed"
@@ -196,7 +231,7 @@ def drawer_save(
     _refresh(conn)  # entering/leaving the pipeline is a label change
     r = _board_row(conn, posting_id)
     payload = review.payload_summary(r["payload_path"])
-    ctx = _board_ctx(conn, view)
+    ctx = _board_ctx(conn, view, request.app.state.company_groups_path)
     ctx.update({"r": r, "view": view, "payload": payload, "tier_ui": TIER_UI,
                 "oob_board": True, "saved": True})
     return templates.TemplateResponse(request, "drawer/_posting.html", ctx)
@@ -295,6 +330,53 @@ def unflag_posting(
     review.unflag(conn, posting_id)
     _refresh(conn)
     return _region(request, conn)
+
+
+@router.post("/board/company-group")
+def set_company_group(
+    request: Request,
+    company: str = Form(...),
+    group: str = Form(...),
+    reason: str = Form(""),
+    approved_restore: str = Form(""),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """Move the whole company, never an individual posting, between groups."""
+    previous, _entry = companygroups.classify(
+        company, tiers.load_tier_map(request.app.state.company_groups_path)
+    )
+    if group == "discovery" and not approved_restore:
+        raise HTTPException(
+            status_code=400,
+            detail="discovery requires a reason/evidence proposal and approval",
+        )
+    try:
+        if group == "unclassified":
+            companygroups.clear_group(request.app.state.company_groups_path, company)
+        else:
+            companygroups.set_group(
+                request.app.state.company_groups_path,
+                company,
+                group,
+                reason=reason,
+                allow_discovery=bool(approved_restore),
+            )
+    except (ValueError, config.ConfigError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    tiers.retier_inbox(conn, tiers.load_tier_map(request.app.state.company_groups_path))
+    return _region(
+        request, conn,
+        toast={
+            "text": f"{company} moved to {tiers.TIER_LABELS[group]}",
+            "undo_url": "/board/company-group",
+            "fields": {
+                "company": company,
+                "group": previous,
+                "reason": _entry.reason if _entry else "",
+                "approved_restore": "1" if previous == "discovery" else "",
+            },
+        },
+    )
 
 
 @router.post("/board/pin")

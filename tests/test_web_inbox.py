@@ -1,4 +1,4 @@
-"""The merged Board: Inbox tier sections, dismiss/pin flows, table lens, dismissed view.
+"""The Board: company sections, application moves, table lens, dismissed view.
 
 Seeded population (conftest): four inbox postings — greenhouse:0 (old match verdict),
 greenhouse:1 + greenhouse:2 (candidates), greenhouse:plain (non-candidate, company
@@ -25,39 +25,36 @@ def _posting(db_path, pid):
     return row
 
 
-def test_board_groups_inbox_into_tier_sections(client):
+def test_board_groups_inbox_by_company(client):
     r = client.get("/board")
     assert r.status_code == 200
-    # all four tier sections render (they are drop targets even when empty)
-    for key in ("apply_first", "target", "everything_else", "long_shots"):
-        assert f'data-tier="{key}"' in r.text
-    assert "Apply first" in r.text and "Long shots" in r.text
-    # chevron state is localStorage-backed (server default as fallback) so it
-    # survives the full region re-render every board action triggers
-    assert "tierOpen('apply_first', true)" in r.text
-    assert "tierOpen('everything_else', false)" in r.text
+    # Fixed company-priority sections contain one collapsed card per company.
+    assert "co-group" in r.text
+    assert ">Stripe<" in r.text and ">Bistro<" in r.text  # company group headers
+    assert "tierOpen('co:stripe', false)" in r.text
+    assert "tierOpen('co:bistro', false)" in r.text
+    assert "Top targets" in r.text and "Known companies" in r.text
+    assert "Worth discovering" in r.text and "Unclassified" in r.text
+    assert "data-tier=" not in r.text
+    assert "Long shots" not in r.text
     # a raw double quote here would terminate the double-quoted x-data attribute
     # early and kill Alpine for the whole section (the "inbox stuck closed" bug)
     assert 'tierOpen("' not in r.text and 'tierSave("' not in r.text
-    assert "Software Engineer Intern" in r.text
+    assert "Software Engineer Intern" in r.text  # cards still present (inside collapsed groups)
     assert "Line Cook" in r.text
 
 
-def test_cold_start_tiers_dream_candidates_vs_junk(client, seeded_db):
+def test_company_group_ignores_rank_and_candidate_flags(client, seeded_db):
     client.get("/board")  # triggers the self-heal retier
-    # Stripe is a built-in dream company, so its cold-start candidates go straight up;
-    # the non-candidate (Bistro's Line Cook) is buried regardless of company.
-    assert _posting(seeded_db, "greenhouse:1")["tier"] == "apply_first"
-    assert _posting(seeded_db, "greenhouse:plain")["tier"] == "long_shots"
+    assert _posting(seeded_db, "greenhouse:1")["tier"] == "top_target"
+    assert _posting(seeded_db, "greenhouse:plain")["tier"] == "unclassified"
 
 
-def test_dream_company_lands_in_apply_first(client, seeded_db):
-    # Stripe is on the built-in dream list; a rescored row with a decent score goes top.
+def test_configured_company_lands_in_top_targets(client, seeded_db):
     _exec(seeded_db, "UPDATE postings SET rank_score = 0.8, tier = NULL")
     r = client.get("/board")
-    assert _posting(seeded_db, "greenhouse:1")["tier"] == "apply_first"
-    # Bistro is unlisted -> everything_else once scored
-    assert _posting(seeded_db, "greenhouse:plain")["tier"] == "everything_else"
+    assert _posting(seeded_db, "greenhouse:1")["tier"] == "top_target"
+    assert _posting(seeded_db, "greenhouse:plain")["tier"] == "unclassified"
     assert "Software Engineer Intern" in r.text
 
 
@@ -76,53 +73,38 @@ def test_dismiss_unknown_posting_is_404(client):
     assert client.post("/board/dismiss", data={"posting_id": "nope:1"}).status_code == 404
 
 
-def test_pin_is_sticky_through_rescore(client, seeded_db):
-    client.get("/board")  # populate tiers
-    r = client.post("/board/pin", data={"posting_id": "greenhouse:plain", "tier": "apply_first"})
+def test_company_group_control_moves_all_company_postings(client, seeded_db, company_groups_file):
+    r = client.post("/board/company-group", data={"company": "Bistro", "group": "known"})
     assert r.status_code == 200
-    row = _posting(seeded_db, "greenhouse:plain")
-    assert row["pinned_tier"] == "apply_first"
-    assert row["tier_before_pin"] == "long_shots"  # the promotion is a training label
-
-    # a later rescore/retier must not move the pinned card
-    c = db.connect(seeded_db)
-    review.refresh_ranking(c)
-    inbox = {x["posting_id"]: x for x in review.list_inbox(c)}
-    c.close()
-    assert inbox["greenhouse:plain"]["tier"] == "apply_first"
-    # and the card renders under the pinned section with the pin marker
-    r = client.get("/board")
-    assert "📌" in r.text
+    assert _posting(seeded_db, "greenhouse:plain")["tier"] == "known"
+    assert "Bistro moved to Known companies" in r.text
+    assert "name: Bistro" in company_groups_file.read_text()
 
 
-def test_pin_rejects_bad_tier(client):
-    r = client.post("/board/pin", data={"posting_id": "greenhouse:1", "tier": "mega"})
+def test_company_group_control_rejects_bad_group(client):
+    r = client.post("/board/company-group", data={"company": "Stripe", "group": "mega"})
     assert r.status_code == 400
+    r = client.post(
+        "/board/company-group", data={"company": "Bistro", "group": "discovery"}
+    )
+    assert r.status_code == 400 and "proposal" in r.text
 
 
-def test_unpin_returns_card_to_computed_tier(client, seeded_db):
-    client.get("/board")
-    client.post("/board/pin", data={"posting_id": "greenhouse:plain", "tier": "apply_first"})
-    client.post("/board/unpin", data={"posting_id": "greenhouse:plain"})
-    row = _posting(seeded_db, "greenhouse:plain")
-    assert row["pinned_tier"] is None and row["tier"] == "long_shots"
-
-
-def test_drag_pipeline_card_back_to_tier_reenters_inbox(client, seeded_db):
+def test_drag_pipeline_card_back_to_company_reenters_inbox(client, seeded_db):
     client.post("/board/move", data={"posting_id": "greenhouse:0", "status": "Applied"})
-    r = client.post("/board/pin", data={"posting_id": "greenhouse:0", "tier": "target"})
+    r = client.post("/board/move", data={"posting_id": "greenhouse:0", "status": "Untracked"})
     assert r.status_code == 200
     c = sqlite3.connect(seeded_db)
     status = c.execute("SELECT status FROM applications WHERE posting_id='greenhouse:0'").fetchone()[0]
     c.close()
     assert status == "Untracked"
-    assert _posting(seeded_db, "greenhouse:0")["pinned_tier"] == "target"
 
 
-def test_table_lens_shows_tier_column_and_dismiss(client):
+def test_table_lens_has_group_column_and_dismiss(client):
     r = client.get("/board?view=table")
     assert r.status_code == 200
-    assert "<th>Tier</th>" in r.text
+    assert "<th>Group</th>" in r.text
+    assert "<th>Company</th>" in r.text
     assert "/board/dismiss" in r.text
 
 
@@ -158,11 +140,11 @@ def test_hygiene_dismiss_closed_is_undoable(client, seeded_db):
     assert _posting(seeded_db, "greenhouse:2")["verdict"] is None
 
 
-def test_drawer_offers_pin_and_dismiss(client):
+def test_drawer_offers_dismiss_but_no_tier_pin(client):
     r = client.get("/board/card/greenhouse:1")
     assert r.status_code == 200
-    assert "/board/pin" in r.text
     assert "/board/dismiss" in r.text
+    assert "/board/pin" not in r.text  # tier pinning sidelined with the tiers
     assert "Move back to review" not in r.text
 
 

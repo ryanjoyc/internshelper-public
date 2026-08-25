@@ -384,12 +384,11 @@ def get_application(conn: sqlite3.Connection, posting_id: str) -> sqlite3.Row | 
 
 def inbox_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     """Every non-dismissed posting with its application state, best-first — the Board
-    query. Pipeline rows ride along (the route splits them into lanes); `tier` in the
-    result is the EFFECTIVE tier (pin wins over the computed value)."""
+    query. Pipeline rows ride along (the route splits them into lanes); `tier` is the
+    authoritative company group. Legacy per-posting pins do not override it."""
     return conn.execute(
         f"""
-        SELECT COALESCE(p.pinned_tier, p.tier) AS tier,  -- effective tier must precede
-               p.*, a.status, a.notes, a.applied_date    -- p.* (first "tier" wins the name)
+        SELECT p.*, a.status, a.notes, a.applied_date
         FROM postings p
         LEFT JOIN applications a ON a.posting_id = p.posting_id
         WHERE {INBOX_SQL}

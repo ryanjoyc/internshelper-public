@@ -302,10 +302,10 @@ p { margin: 0; }
   box-shadow: var(--shadow-sm);
 }
 
-/* ---------- inbox tiers ---------- */
+/* ---------- company browsing groups ---------- */
 
-.tier { border-bottom: 1px solid var(--border); }
-.tier:last-child { border-bottom: none; }
+.tier-section { border-bottom: 1px solid var(--border); }
+.tier-section:last-child { border-bottom: none; }
 
 .tier-head {
   display: flex;
@@ -316,7 +316,7 @@ p { margin: 0; }
   user-select: none;
   background: var(--surface-2);
 }
-.tier-head:hover .tier-label { color: var(--text-2); }
+.tier-head:hover .tier-name { color: var(--text); }
 
 .tier-chevron {
   display: inline-block;
@@ -326,19 +326,62 @@ p { margin: 0; }
   transition: transform 160ms var(--ease);
 }
 .tier-chevron.is-open { transform: rotate(90deg); }
-.tier-label {
+.tier-name {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
 }
+.tier-hint {
+  margin: 0;
+  padding: 0 14px 8px 34px;
+  background: var(--surface-2);
+  color: var(--faint);
+  font-size: 11px;
+}
+.tier-body { padding: 5px 0 9px; }
+.tier-empty { margin: 8px 14px 6px 34px; color: var(--faint); font-size: 12px; }
 .tier-count {
   color: var(--faint);
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* company sub-groups nested inside a tier: tier -> company -> cards */
+.co-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 26px;
+  cursor: pointer;
+  user-select: none;
+}
+.co-head:hover .co-name { color: var(--text-2); }
+.co-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.co-newest { margin-left: auto; color: var(--faint); font-size: 10px; white-space: nowrap; }
+.co-group-form { display: flex; margin-left: 4px; }
+.co-group-form select {
+  max-width: 112px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--muted);
+  font: 500 10px "Geist", sans-serif;
+}
+.co-reason { margin: -2px 14px 6px 46px; color: var(--muted); font-size: 11px; }
+.co-rows .board-cards { padding-left: 12px; }
+/* the per-card company label is redundant once cards sit under a company header */
+.co-group .card-company { display: none; }
+
 .peek-desc {
   color: var(--text-2);
   font-size: 13px;

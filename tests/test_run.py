@@ -131,18 +131,20 @@ def test_timeout_recorded_and_does_not_close(tmp_path, monkeypatch):
 
 # ---------- threshold notify ----------
 
-def test_digest_fires_for_new_apply_first_and_stamps_exactly_once(tmp_path, monkeypatch):
-    monkeypatch.setenv("INTERNSHELPER_COMPANIES", str(tmp_path / "companies.yaml"))
+def test_digest_fires_for_new_top_target_and_stamps_exactly_once(tmp_path, monkeypatch):
+    groups = tmp_path / "company-groups.yaml"
+    groups.write_text("companies:\n  - name: Google\n    group: top_target\n")
+    monkeypatch.setenv("INTERNSHELPER_COMPANY_GROUPS", str(groups))
     c = _conn(tmp_path)
     e = SourceEntry(type="greenhouse", token="google")
-    # Google is on the built-in dream list -> cold-start candidates land in apply_first
+    # Google is explicitly configured as a top target.
     posts = [_raw(f"greenhouse:{i}", e.source_key, company="Google") for i in range(3)]
     _wire(monkeypatch, {e.source_key: _FakeConnector(posts=posts)})
     send = _Send()
     res = _collect(c, tmp_path, _settings(), [e], "2026-06-18T12:00:00+00:00", send)
     assert res.sent is True and res.digested == 3 and res.inbox == 3
     assert len(send.calls) == 1
-    assert "3 new Apply-first postings" in send.calls[0][0]
+    assert "3 new Top-target postings" in send.calls[0][0]
     assert "https://x/greenhouse:0" in send.calls[0][1]
     assert c.execute("SELECT COUNT(*) FROM postings WHERE notified_at IS NOT NULL").fetchone()[0] == 3
     nrun = c.execute("SELECT ok, count FROM runs WHERE source_key='notify'").fetchone()
@@ -155,7 +157,9 @@ def test_digest_fires_for_new_apply_first_and_stamps_exactly_once(tmp_path, monk
 
 
 def test_flagged_posting_is_not_digested(tmp_path, monkeypatch):
-    monkeypatch.setenv("INTERNSHELPER_COMPANIES", str(tmp_path / "companies.yaml"))
+    groups = tmp_path / "company-groups.yaml"
+    groups.write_text("companies:\n  - name: Google\n    group: top_target\n")
+    monkeypatch.setenv("INTERNSHELPER_COMPANY_GROUPS", str(groups))
     c = _conn(tmp_path)
     e = SourceEntry(type="greenhouse", token="google")
     posts = [_raw("greenhouse:1", e.source_key, company="Google")]
@@ -172,7 +176,7 @@ def test_flagged_posting_is_not_digested(tmp_path, monkeypatch):
 
 
 def test_no_digest_for_lower_tiers(tmp_path, monkeypatch):
-    monkeypatch.setenv("INTERNSHELPER_COMPANIES", str(tmp_path / "companies.yaml"))
+    monkeypatch.setenv("INTERNSHELPER_COMPANY_GROUPS", str(tmp_path / "groups.yaml"))
     c = _conn(tmp_path)
     e = SourceEntry(type="greenhouse", token="acme")
     _wire(monkeypatch, {e.source_key: _FakeConnector(
@@ -181,11 +185,13 @@ def test_no_digest_for_lower_tiers(tmp_path, monkeypatch):
     res = _collect(c, tmp_path, _settings(), [e], "2026-06-18T12:00:00+00:00", send)
     assert res.sent is False and send.calls == []
     tier = c.execute("SELECT tier FROM postings WHERE posting_id='greenhouse:1'").fetchone()[0]
-    assert tier == "everything_else"  # unlisted company: on the board, not in the email
+    assert tier == "unclassified"  # unlisted company: on the board, not in the email
 
 
 def test_email_disabled_suppresses_digest_and_leaves_rows_unstamped(tmp_path, monkeypatch):
-    monkeypatch.setenv("INTERNSHELPER_COMPANIES", str(tmp_path / "companies.yaml"))
+    groups = tmp_path / "company-groups.yaml"
+    groups.write_text("companies:\n  - name: Google\n    group: top_target\n")
+    monkeypatch.setenv("INTERNSHELPER_COMPANY_GROUPS", str(groups))
     c = _conn(tmp_path)
     e = SourceEntry(type="greenhouse", token="google")
     posts = [_raw(f"greenhouse:{i}", e.source_key, company="Google") for i in range(3)]
