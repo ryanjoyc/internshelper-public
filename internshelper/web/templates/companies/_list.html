@@ -1,141 +1,181 @@
 {% import "partials/_macros.html" as m %}
 {% for err in errors %}
-<div class="notice notice--warn">Skipped a malformed entry: {{ err.reason }}</div>
+<div class="notice notice--warn"><strong>Company entry skipped.</strong> {{ err.reason }}</div>
 {% endfor %}
-
 {% for err in priority_errors %}
-<div class="notice notice--warn">Skipped a malformed company-group entry: {{ err.reason }}</div>
+<div class="notice notice--warn"><strong>Board-group entry skipped.</strong> {{ err.reason }}</div>
 {% endfor %}
 
-<h2 class="section-title">Board browsing groups</h2>
-<div class="company-group-overview" aria-label="Companies currently visible on the Board">
-  {% for key in ['top_target', 'known', 'discovery', 'unclassified'] %}
-  <div class="company-group-stat">
-    <strong>{{ priority_counts[key] }}</strong>
-    <span>{{ priority_labels[key] }}</span>
-  </div>
-  {% endfor %}
-</div>
-
-<section class="discovery-review" aria-labelledby="discovery-review-title">
-  <div class="discovery-review-head">
-    <div>
-      <h3 id="discovery-review-title">Worth discovering proposals</h3>
-      <p>Nothing moves to the Board's discovery section until you approve it.</p>
-    </div>
-    <span class="pill pill--pending pill--count">{{ priority_proposals | length }} pending</span>
-  </div>
-
-  {% if priority_proposals %}
-  <div class="discovery-proposals">
-    {% for c in priority_proposals %}
-    <article class="card discovery-proposal" id="proposal-{{ c.name | dom_id }}">
-      <div class="discovery-proposal-head">
-        <div class="discovery-company-mark" aria-hidden="true">{{ c.name[:1] }}</div>
-        <div>
-          <h4>{{ c.name }}</h4>
-          <span>Proposed · Worth discovering</span>
-        </div>
+<div class="company-systems">
+  <section class="company-system company-system--groups" aria-labelledby="board-group-system-title">
+    <header class="company-system-head">
+      <span class="system-number" aria-hidden="true">1</span>
+      <div>
+        <h2 id="board-group-system-title">Board grouping &amp; discovery</h2>
+        <p>Controls browsing priority only. It never adds or changes a collection source.</p>
       </div>
-      <p class="discovery-reason">{{ c.proposal.reason }}</p>
-      <div class="discovery-meta">
-        <span>{{ posting_counts.get(c.name, 0) }} active posting{% if posting_counts.get(c.name, 0) != 1 %}s{% endif %}</span>
-        <details class="discovery-evidence">
-          <summary>View evidence</summary>
+    </header>
+    <div class="company-system-body">
+      <div class="company-group-overview" aria-label="Companies currently visible on the Board">
+        {% for key in ['top_target', 'known', 'discovery', 'unclassified'] %}
+        <div class="company-group-stat">
+          <strong>{{ priority_counts[key] }}</strong>
+          <span>{{ priority_labels[key] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <section class="discovery-review" aria-labelledby="discovery-review-title">
+        <div class="discovery-review-head">
           <div>
-            <strong>Evidence reviewed</strong>
-            <p>{{ c.proposal.evidence }}</p>
+            <h3 id="discovery-review-title">Worth discovering proposals</h3>
+            <p>Nothing moves into this Board group without your approval.</p>
+          </div>
+          <span class="pill pill--pending pill--count">{{ priority_proposals | length }} pending</span>
+        </div>
+
+        {% if priority_proposals %}
+        <div class="discovery-proposals">
+          {% for c in priority_proposals %}
+          <article class="card discovery-proposal" id="proposal-{{ c.name | dom_id }}">
+            <div class="discovery-proposal-head">
+              <div class="discovery-company-mark" aria-hidden="true">{{ c.name[:1] }}</div>
+              <div>
+                <h4>{{ c.name }}</h4>
+                <span>Proposed · Worth discovering</span>
+              </div>
+              <span class="proposal-posting-count">{{ posting_counts.get(c.name, 0) }} active posting{% if posting_counts.get(c.name, 0) != 1 %}s{% endif %}</span>
+            </div>
+            <p class="discovery-reason">{{ c.proposal.reason }}</p>
+            <details class="discovery-evidence">
+              <summary>View evidence</summary>
+              <div>
+                <strong>Supporting evidence</strong>
+                <p>{{ c.proposal.evidence }}</p>
+              </div>
+            </details>
+            <div class="discovery-actions">
+              <button class="btn btn-primary btn-sm" type="button"
+                      hx-post="/companies/group/approve"
+                      hx-vals='{"name": {{ c.name | tojson }}}'
+                      hx-target="#company-list" hx-swap="innerHTML">Approve Board group</button>
+              <button class="btn btn-secondary btn-sm" type="button"
+                      hx-post="/companies/group/reject"
+                      hx-vals='{"name": {{ c.name | tojson }}}'
+                      hx-target="#company-list" hx-swap="innerHTML">Reject proposal</button>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="discovery-empty">
+          <strong>All proposals reviewed</strong>
+          <span>New evidence-backed suggestions will appear here.</span>
+        </div>
+        {% endif %}
+        <div class="system-note"><strong>Explicit approval required.</strong> Group approval can be undone and never configures a source.</div>
+      </section>
+
+      <div class="company-rosters">
+        {% for group, items in priority_groups.items() %}
+        {% if items %}
+        <details class="company-roster"{% if group in ('top_target', 'known') %} open{% endif %}>
+          <summary><span>{{ priority_labels[group] }}</span><span>{{ items | length }} companies</span></summary>
+          <div class="company-roster-body">
+            {% for c in items %}
+            <div class="company-roster-row">
+              <div class="source-main">
+                <div class="source-label">{{ c.name }}</div>
+                {% if c.reason %}<div class="source-key">{{ c.reason }}</div>{% endif %}
+              </div>
+              <form hx-post="/companies/group/set" hx-target="#company-list" hx-swap="innerHTML">
+                <input type="hidden" name="name" value="{{ c.name }}">
+                <select class="input" name="group" aria-label="{{ c.name }} Board group"
+                        x-on:change="$el.form.requestSubmit()">
+                  {% for key in ['top_target', 'known', 'discovery', 'unclassified'] %}
+                  {% if key != 'discovery' or group == 'discovery' %}
+                  <option value="{{ key }}"{% if key == group %} selected{% endif %}>{{ priority_labels[key] }}</option>
+                  {% endif %}
+                  {% endfor %}
+                </select>
+              </form>
+            </div>
+            {% endfor %}
           </div>
         </details>
-      </div>
-      <div class="discovery-actions">
-        <button class="btn btn-ghost btn-sm btn-danger-text" type="button"
-                hx-post="/companies/group/reject"
-                hx-vals='{"name": {{ c.name | tojson }}}'
-                hx-target="#company-list" hx-swap="innerHTML">Reject</button>
-        <button class="btn btn-primary btn-sm" type="button"
-                hx-post="/companies/group/approve"
-                hx-vals='{"name": {{ c.name | tojson }}}'
-                hx-target="#company-list" hx-swap="innerHTML">Approve</button>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="discovery-empty">
-    <strong>All proposals reviewed</strong>
-    <span>Newly researched companies will appear here.</span>
-  </div>
-  {% endif %}
-</section>
-
-{% for group, items in priority_groups.items() %}
-{% if items %}
-<h3 class="section-title">{{ priority_labels[group] }}</h3>
-{% for c in items %}
-<div class="card source-card">
-  <div class="source-main">
-    <div class="source-label">{{ c.name }}</div>
-    {% if c.reason %}<div class="source-key">{{ c.reason }}</div>{% endif %}
-  </div>
-  <div class="source-side">
-    <form hx-post="/companies/group/set" hx-target="#company-list" hx-swap="innerHTML">
-      <input type="hidden" name="name" value="{{ c.name }}">
-      <select class="input" name="group" x-on:change="$el.form.requestSubmit()">
-        {% for key in ['top_target', 'known', 'discovery', 'unclassified'] %}
-        {% if key != 'discovery' or group == 'discovery' %}
-        <option value="{{ key }}"{% if key == group %} selected{% endif %}>{{ priority_labels[key] }}</option>
         {% endif %}
         {% endfor %}
-      </select>
-    </form>
-  </div>
-</div>
-{% endfor %}
-{% endif %}
-{% endfor %}
+      </div>
+    </div>
+  </section>
 
-<h2 class="section-title">Career-board resolution</h2>
-{% for name in dangling %}
-<div class="notice notice--err">{{ name }} points at a board missing from sources.yaml</div>
-{% endfor %}
+  <section class="company-system company-system--sources" aria-labelledby="source-system-title">
+    <header class="company-system-head">
+      <span class="system-number" aria-hidden="true">2</span>
+      <div>
+        <h2 id="source-system-title">Careers-board resolution</h2>
+        <p>Controls collection coverage only. Adding a source never changes Board priority.</p>
+      </div>
+    </header>
+    <div class="company-system-body">
+      {% for name in dangling %}
+      <div class="notice notice--err"><strong>Missing collection source.</strong> {{ name }} points at a board absent from sources.yaml.</div>
+      {% endfor %}
 
-{% for status, items in groups.items() %}
-{% if items %}
-<h2 class="section-title">{{ status }}</h2>
-{% for c in items %}
-<div class="card source-card" id="company-{{ c.name | dom_id }}">
-  <div class="source-main">
-    <div class="source-label">{{ c.name }}</div>
-    {% if c.board %}<div class="source-key">{{ c.board }}</div>{% endif %}
-    {% if c.notes %}<div class="source-key">{{ c.notes }}</div>{% endif %}
-    {% if c.proposal %}
-    <div class="source-key">proposed: {{ c.proposal.url }}
-      ({{ c.proposal.count }} postings) — {{ c.proposal.evidence }}</div>
-    {% endif %}
-  </div>
-  <div class="source-side">
-    {{ m.pill(c.status) }}
-    {% if c.proposal %}
-    <button class="btn btn-primary btn-sm" hx-post="/companies/approve"
-            hx-vals='{"name": {{ c.name | tojson }}}'
-            hx-target="#company-list" hx-swap="innerHTML">Approve</button>
-    <button class="btn btn-ghost btn-sm btn-danger-text" hx-post="/companies/reject"
-            hx-vals='{"name": {{ c.name | tojson }}}'
-            hx-target="#company-list" hx-swap="innerHTML">Reject</button>
-    {% endif %}
-  </div>
+      <div class="resolution-groups">
+        {% for status, items in groups.items() %}
+        {% if items %}
+        <section class="resolution-group" data-status="{{ status }}">
+          <header class="resolution-group-head">
+            <h3>{{ status | replace('-', ' ') | title }}</h3>
+            <span>{{ items | length }}</span>
+          </header>
+          {% for c in items %}
+          <article class="resolution-card" id="company-{{ c.name | dom_id }}">
+            <div class="resolution-card-head">
+              <span class="company-mark" aria-hidden="true">{{ c.name[:1] }}</span>
+              <div class="source-main">
+                <div class="source-label">{{ c.name }}</div>
+                {% if c.board %}<div class="source-key">{{ c.board }}</div>{% endif %}
+              </div>
+              {{ m.pill(c.status | replace('-', ' '), title=c.status) }}
+            </div>
+            {% if c.notes %}<p class="resolution-note">{{ c.notes }}</p>{% endif %}
+            {% if c.proposal %}
+            <div class="resolution-proposal">
+              <span class="resolution-url">{{ c.proposal.url }}</span>
+              <div class="resolution-evidence">
+                <strong>Resolution evidence</strong>
+                <p>{{ c.proposal.evidence }} · Fetch test returned {{ c.proposal.count }} posting{% if c.proposal.count != 1 %}s{% endif %}.</p>
+              </div>
+              <div class="resolution-actions">
+                <button class="btn btn-primary btn-sm" hx-post="/companies/approve"
+                        hx-vals='{"name": {{ c.name | tojson }}}'
+                        hx-target="#company-list" hx-swap="innerHTML">Add collection source</button>
+                <button class="btn btn-secondary btn-sm" hx-post="/companies/reject"
+                        hx-vals='{"name": {{ c.name | tojson }}}'
+                        hx-target="#company-list" hx-swap="innerHTML">Reject board</button>
+              </div>
+            </div>
+            {% endif %}
+          </article>
+          {% endfor %}
+        </section>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% if not total %}
+      <div class="discovery-empty"><strong>No companies awaiting resolution</strong><span>Add one below, then run /resolve-companies.</span></div>
+      {% endif %}
+      <div class="system-note"><strong>Independent from Board groups.</strong> Source approval cannot promote or demote a company.</div>
+    </div>
+  </section>
 </div>
-{% endfor %}
-{% endif %}
-{% endfor %}
-{% if not total %}
-<p class="page-sub">No companies yet — add one below, then run /resolve-companies.</p>
-{% endif %}
 
 {% if toast %}
 <div hx-swap-oob="beforeend:#toast-region">
-  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
+  <div class="toast" role="status" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
+    <span class="toast-mark" aria-hidden="true">✓</span>
     <span class="toast-text">{{ toast.text }}</span>
     {% if toast.undo_url %}
     <form hx-post="{{ toast.undo_url }}" hx-target="#company-list" hx-swap="innerHTML">

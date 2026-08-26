@@ -1,20 +1,26 @@
 <li class="card board-card" id="card-{{ r.posting_id | dom_id }}" data-id="{{ r.posting_id }}"
+    data-drawer-trigger role="button" tabindex="0"
+    aria-label="Open {{ r.title }} at {{ r.company }}"
     hx-get="/board/card/{{ r.posting_id }}?view=board" hx-target="#drawer-body" hx-swap="innerHTML">
   <div class="card-top">
     <div class="card-company">{{ r.company }}</div>
     {% if (r.status or 'Untracked') not in pipeline_lanes %}
     <div class="card-actions">
-      <button class="card-flag btn btn-ghost btn-sm" title="Flag for review — something looks off (dead link, wrong info)" x-on:click.stop
+      <button class="card-flag btn btn-icon btn-sm" type="button" aria-label="Flag {{ r.title }} for investigation" title="Flag for investigation" x-on:click.stop
               hx-post="/board/flag" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
               hx-target="#board-region" hx-swap="innerHTML">⚑</button>
-      <button class="card-dismiss btn btn-ghost btn-sm" title="Dismiss — not for me" x-on:click.stop
+      <button class="card-dismiss btn btn-icon btn-sm" type="button" aria-label="Dismiss {{ r.title }}" title="Dismiss — not for me" x-on:click.stop
               hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
-              hx-target="#board-region" hx-swap="innerHTML">✕</button>
+              hx-target="#board-region" hx-swap="innerHTML">×</button>
     </div>
     {% endif %}
   </div>
   <div class="card-title">{{ r.title }}</div>
-  <div class="card-meta">{% if r.location %}{{ r.location }} · {% endif %}{{ r.posted_at | release(r.first_seen) }}</div>
+  <div class="card-meta">
+    {% if r.location %}<span>{{ r.location }}</span>{% endif %}
+    <span>{{ r.posted_at | release(r.first_seen) }}</span>
+    <span title="{{ r.source_key }}">{{ r.source_key | source_label }}</span>
+  </div>
   {% if r.applied_date or r.notes or (not r.is_active) or r.status == 'Interested' %}
   <div class="card-foot">
     {% if r.status == 'Interested' %}<span class="card-star" title="interested">★</span>{% endif %}

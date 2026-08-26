@@ -1,32 +1,72 @@
 {% extends "base.html" %}
 {% import "partials/_macros.html" as m %}
 {% block content %}
+{% set ns = namespace(failed=0, exceptions=0, healthy=0) %}
+{% for r in runs %}
+  {% if not r.ok %}{% set ns.failed = ns.failed + 1 %}{% set ns.exceptions = ns.exceptions + 1 %}
+  {% elif r.quiet %}{% set ns.exceptions = ns.exceptions + 1 %}
+  {% else %}{% set ns.healthy = ns.healthy + 1 %}{% endif %}
+{% endfor %}
+
 <header class="page-head">
   <div class="page-head-row">
-    <h1>Health</h1>
+    <div class="page-heading">
+      <span class="page-eyebrow">Collection status</span>
+      <h1>Health</h1>
+      <p class="page-sub">{{ runs | length }} source{{ '' if runs | length == 1 else 's' }} reporting{% if nav.last_collect %} · last collect {{ nav.last_collect | release }}{% endif %}</p>
+    </div>
+    <a class="btn btn-secondary" href="/sources">Manage sources</a>
   </div>
-  <p class="page-sub">{{ runs | length }} source{{ '' if runs | length == 1 else 's' }} reporting{% if nav.last_collect %} · last collect {{ nav.last_collect | release }}{% endif %}</p>
-  {% if quiet %}
-  <div class="notice notice--warn">{{ quiet | length }} source{{ '' if quiet | length == 1 else 's' }} went quiet: {{ quiet | join(', ') }}</div>
-  {% endif %}
 </header>
 
 {% if runs %}
-<div class="health-list">
-  {% for r in runs %}
-  {% set kind = 'err' if not r.ok else ('quiet' if r.quiet else 'ok') %}
-  <div class="card health-card health-card--{{ kind }}">
-    <span class="dot dot--{{ kind }}"></span>
-    <span class="health-key">{{ r.source_key }}</span>
-    {% if kind == 'quiet' %}{{ m.pill('quiet', 'pending') }}{% elif kind == 'err' %}{{ m.pill('error', 'rejected') }}{% endif %}
-    <span class="health-count cell-num">
-      {% if r.ok %}{{ r.count }} posting{{ '' if r.count == 1 else 's' }}{% if r.dropped %} · {{ r.dropped }} dropped by title filter{% endif %}{% if r.quiet_reason %} — {{ r.quiet_reason }}{% endif %}
-      {% else %}<span class="health-error" title="{{ r.error }}">{{ r.error | truncate(80) }}</span>{% endif %}
-    </span>
-    <span class="health-age">{{ r.started_at | release }}</span>
-  </div>
-  {% endfor %}
+<div class="health-summary" aria-label="Collection health summary">
+  <div><strong>{{ ns.healthy }}</strong><span>Healthy</span></div>
+  <div class="{% if quiet %}has-warning{% endif %}"><strong>{{ quiet | length }}</strong><span>Quiet</span></div>
+  <div class="{% if ns.failed %}has-error{% endif %}"><strong>{{ ns.failed }}</strong><span>Failed</span></div>
 </div>
+
+{% if ns.exceptions %}
+<section class="health-section" aria-labelledby="health-exceptions-title">
+  <div class="section-heading">
+    <div><h2 id="health-exceptions-title">Needs attention</h2><p>Exceptions are shown before routine healthy activity.</p></div>
+    <span class="pill pill--pending pill--count">{{ ns.exceptions }}</span>
+  </div>
+  <div class="health-list">
+    {% for r in runs if not r.ok or r.quiet %}
+    {% set kind = 'err' if not r.ok else 'quiet' %}
+    <article class="card health-card health-card--{{ kind }}">
+      <span class="health-symbol" aria-hidden="true">{{ '!' if kind == 'err' else '–' }}</span>
+      <div class="health-identity">
+        <strong class="health-key">{{ r.source_key }}</strong>
+        <span>{{ 'Fetch failed' if kind == 'err' else 'Quiet source' }}</span>
+      </div>
+      <div class="health-count">
+        {% if r.ok %}{{ r.count }} posting{{ '' if r.count == 1 else 's' }}{% if r.dropped %} · {{ r.dropped }} filtered{% endif %}{% if r.quiet_reason %}<span>{{ r.quiet_reason }}</span>{% endif %}
+        {% else %}<span class="health-error" title="{{ r.error }}">{{ r.error | truncate(100) }}</span>{% endif %}
+      </div>
+      <time class="health-age">{{ r.started_at | release }}</time>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<div class="notice notice--ok"><strong>Collection is healthy.</strong> No source requires attention.</div>
+{% endif %}
+
+<details class="healthy-sources"{% if not ns.exceptions %} open{% endif %}>
+  <summary><span>Healthy sources</span><span>{{ ns.healthy }}</span></summary>
+  <div class="health-list">
+    {% for r in runs if r.ok and not r.quiet %}
+    <article class="card health-card health-card--ok">
+      <span class="health-symbol" aria-hidden="true">✓</span>
+      <div class="health-identity"><strong class="health-key">{{ r.source_key }}</strong><span>Healthy</span></div>
+      <span class="health-count">{{ r.count }} posting{{ '' if r.count == 1 else 's' }}{% if r.dropped %} · {{ r.dropped }} filtered{% endif %}</span>
+      <time class="health-age">{{ r.started_at | release }}</time>
+    </article>
+    {% endfor %}
+  </div>
+</details>
 {% else %}
 {{ m.empty_state("No runs recorded yet.", "The collector will report here after its first run.") }}
 {% endif %}

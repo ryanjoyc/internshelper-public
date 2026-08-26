@@ -3,17 +3,21 @@
 {% block content %}
 <header class="page-head">
   <div class="page-head-row">
-    <h1>Postings</h1>
+    <div class="page-heading">
+      <span class="page-eyebrow">Searchable archive</span>
+      <h1>Postings</h1>
+      <p class="page-sub">Search current opportunities and the historical record collected from every source.</p>
+    </div>
   </div>
-  <form class="toolbar" method="get" action="/postings">
-    <input class="input" type="search" name="q" value="{{ q }}" placeholder="Search title or company…">
-    <select class="input" name="state">
+  <form class="toolbar archive-toolbar" method="get" action="/postings" aria-label="Posting filters">
+    <label class="field archive-search"><span class="field-label">Search</span><input class="input" type="search" name="q" value="{{ q }}" placeholder="Title, company, or location…"></label>
+    <label class="field"><span class="field-label">Posting state</span><select class="input" name="state">
       {% for s in states %}<option value="{{ s }}"{% if s == state %} selected{% endif %}>{{ s | capitalize }}</option>{% endfor %}
-    </select>
-    <select class="input" name="source">
+    </select></label>
+    <label class="field"><span class="field-label">Source</span><select class="input" name="source">
       <option value="">All sources</option>
       {% for s in sources_seen %}<option value="{{ s }}"{% if s == source %} selected{% endif %}>{{ s | source_label }}</option>{% endfor %}
-    </select>
+    </select></label>
     <button class="btn btn-secondary" type="submit">Apply</button>
     <span class="toolbar-count">{{ total }} posting{{ '' if total == 1 else 's' }}</span>
   </form>
@@ -34,7 +38,7 @@
         <td>{{ r.location or "—" }}</td>
         <td>{{ m.pill(r.source_key | source_label, title=r.source_key) }}</td>
         <td>{{ m.verdict_pill(r) }}</td>
-        <td><a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
       </tr>
       {% endfor %}
     </tbody>

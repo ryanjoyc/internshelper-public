@@ -1,77 +1,101 @@
 {% import "partials/_macros.html" as m %}
 <div class="drawer-head">
-  {{ m.status_pill(r.status) }}
-  <button class="btn btn-ghost btn-sm" type="button" x-on:click="$dispatch('drawer-close')">✕</button>
+  <span class="drawer-kicker">Posting details</span>
+  <button class="btn btn-icon" type="button" aria-label="Close posting details"
+          x-on:click="$dispatch('drawer-close')">×</button>
 </div>
 
-<h2 class="focus-title">{{ r.title }}</h2>
-<p class="focus-meta">{{ r.company }}{% if r.location %} · {{ r.location }}{% endif %}
-  · <a href="{{ r.url | safe_url }}" target="_blank" rel="noopener">Open posting ↗</a></p>
-<p class="page-sub">{{ m.pill(r.source_key | source_label, title=r.source_key) }} <span class="row-age">{{ r.posted_at | release(r.first_seen) }}</span>
-  {% if not r.is_active %}{{ m.pill('closed', 'nomatch') }}{% endif %}</p>
-
-<form class="drawer-form"
-      hx-post="/board/card/{{ r.posting_id }}" hx-target="#drawer-body" hx-swap="innerHTML">
-  <input type="hidden" name="view" value="{{ view }}">
-  <label class="field">
-    <span class="field-label">Status</span>
-    <select class="input" name="status">
-      {% for s in STATUS_OPTIONS %}
-      <option value="{{ s }}"{% if s == (r.status or 'Untracked') %} selected{% endif %}>{{ s }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <label class="field">
-    <span class="field-label">Applied date</span>
-    <input class="input" type="date" name="applied_date" value="{{ r.applied_date or '' }}">
-  </label>
-  <label class="field">
-    <span class="field-label">Notes</span>
-    <textarea class="input" name="notes" rows="4">{{ r.notes or '' }}</textarea>
-  </label>
-  <div class="wizard-actions">
-    {% if saved %}<span class="page-sub">Saved.</span>{% endif %}
-    <button class="btn btn-primary" type="submit">Save</button>
+<header class="drawer-role-head">
+  <h2 class="focus-title" id="drawer-title">{{ r.title }}</h2>
+  <p class="drawer-company">{{ r.company }}</p>
+  <div class="drawer-meta" aria-label="Posting metadata">
+    {% if r.location %}<span class="pill pill--neutral">{{ r.location }}</span>{% endif %}
+    <span class="pill pill--neutral">{{ r.posted_at | release(r.first_seen) }}</span>
+    <span class="pill pill--neutral" title="{{ r.source_key }}">{{ r.source_key | source_label }}</span>
+    {% if not r.is_active %}{{ m.pill('closed', 'nomatch') }}{% endif %}
   </div>
-</form>
+  <a class="btn btn-primary drawer-original" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">
+    Open original posting <span aria-hidden="true">↗</span>
+  </a>
+</header>
 
-<div class="drawer-context">
-  {% if payload and payload.state == 'ok' and payload.description %}
-  <details class="focus-raw">
-    <summary>Description</summary>
-    <div class="peek-desc">{{ payload.description }}</div>
-  </details>
-  {% endif %}
-</div>
-
-{% if (r.status or 'Untracked') not in ('Applied', 'Interviewing', 'Offer', 'Rejected') %}
-<div class="drawer-danger" x-data="{ showFlag: false }">
-  <button class="btn btn-ghost btn-sm" x-show="!showFlag"
-          x-on:click="showFlag = true">⚑ Flag for review…</button>
-  <span x-show="showFlag" style="display: none">
-    <span class="page-sub">Something looks off (dead link, wrong info)? Parks it in the Flagged view for a double-check — no effect on ranking.</span>
-    <form class="drawer-inline-form" hx-post="/board/flag"
-          hx-target="#board-region" hx-swap="innerHTML">
-      <input type="hidden" name="posting_id" value="{{ r.posting_id }}">
-      <input class="input" type="text" name="reason" placeholder="why? e.g. link shows nothing">
-      <button class="btn btn-secondary btn-sm" type="button" x-on:click="showFlag = false">Cancel</button>
-      <button class="btn btn-primary btn-sm" type="submit">Flag</button>
-    </form>
-  </span>
-</div>
+{% if payload and payload.state == 'ok' and payload.description %}
+<section class="drawer-section" aria-labelledby="role-overview-heading">
+  <h3 id="role-overview-heading">Role overview</h3>
+  <div class="peek-desc">{{ payload.description }}</div>
+</section>
 {% endif %}
 
-<div class="drawer-danger" x-data="{ confirmDismiss: false }">
-  <button class="btn btn-ghost btn-sm btn-danger-text" x-show="!confirmDismiss"
-          x-on:click="confirmDismiss = true">Dismiss — not for me…</button>
-  <span x-show="confirmDismiss" style="display: none">
-    <span class="page-sub">Hides it from the board (undoable from the toast or the Dismissed view).</span>
-    <button class="btn btn-secondary btn-sm" x-on:click="confirmDismiss = false">Cancel</button>
-    <button class="btn btn-danger btn-sm"
-            hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
-            hx-target="#board-region" hx-swap="innerHTML">Dismiss</button>
-  </span>
-</div>
+<section class="drawer-section" aria-labelledby="application-tracking-heading"
+         x-data='{ status: {{ (r.status or "Untracked") | tojson }} }'>
+  <h3 id="application-tracking-heading">Application tracking</h3>
+  <form class="drawer-form"
+        hx-post="/board/card/{{ r.posting_id }}" hx-target="#drawer-body" hx-swap="innerHTML">
+    <input type="hidden" name="view" value="{{ view }}">
+    <div class="drawer-form-grid">
+      <label class="field">
+        <span class="field-label">Status</span>
+        <select class="input" name="status" x-model="status">
+          {% for s in STATUS_OPTIONS %}
+          <option value="{{ s }}"{% if s == (r.status or 'Untracked') %} selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field" x-show="status !== 'Untracked'" x-cloak>
+        <span class="field-label">Application date</span>
+        <input class="input" type="date" name="applied_date" value="{{ r.applied_date or '' }}">
+      </label>
+      <label class="field drawer-notes">
+        <span class="field-label">Private notes</span>
+        <textarea class="input" name="notes" rows="4"
+                  placeholder="Interview details, contacts, or reminders…">{{ r.notes or '' }}</textarea>
+      </label>
+    </div>
+    <div class="drawer-save-row">
+      <span class="save-status" role="status">{% if saved %}<span aria-hidden="true">✓</span> All changes saved locally{% else %}Changes stay on this Mac{% endif %}</span>
+      <button class="btn btn-primary" type="submit">Save changes <span class="htmx-indicator" aria-hidden="true">…</span></button>
+    </div>
+  </form>
+</section>
+
+<section class="drawer-section drawer-actions-section" aria-labelledby="posting-actions-heading">
+  <h3 id="posting-actions-heading">Posting actions</h3>
+  {% if (r.status or 'Untracked') not in ('Applied', 'Interviewing', 'Offer', 'Rejected') %}
+  <div class="drawer-action-card" x-data="{ showFlag: false }">
+    <div>
+      <strong>Something looks wrong?</strong>
+      <p>Flag for review when data looks suspicious. This does not affect ranking.</p>
+    </div>
+    <button class="btn btn-secondary btn-sm" type="button" x-show="!showFlag"
+            x-on:click="showFlag = true">Flag for investigation</button>
+    <form class="drawer-inline-form" x-show="showFlag" x-cloak hx-post="/board/flag"
+          hx-target="#board-region" hx-swap="innerHTML">
+      <input type="hidden" name="posting_id" value="{{ r.posting_id }}">
+      <label class="sr-only" for="flag-reason-{{ r.posting_id | dom_id }}">Reason for flagging</label>
+      <input class="input" id="flag-reason-{{ r.posting_id | dom_id }}" type="text" name="reason"
+             placeholder="Why? e.g. the link shows nothing">
+      <button class="btn btn-ghost btn-sm" type="button" x-on:click="showFlag = false">Cancel</button>
+      <button class="btn btn-primary btn-sm" type="submit">Flag</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="drawer-action-card drawer-action-card--danger" x-data="{ confirmDismiss: false }">
+    <div>
+      <strong>Not relevant?</strong>
+      <p>Dismiss this role from the Board. You can restore it later.</p>
+    </div>
+    <button class="btn btn-danger-text btn-sm" type="button" x-show="!confirmDismiss"
+            x-on:click="confirmDismiss = true">Dismiss posting</button>
+    <div class="confirm-inline" x-show="confirmDismiss" x-cloak>
+      <span>This hides the role and creates an Undo action.</span>
+      <button class="btn btn-ghost btn-sm" type="button" x-on:click="confirmDismiss = false">Cancel</button>
+      <button class="btn btn-danger btn-sm"
+              hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+              hx-target="#board-region" hx-swap="innerHTML">Confirm dismissal</button>
+    </div>
+  </div>
+</section>
 
 {% if oob_board %}
 <div id="board-region" hx-swap-oob="innerHTML">

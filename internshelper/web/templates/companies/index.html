@@ -2,20 +2,26 @@
 {% block content %}
 <header class="page-head">
   <div class="page-head-row">
-    <h1>Companies</h1>
+    <div class="page-heading">
+      <span class="page-eyebrow">Company intelligence</span>
+      <h1>Companies</h1>
+      <p class="page-sub">Manage where companies appear on your Board and which careers boards internsHELPer collects.</p>
+    </div>
   </div>
-  <p class="page-sub">Company browsing priority is separate from board resolution.
-  You control Top targets and Known companies; discovery suggestions wait for approval.</p>
 </header>
 
 <div id="company-list" class="source-list">
   {% include "companies/_list.html" %}
 </div>
 
-<section class="card wizard" id="company-add">
+<section class="card wizard company-add" id="company-add" aria-labelledby="company-add-title">
+  <div>
+    <h2 class="wizard-title" id="company-add-title">Add a company for board resolution</h2>
+    <p class="page-sub">This begins careers-board research. It does not change the company’s Board group.</p>
+  </div>
   <form hx-post="/companies/add" hx-target="#company-list" hx-swap="innerHTML">
-    <label class="field-label" for="company-name">Add a company</label>
-    <div class="page-head-row">
+    <label class="field-label" for="company-name">Company name</label>
+    <div class="company-add-form">
       <input class="input" id="company-name" name="name" placeholder="e.g. Goldman Sachs" required>
       <button class="btn btn-primary" type="submit">Add</button>
     </div>

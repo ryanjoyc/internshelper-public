@@ -17,6 +17,7 @@ kept in Git history, not beside active guidance.
 | Document | Use it for |
 |---|---|
 | [`source-coverage.md`](source-coverage.md) | Supported connectors, configured footprint, known boundaries, and connector acceptance criteria. |
+| [`ui-design-system.md`](ui-design-system.md) | Approved interface principles, tokens, component contracts, responsive behavior, and verification criteria. |
 | [`../config/profile.md`](../config/profile.md) | the user's broad role-fit guidance for agent-assisted posting audits. |
 
 ## Documentation rules

@@ -46,7 +46,7 @@
         <td class="cell-strong">{{ r.title }}</td>
         <td>{{ r.flag_reason or "—" }}</td>
         <td class="cell-num">{{ r.flagged_at | release }}</td>
-        <td><a class="btn btn-ghost btn-sm" title="Open the posting" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
         <td>
           <button class="btn btn-secondary btn-sm" hx-post="/board/unflag"
                   hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
@@ -70,32 +70,32 @@
   <p class="dup-hint">These share a company and title. Check the locations/links: merge if they're the same job, keep separate if they're distinct roles.</p>
   {% for g in possible %}
   {% set ids = g.rows | map(attribute='posting_id') | join(',') %}
+  {% set survivor = g.rows | selectattr('posting_id', 'equalto', g.survivor_id) | first %}
   <section class="dup-group">
     <div class="dup-group-head">
-      <span class="dup-group-co">{{ g.company }}</span>
-      <span class="dup-group-title">{{ g.title }}</span>
-      <span class="dup-group-count">{{ g.rows | length }} copies</span>
+      <div><span class="dup-group-co">{{ g.company }}</span><span class="dup-group-title">{{ g.title }}</span></div>
+      <span class="dup-group-count">{{ g.rows | length }} possible copies</span>
     </div>
-    <table class="table dup-table">
-      <tbody>
-        {% for r in g.rows %}
-        <tr>
-          <td class="cell-strong">{{ r.company }}{% if r.is_survivor %} <span class="dup-keep-badge">keep</span>{% endif %}</td>
-          <td>{{ r.title }}</td>
-          <td>{{ r.location or "—" }}</td>
-          <td class="dup-src">{{ r.source_key.split(':')[0] }}</td>
-          <td><a class="btn btn-ghost btn-sm" title="Open the posting" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="dup-candidates">
+      {% for r in g.rows %}
+      <article class="dup-candidate{% if r.posting_id == g.survivor_id %} is-recommended{% endif %}">
+        <div class="dup-candidate-source">{{ r.source_key | source_label }}</div>
+        {% if r.posting_id == g.survivor_id %}<span class="dup-keep-badge">Recommended survivor</span>{% endif %}
+        <strong>{{ r.title }}</strong>
+        <span>{{ r.location or "Location unavailable" }}</span>
+        <a class="btn btn-ghost btn-sm" aria-label="Open {{ r.title }} from {{ r.source_key | source_label }}"
+           href="{{ r.url | safe_url }}" target="_blank" rel="noopener">Open original <span aria-hidden="true">↗</span></a>
+      </article>
+      {% endfor %}
+    </div>
     <div class="dup-group-actions">
       <button class="btn btn-primary btn-sm" hx-post="/board/dedup/confirm"
               hx-vals='{"survivor_id": {{ g.survivor_id | tojson }}, "posting_ids": {{ ids | tojson }}}'
-              hx-target="#board-region" hx-swap="innerHTML">Merge — keep {{ g.company }}</button>
+              hx-target="#board-region" hx-swap="innerHTML">Merge and keep {{ survivor.source_key | source_label }} record</button>
       <button class="btn btn-secondary btn-sm" hx-post="/board/dedup/keep"
               hx-vals='{"posting_ids": {{ ids | tojson }}}'
               hx-target="#board-region" hx-swap="innerHTML">Keep separate</button>
+      <span class="dup-reversible">Either decision can be reversed.</span>
     </div>
   </section>
   {% endfor %}
@@ -114,7 +114,7 @@
           <td>{{ r.company }}</td>
           <td class="cell-strong">{{ r.title }}</td>
           <td>{{ r.location or "—" }}</td>
-          <td><a class="btn btn-ghost btn-sm" title="Open the posting" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+          <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
           <td>
             <button class="btn btn-secondary btn-sm" hx-post="/board/dedup/undo"
                     hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
@@ -140,7 +140,8 @@
     </thead>
     <tbody>
       {% for g in inbox_groups %}{% for r in g.rows %}
-      <tr class="table-row-click" hx-get="/board/card/{{ r.posting_id }}?view=table"
+      <tr class="table-row-click" data-drawer-trigger role="button" tabindex="0"
+          aria-label="Open {{ r.title }} at {{ r.company }}" hx-get="/board/card/{{ r.posting_id }}?view=table"
           hx-target="#drawer-body" hx-swap="innerHTML">
         <td>{{ m.status_pill(r.status) }}</td>
         <td>{{ g.group | replace('_', ' ') | title }}</td>
@@ -148,14 +149,15 @@
         <td class="cell-strong">{{ r.title }}</td>
         <td>{{ r.location or "—" }}</td>
         <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
-        <td><a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
-        <td><button class="btn btn-ghost btn-sm" title="Dismiss" x-on:click.stop
+        <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        <td><button class="btn btn-icon btn-sm" aria-label="Dismiss {{ r.title }}" title="Dismiss" x-on:click.stop
                     hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
-                    hx-target="#board-region" hx-swap="innerHTML">✕</button></td>
+                    hx-target="#board-region" hx-swap="innerHTML">×</button></td>
       </tr>
       {% endfor %}{% endfor %}
       {% for lane in pipeline_lanes %}{% for r in columns[lane] %}
-      <tr class="table-row-click" hx-get="/board/card/{{ r.posting_id }}?view=table"
+      <tr class="table-row-click" data-drawer-trigger role="button" tabindex="0"
+          aria-label="Open {{ r.title }} at {{ r.company }}" hx-get="/board/card/{{ r.posting_id }}?view=table"
           hx-target="#drawer-body" hx-swap="innerHTML">
         <td>{{ m.status_pill(r.status) }}</td>
         <td>Pipeline</td>
@@ -163,7 +165,7 @@
         <td class="cell-strong">{{ r.title }}</td>
         <td>{{ r.location or "—" }}</td>
         <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
-        <td><a class="btn btn-ghost btn-sm" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
         <td></td>
       </tr>
       {% endfor %}{% endfor %}
@@ -172,37 +174,40 @@
 </div>
 {% endif %}
 {% else %}
-{% set n_hidden = hidden_lanes | length %}
-{# 348 = the Inbox track's 300px minimum + the four 12px column gaps #}
-<div class="board board--inbox"
-     style="grid-template-columns: minmax(300px, 1.4fr){% for lane in pipeline_lanes %} {{ '34px' if lane in hidden_lanes else 'minmax(185px, 1fr)' }}{% endfor %}; min-width: {{ 348 + n_hidden * 34 + (4 - n_hidden) * 185 }}px">
-  <section class="board-col board-col--inbox">
+<div class="board board--inbox" data-board-workspace>
+  <section class="board-col board-col--inbox" aria-labelledby="inbox-heading">
     <header class="board-col-head">
-      <span class="dot dot--lane-inbox"></span>
-      <span>Inbox</span>
+      <span class="board-col-title" id="inbox-heading">Company inbox</span>
       <span class="pill pill--neutral pill--count" id="col-count-inbox">{{ inbox_total }}</span>
+      <span class="board-col-note">Browse by priority group</span>
     </header>
     {% for tier in inbox_tiers %}
     <section class="tier-section tier-section--{{ tier.key }}"
              x-data="{ open: tierOpen('group:{{ tier.key }}', {{ 'true' if tier.open else 'false' }}) }">
-      <div class="tier-head" x-on:click="open = !open; tierSave('group:{{ tier.key }}', open)">
-        <span class="tier-chevron" :class="{ 'is-open': open }">▸</span>
+      <button class="tier-head" type="button" :aria-expanded="open"
+              x-on:click="open = !open; tierSave('group:{{ tier.key }}', open)">
+        <span class="tier-chevron" :class="{ 'is-open': open }" aria-hidden="true">▸</span>
         <span class="tier-name">{{ tier.label }}</span>
         <span class="tier-count">{{ tier.company_count }} co · {{ tier.posting_count }} jobs</span>
-      </div>
+      </button>
       <p class="tier-hint">{{ tier.hint }}</p>
       <div class="tier-body" x-show="open" x-collapse.duration.200ms{% if not tier.open %} style="display: none"{% endif %}>
         {% for g in tier.groups %}
         <section class="co-group" x-data="{ open: tierOpen('co:{{ g.slug }}', false) }">
-          <div class="co-head" x-on:click="open = !open; tierSave('co:{{ g.slug }}', open)">
-            <span class="tier-chevron" :class="{ 'is-open': open }">▸</span>
-            <span class="co-name">{{ g.company }}</span>
-            <span class="tier-count">{{ g.rows | length }}</span>
-            <span class="co-newest">newest {{ g.newest | release }}</span>
+          <div class="co-head">
+            <button class="co-toggle" type="button" :aria-expanded="open"
+                    x-on:click="open = !open; tierSave('co:{{ g.slug }}', open)">
+              <span class="company-mark" aria-hidden="true">{{ g.company[:1] }}</span>
+              <span class="co-identity">
+                <span class="co-name">{{ g.company }}</span>
+                <span class="co-summary">{{ g.rows | length }} active role{{ '' if g.rows | length == 1 else 's' }} · newest {{ g.newest | release }}</span>
+              </span>
+              <span class="tier-chevron" :class="{ 'is-open': open }" aria-hidden="true">▸</span>
+            </button>
             <form class="co-group-form" hx-post="/board/company-group"
                   hx-target="#board-region" hx-swap="innerHTML" x-on:click.stop>
               <input type="hidden" name="company" value="{{ g.company }}">
-              <select name="group" aria-label="Company group"
+              <select name="group" aria-label="{{ g.company }} Board group"
                       x-on:change="$el.form.requestSubmit()">
                 {% for option in company_group_options %}
                 {% if option.key != 'discovery' or g.group == 'discovery' %}
@@ -226,24 +231,33 @@
     </section>
     {% endfor %}
   </section>
+  <section class="board-pipeline" aria-labelledby="pipeline-heading">
+    <header class="pipeline-head">
+      <div>
+        <h2 id="pipeline-heading">Application pipeline</h2>
+        <p>Drag roles between stages</p>
+      </div>
+    </header>
+    <div class="pipeline-grid">
   {% for lane in pipeline_lanes %}
   {% if lane in hidden_lanes %}
-  <section class="board-col board-col--strip" title="Show {{ lane }}"
-           hx-post="/board/lane" hx-vals='{"lane": {{ lane | tojson }}}'
-           hx-target="#board-region" hx-swap="innerHTML">
-    <span class="dot dot--lane-{{ lane | lower }}"></span>
+  <button class="board-col board-col--lane board-col--strip" type="button" aria-label="Show {{ lane }} lane"
+          hx-post="/board/lane" hx-vals='{"lane": {{ lane | tojson }}}'
+          hx-target="#board-region" hx-swap="innerHTML">
+    <span class="dot dot--lane-{{ lane | lower }}" aria-hidden="true"></span>
     <span class="strip-label">{{ lane }}</span>
     <span class="pill pill--neutral pill--count" id="col-count-{{ lane | lower }}">{{ columns[lane] | length }}</span>
-  </section>
+    <span class="strip-action">Expand</span>
+  </button>
   {% else %}
-  <section class="board-col">
+  <section class="board-col board-col--lane">
     <header class="board-col-head">
-      <span class="dot dot--lane-{{ lane | lower }}"></span>
-      <span>{{ lane }}</span>
+      <span class="dot dot--lane-{{ lane | lower }}" aria-hidden="true"></span>
+      <span class="board-col-title">{{ lane }}</span>
       <span class="pill pill--neutral pill--count" id="col-count-{{ lane | lower }}">{{ columns[lane] | length }}</span>
-      <button class="btn btn-ghost btn-sm lane-hide" title="Hide this lane"
+      <button class="btn btn-icon btn-sm lane-hide" aria-label="Hide {{ lane }} lane"
               hx-post="/board/lane" hx-vals='{"lane": {{ lane | tojson }}}'
-              hx-target="#board-region" hx-swap="innerHTML">›</button>
+              hx-target="#board-region" hx-swap="innerHTML">−</button>
     </header>
     <ul class="board-cards" data-status="{{ lane }}">
       {% for r in columns[lane] %}{% include "board/_card.html" %}{% endfor %}
@@ -251,6 +265,8 @@
   </section>
   {% endif %}
   {% endfor %}
+    </div>
+  </section>
 </div>
 {% endif %}
 {% if oob_nav %}{% include "partials/_nav_oob.html" %}{% endif %}

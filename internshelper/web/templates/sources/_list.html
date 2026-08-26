@@ -1,40 +1,56 @@
 {% import "partials/_macros.html" as m %}
 {% if entries %}
 {% for e in entries %}
-<div class="card source-card" id="source-{{ e.source_key | dom_id }}">
+<article class="card source-card" id="source-{{ e.source_key | dom_id }}">
+  <div class="source-mark" aria-hidden="true">{{ (e.label or e.type)[:1] | upper }}</div>
   <div class="source-main">
     <div class="source-label">{{ e.label or e.source_key }}</div>
     <div class="source-key">{{ e.source_key }}</div>
   </div>
-  <div class="source-side" x-data="{ confirmRm: false }">
+  <div class="source-side">
     {{ m.pill(e.type) }}
-    {% if e.title_must_match %}{% for t in e.title_must_match %}{{ m.pill(t) }}{% endfor %}{% endif %}
-    <button class="btn btn-ghost btn-sm btn-danger-text" x-show="!confirmRm"
-            x-on:click="confirmRm = true">Remove</button>
-    <span x-show="confirmRm" style="display: none">
-      <button class="btn btn-secondary btn-sm" x-on:click="confirmRm = false">Cancel</button>
-      <button class="btn btn-danger btn-sm"
-              hx-post="/sources/remove" hx-vals='{"source_key": {{ e.source_key | tojson }}}'
-              hx-target="#source-list" hx-swap="innerHTML">Remove {{ e.source_key }}</button>
-    </span>
+    <details class="source-manage" x-data="{ confirmRm: false }">
+      <summary class="btn btn-secondary btn-sm">Manage</summary>
+      <div class="source-manage-popover">
+        {% if e.title_must_match %}
+        <div class="source-rules">
+          <strong>Title must match</strong>
+          <div>{% for t in e.title_must_match %}{{ m.pill(t) }}{% endfor %}</div>
+        </div>
+        {% else %}
+        <p class="source-rule-empty">No title guard configured.</p>
+        {% endif %}
+        <button class="btn btn-danger-text btn-sm" type="button" x-show="!confirmRm"
+                x-on:click="confirmRm = true">Remove source</button>
+        <div class="confirm-stack" x-show="confirmRm" x-cloak>
+          <p>Stop future collection from this source? Historical postings remain searchable.</p>
+          <div>
+            <button class="btn btn-ghost btn-sm" type="button" x-on:click="confirmRm = false">Cancel</button>
+            <button class="btn btn-danger btn-sm" type="button"
+                    hx-post="/sources/remove" hx-vals='{"source_key": {{ e.source_key | tojson }}}'
+                    hx-target="#source-list" hx-swap="innerHTML">Confirm removal</button>
+          </div>
+        </div>
+      </div>
+    </details>
   </div>
-</div>
+</article>
 {% endfor %}
 {% else %}
-<p class="page-sub">No sources configured yet — add a job board below.</p>
+<div class="empty-state empty-state--compact"><p class="empty-title">No sources configured</p><p class="empty-sub">Add a careers board to begin collecting postings.</p></div>
 {% endif %}
 
 {% if flash %}
 <div hx-swap-oob="beforeend:#toast-region">
-  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
-    <span class="toast-text">{{ flash }}</span>
+  <div class="toast" role="status" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
+    <span class="toast-mark" aria-hidden="true">✓</span><span class="toast-text">{{ flash }}</span>
   </div>
 </div>
 {% endif %}
 {% if flash_error %}
 <div hx-swap-oob="beforeend:#toast-region">
-  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
-    <span class="toast-text">{{ flash_error }}</span>
+  <div class="toast toast--error" role="alert" x-data="{ t: setTimeout(() => $el.remove(), 7000) }">
+    <span class="toast-mark" aria-hidden="true">!</span><span class="toast-text">{{ flash_error }}</span>
   </div>
 </div>
 {% endif %}

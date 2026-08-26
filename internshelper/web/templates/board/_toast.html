@@ -1,7 +1,8 @@
 {# One generic undoable toast: text + an undo form posting `fields` to `undo_url`. #}
 <div hx-swap-oob="beforeend:#toast-region">
-  <div class="toast" x-data="{ t: setTimeout(() => $el.remove(), 8000) }"
+  <div class="toast" role="status" x-data="{ t: setTimeout(() => $el.remove(), 8000) }"
        x-on:htmx:after-request="clearTimeout(t); $el.remove()">
+    <span class="toast-mark" aria-hidden="true">✓</span>
     <span class="toast-text">{{ toast.text }}</span>
     <form hx-post="{{ toast.undo_url }}" hx-target="#board-region" hx-swap="innerHTML">
       {% for name, value in toast.fields.items() %}

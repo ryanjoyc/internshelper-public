@@ -3,30 +3,46 @@
 {% block content %}
 <header class="page-head">
   <div class="page-head-row">
-    <h1>Board</h1>
-    <div class="seg">
-      <a class="seg-item{% if view == 'board' %} is-active{% endif %}" href="/board">Board</a>
-      <a class="seg-item{% if view == 'table' %} is-active{% endif %}" href="/board?view=table">Table</a>
-      <a class="seg-item{% if view == 'dismissed' %} is-active{% endif %}" href="/board?show=dismissed">Dismissed</a>
-      <a class="seg-item{% if view == 'flagged' %} is-active{% endif %}" href="/board?show=flagged">Flagged{% if flagged_count %} ({{ flagged_count }}){% endif %}</a>
-      <a class="seg-item{% if view == 'duplicates' %} is-active{% endif %}" href="/board?show=duplicates">Duplicates{% if dup_count %} ({{ dup_count }}){% endif %}</a>
+    <div class="page-heading">
+      <span class="page-eyebrow">Company-first workspace</span>
+      <h1>Your opportunity board</h1>
+      <p class="page-sub">Browse by company, then move the roles worth pursuing into your application pipeline.</p>
     </div>
-    {% if view != 'dismissed' and (hygiene.closed or hygiene.leaks) %}
     <div class="page-head-actions">
+      <div class="seg" aria-label="Board presentation">
+        <a class="seg-item{% if view == 'board' %} is-active{% endif %}" href="/board"{% if view == 'board' %} aria-current="page"{% endif %}>Board</a>
+        <a class="seg-item{% if view == 'table' %} is-active{% endif %}" href="/board?view=table"{% if view == 'table' %} aria-current="page"{% endif %}>Table</a>
+      </div>
+      <details class="view-menu">
+        <summary class="btn btn-secondary">Exceptions{% if view in ('dismissed', 'flagged', 'duplicates') %} · {{ view | title }}{% elif flagged_count or dup_count %}<span class="pill pill--neutral pill--count">{{ flagged_count + dup_count }}</span>{% endif %}</summary>
+        <div class="view-menu-popover">
+          <a{% if view == 'dismissed' %} class="is-active" aria-current="page"{% endif %} href="/board?show=dismissed"><span>Dismissed</span><small>Roles hidden from the Board</small></a>
+          <a{% if view == 'flagged' %} class="is-active" aria-current="page"{% endif %} href="/board?show=flagged"><span>Flagged{% if flagged_count %} ({{ flagged_count }}){% endif %}</span><small>Suspicious data to investigate</small></a>
+          <a{% if view == 'duplicates' %} class="is-active" aria-current="page"{% endif %} href="/board?show=duplicates"><span>Duplicates{% if dup_count %} ({{ dup_count }}){% endif %}</span><small>Possible cross-source matches</small></a>
+        </div>
+      </details>
+      {% if view != 'dismissed' and (hygiene.closed or hygiene.leaks) %}
       {% if hygiene.closed %}
-      <button class="btn btn-ghost btn-sm" title="These vanished from their source boards"
+      <button class="btn btn-secondary btn-sm" title="These vanished from their source boards"
               hx-post="/board/hygiene-closed" hx-target="#board-region" hx-swap="innerHTML">
         Dismiss {{ hygiene.closed }} closed</button>
       {% endif %}
       {% if hygiene.leaks %}
-      <button class="btn btn-ghost btn-sm" title="These fail their source's current title guard"
+      <button class="btn btn-secondary btn-sm" title="These fail their source's current title guard"
               hx-post="/board/hygiene-leaks" hx-target="#board-region" hx-swap="innerHTML">
         Dismiss {{ hygiene.leaks }} guard leak{{ '' if hygiene.leaks == 1 else 's' }}</button>
       {% endif %}
+      {% endif %}
     </div>
-    {% endif %}
   </div>
 </header>
+
+{% if view == 'board' %}
+<div class="board-mode seg" aria-label="Board area">
+  <button class="seg-item is-active" type="button" data-board-panel="inbox">Opportunities</button>
+  <button class="seg-item" type="button" data-board-panel="pipeline">Pipeline</button>
+</div>
+{% endif %}
 
 <div id="board-region">
   {% include "board/_region.html" %}

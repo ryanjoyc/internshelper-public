@@ -10,7 +10,7 @@
 {% if not row.is_active %}<span class="pill pill--nomatch">closed</span>
 {%- elif row.verdict == 'match' %}<span class="pill pill--match">match</span>
 {%- elif row.verdict == 'no_match' %}<span class="pill pill--nomatch">archived</span>
-{%- else %}<span class="pill pill--pending">pending</span>{% endif %}
+{%- else %}<span class="pill pill--pending" title="Stored and visible; no approval is required">collected</span>{% endif %}
 {%- endmacro %}
 
 {% macro stat_tile(label, value) -%}
