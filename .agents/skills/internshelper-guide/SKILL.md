@@ -117,7 +117,7 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - **`review`** — `list-inbox [--tier T] [--limit N]` · `dismiss <id> [--reason ...]` · `undo-dismiss <id>` · `pin <id> --tier T` · `unpin <id>` · `flag <id> [--reason ...]` / `unflag <id>` / `list-flagged` (the flagged-for-review queue — `investigate-flags` drives these) · `applied` (applied posting_ids — the `deep-scan-source` guard) · `list-leaks` / `clear-leaks` (inbox rows failing their source's *current* title guard)
 - **`ranking`** — `retrain` (rescore all inbox rows) · `show` (stored model summary) · `explain <posting_id>` (score + per-feature contributions) · `labels` (the unified training set, JSON) · `eval [--holdout 0.25] [--k 10,25,50]` (time-ordered backtest over all label signals)
 - **`companies`** — `add <name>` · `list [--json]` · `propose <name> --url ... [--count N] [--evidence ...]` · `approve <name>` · `reject <name>` · `resolve-write <name> <source_key>` · `mark-no-board <name>` (legacy `set-tier` is retained but ignored by Board grouping)
-- **`companygroups`** — `list` · `set <name> top_target|known` · `clear <name>` · `propose <name> discovery --reason ... --evidence ...` · `approve <name>` · `reject <name>` (Discovery cannot bypass proposal approval)
+- **`companygroups`** — `list` · `set <name> top_target|known` · `clear <name>` · `propose <name> discovery --reason ... --evidence ...` · `approve <name>` · `reject <name>` (Discovery cannot bypass proposal approval; mutating commands immediately synchronize stored posting groups)
 - **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
 - **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.
 - **`web`** — `[--port 8510]`; serves the web UI on 127.0.0.1. Needs the `web` extra.
@@ -161,6 +161,9 @@ python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev,web]"
 bash scripts/bootstrap.sh
 
 .venv/bin/python -m pytest                              # tests (fixtures, no live calls)
+.venv/bin/python -m pip install -e ".[ui]"             # optional browser-test dependencies
+.venv/bin/python -m playwright install chromium        # one-time browser install
+.venv/bin/python -m pytest -m browser                  # Playwright responsive/keyboard checks
 .venv/bin/python -m internshelper.run                  # one collection cycle
 .venv/bin/python -m internshelper.web                  # web UI → http://127.0.0.1:8510
 .venv/bin/python -m internshelper.appbundle --install  # Dock app → ~/Applications (macOS)
@@ -178,7 +181,9 @@ bash scripts/bootstrap.sh
   after wake (`RunAtLoad=true`).
 - The curation *judgment* (dismiss/flag/apply, made in-app or by the agent) is the deliberate
   human-in-the-loop step; the mechanics it drives are unit-tested — the `review` CLI, and the
-  web UI via FastAPI `TestClient` (`tests/test_web*.py`; fixtures in `tests/conftest.py`).
+  web UI via FastAPI `TestClient` (`tests/test_web*.py`; fixtures in `tests/conftest.py`). The
+  `ui` extra enables optional Playwright checks (`pytest -m browser`); normal pytest runs exclude
+  that marker.
 - Application/dismiss mutations refresh ranking best-effort; company-group changes rewrite all
   matching posting group values directly. Dismissed = `verdict='no_match'` (old plumbing).
 
@@ -199,4 +204,8 @@ bash scripts/bootstrap.sh
   posting live (ATS JSON-API fallbacks), re-enumerates its source to compare URLs, then unflags
   false alarms, dismisses confirmed-gone postings, and diagnoses connector/URL bugs. The deepest
   per-posting pass of the three.
+- **`internshelper-engineering`** — connects the personal `pstack-codex` engineering workflow to
+  this repository's state, code-review graph, venv, domain boundaries, UI verification, and
+  end-of-session tracking rules. It coordinates substantial code work; task-specific collection
+  and review skills keep their own authority boundaries.
 - **`update-internshelper-guide`** — refresh THIS guide after a structural change.

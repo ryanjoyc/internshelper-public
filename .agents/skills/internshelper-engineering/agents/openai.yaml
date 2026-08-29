@@ -1,0 +1,4 @@
+interface:
+  display_name: "internsHELPer engineering"
+  short_description: "Apply verified engineering workflows to internsHELPer"
+  default_prompt: "Use $internshelper-engineering to complete and verify this internsHELPer task."
