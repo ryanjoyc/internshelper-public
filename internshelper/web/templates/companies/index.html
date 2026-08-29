@@ -10,16 +10,13 @@
   </div>
 </header>
 
-<div id="company-list" class="source-list">
-  {% include "companies/_list.html" %}
-</div>
-
 <section class="card wizard company-add" id="company-add" aria-labelledby="company-add-title">
   <div>
-    <h2 class="wizard-title" id="company-add-title">Add a company for board resolution</h2>
+    <h2 class="wizard-title" id="company-add-title">Add to careers-board resolution</h2>
     <p class="page-sub">This begins careers-board research. It does not change the company’s Board group.</p>
   </div>
-  <form hx-post="/companies/add" hx-target="#company-list" hx-swap="innerHTML">
+  <form hx-post="/companies/add" hx-target="#company-list" hx-swap="innerHTML"
+        data-focus-after-swap="#company-list">
     <label class="field-label" for="company-name">Company name</label>
     <div class="company-add-form">
       <input class="input" id="company-name" name="name" placeholder="e.g. Goldman Sachs" required>
@@ -27,4 +24,8 @@
     </div>
   </form>
 </section>
+
+<div id="company-list" class="source-list" tabindex="-1">
+  {% include "companies/_list.html" %}
+</div>
 {% endblock %}

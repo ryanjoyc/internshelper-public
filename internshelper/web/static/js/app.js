@@ -51,6 +51,154 @@ function initBoardPanel() {
   });
 }
 
+/* ---------- disclosure popovers ---------- */
+
+function closePopovers(except) {
+  document.querySelectorAll("details[data-popover][open]").forEach(function (details) {
+    if (details !== except) details.removeAttribute("open");
+  });
+}
+
+document.addEventListener("click", function (event) {
+  closePopovers(event.target.closest("details[data-popover]"));
+});
+
+document.addEventListener("toggle", function (event) {
+  var details = event.target;
+  if (details.matches && details.matches("details[data-popover][open]")) {
+    closePopovers(details);
+  }
+}, true);
+
+document.addEventListener("keydown", function (event) {
+  if (event.key !== "Escape") return;
+  var details = event.target.closest("details[data-popover]") ||
+    document.querySelector("details[data-popover][open]");
+  if (!details || !details.open) return;
+  event.preventDefault();
+  details.removeAttribute("open");
+  var summary = details.querySelector(":scope > summary");
+  if (summary) summary.focus();
+});
+
+/* ---------- pipeline quick status ---------- */
+
+var quickStatusFocusId = null;
+var quickStatusFocusLane = null;
+var replacementFocusKey = null;
+var swapFocusSelector = null;
+
+function closeQuickStatuses(except) {
+  document.querySelectorAll("details[data-quick-status][open]").forEach(function (details) {
+    if (details !== except) details.removeAttribute("open");
+  });
+}
+
+function restoreQuickStatusFocus() {
+  if (!quickStatusFocusId) return;
+  var postingId = quickStatusFocusId;
+  var targetLane = quickStatusFocusLane;
+  quickStatusFocusId = null;
+  quickStatusFocusLane = null;
+  var card = Array.prototype.find.call(
+    document.querySelectorAll(".board-card[data-id]"),
+    function (candidate) { return candidate.dataset.id === postingId; }
+  );
+  var trigger = card && card.querySelector("[data-status-trigger]");
+  if (!trigger || trigger.offsetParent === null) {
+    trigger = Array.prototype.find.call(
+      document.querySelectorAll("[data-lane-strip]"),
+      function (candidate) { return candidate.dataset.laneStrip === targetLane; }
+    );
+  }
+  if (!trigger) trigger = document.querySelector("main#page");
+  if (trigger) window.requestAnimationFrame(function () { trigger.focus(); });
+}
+
+function restoreReplacementFocus() {
+  var selector = swapFocusSelector;
+  swapFocusSelector = null;
+  if (selector) {
+    var focusTarget = function () {
+      var target = document.querySelector(selector);
+      if (target) target.focus();
+    };
+    window.requestAnimationFrame(focusTarget);
+    window.setTimeout(focusTarget, 75);
+  }
+  if (!replacementFocusKey) return;
+  var key = replacementFocusKey;
+  replacementFocusKey = null;
+  var focusControl = function () {
+    var control = Array.prototype.find.call(
+      document.querySelectorAll("[data-replacement-focus]"),
+      function (candidate) {
+        return candidate.dataset.replacementFocus === key && candidate.tabIndex >= 0;
+      }
+    );
+    if (control) control.focus();
+  };
+  window.requestAnimationFrame(focusControl);
+  window.setTimeout(focusControl, 75);
+}
+
+function clearPendingReplacementFocus() {
+  quickStatusFocusId = null;
+  quickStatusFocusLane = null;
+  replacementFocusKey = null;
+  swapFocusSelector = null;
+}
+
+function positionQuickStatus(details) {
+  details.classList.remove("is-above");
+  if (!details.open) return;
+  window.requestAnimationFrame(function () {
+    var trigger = details.querySelector("[data-status-trigger]");
+    var popover = details.querySelector(".quick-status-popover");
+    if (!trigger || !popover) return;
+    var triggerBox = trigger.getBoundingClientRect();
+    var popoverBox = popover.getBoundingClientRect();
+    var roomAbove = triggerBox.top;
+    var roomBelow = window.innerHeight - triggerBox.bottom;
+    if (popoverBox.bottom > window.innerHeight - 12 && roomAbove > roomBelow) {
+      details.classList.add("is-above");
+    }
+  });
+}
+
+document.addEventListener("click", function (event) {
+  var current = event.target.closest("details[data-quick-status]");
+  closeQuickStatuses(current);
+});
+
+document.addEventListener("toggle", function (event) {
+  var details = event.target;
+  if (!details.matches || !details.matches("details[data-quick-status]")) return;
+  positionQuickStatus(details);
+}, true);
+
+document.addEventListener("change", function (event) {
+  if (!event.target.matches("[data-quick-status-form] input[name='status']")) return;
+  var form = event.target.closest("[data-quick-status-form]");
+  var notes = form.querySelector("[data-status-notes]");
+  var submit = form.querySelector("[data-status-submit]");
+  notes.hidden = false;
+  submit.disabled = false;
+  submit.textContent = "Move to " + event.target.value;
+  positionQuickStatus(form.closest("details[data-quick-status]"));
+});
+
+document.addEventListener("keydown", function (event) {
+  if (event.key !== "Escape") return;
+  var details = event.target.closest("details[data-quick-status]");
+  if (!details || !details.open) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  details.removeAttribute("open");
+  var trigger = details.querySelector("[data-status-trigger]");
+  if (trigger) trigger.focus();
+});
+
 /* ---------- keyboard selection and semantic click helpers ---------- */
 
 var selected = -1;
@@ -67,7 +215,8 @@ function selectCard(index) {
   index = Math.max(0, Math.min(index, cards.length - 1));
   cards.forEach(function (card) { card.classList.remove("is-selected"); });
   cards[index].classList.add("is-selected");
-  cards[index].focus({ preventScroll: true });
+  var opener = cards[index].querySelector("[data-drawer-trigger]");
+  if (opener) opener.focus({ preventScroll: true });
   cards[index].scrollIntoView({ block: "nearest" });
   selected = index;
 }
@@ -103,7 +252,10 @@ document.addEventListener("keydown", function (event) {
     if (event.key === "Escape") target.blur();
     return;
   }
-  if (target.closest("button, a, [contenteditable='true']")) return;
+  var inboxDrawerTrigger = target.matches("[data-drawer-trigger]") &&
+    target.closest(".board-col--inbox");
+  if (target.closest("button, a, summary, details, [contenteditable='true']") &&
+      !inboxDrawerTrigger) return;
   if (!document.querySelector(".board-col--inbox")) return;
 
   switch (event.key) {
@@ -112,7 +264,7 @@ document.addEventListener("keydown", function (event) {
     case "x": clickWithin(selectedCard(), ".card-dismiss"); break;
     case "f": clickWithin(selectedCard(), ".card-flag"); break;
     case "u": undoNewestToast(); break;
-    case "o": if (selectedCard()) selectedCard().click(); break;
+    case "o": clickWithin(selectedCard(), "[data-drawer-trigger]"); break;
     case "Escape":
       inboxCards().forEach(function (card) { card.classList.remove("is-selected"); });
       selected = -1;
@@ -123,16 +275,41 @@ document.addEventListener("keydown", function (event) {
 /* ---------- posting drawer focus, inert background, and restoration ---------- */
 
 var drawerOpener = null;
+var drawerOpenerPostingId = null;
 var drawerOpen = false;
 
-document.addEventListener("pointerdown", function (event) {
+document.addEventListener("click", function (event) {
   var trigger = event.target.closest("[data-drawer-trigger]");
-  if (trigger) drawerOpener = trigger;
-});
+  if (trigger) {
+    drawerOpener = trigger;
+    drawerOpenerPostingId = trigger.dataset.postingId || null;
+  }
+}, true);
 
-document.addEventListener("keydown", function (event) {
-  if ((event.key === "Enter" || event.key === " ") &&
-      event.target.matches("[data-drawer-trigger]")) drawerOpener = event.target;
+function matchingDrawerTrigger(postingId) {
+  if (!postingId) return null;
+  return Array.prototype.find.call(
+    document.querySelectorAll("[data-drawer-trigger][data-posting-id]"),
+    function (candidate) {
+      return candidate.dataset.postingId === postingId && candidate.offsetParent !== null;
+    }
+  );
+}
+
+function firstVisibleDrawerTrigger() {
+  return Array.prototype.find.call(
+    document.querySelectorAll("[data-drawer-trigger]"),
+    function (candidate) { return candidate.offsetParent !== null; }
+  );
+}
+
+document.addEventListener("click", function (event) {
+  var surface = event.target.closest("[data-card-open], [data-row-open]");
+  if (!surface || event.target.closest(
+    "button, a, input, select, textarea, summary, details, [data-no-drawer]"
+  )) return;
+  var trigger = surface.querySelector("[data-drawer-trigger]");
+  if (trigger) trigger.click();
 });
 
 function drawerFocusable() {
@@ -175,9 +352,20 @@ function onDrawerClose() {
   var drawer = document.getElementById("posting-drawer");
   if (shell) { shell.inert = false; shell.removeAttribute("aria-hidden"); }
   if (drawer) drawer.setAttribute("aria-hidden", "true");
-  window.requestAnimationFrame(function () {
-    if (drawerOpener && document.contains(drawerOpener)) drawerOpener.focus();
-  });
+  function restoreOpenerFocus() {
+    if (drawerOpen) return;
+    var active = document.activeElement;
+    if (active && active !== document.body && (!drawer || !drawer.contains(active))) return;
+    var target = drawerOpener && document.contains(drawerOpener) &&
+      drawerOpener.offsetParent !== null ? drawerOpener : null;
+    target = target || matchingDrawerTrigger(drawerOpenerPostingId) ||
+      firstVisibleDrawerTrigger() || document.querySelector("main#page");
+    if (target) target.focus({ preventScroll: true });
+  }
+  // Chromium can reject focus in the same frame that an inert ancestor is
+  // re-enabled. Retry after the disclosure transition has begun settling.
+  window.requestAnimationFrame(restoreOpenerFocus);
+  window.setTimeout(restoreOpenerFocus, 75);
 }
 
 window.addEventListener("drawer-open", onDrawerOpen);
@@ -199,24 +387,57 @@ document.addEventListener("keydown", function (event) {
 /* ---------- SortableJS drag -> POST /board/move ---------- */
 
 var lastDragAt = 0;
+var pendingDrag = null;
+
+function restorePendingDrag() {
+  if (!pendingDrag || !pendingDrag.item || !pendingDrag.parent) return;
+  if (pendingDrag.next && pendingDrag.next.parentNode === pendingDrag.parent) {
+    pendingDrag.parent.insertBefore(pendingDrag.item, pendingDrag.next);
+  } else {
+    pendingDrag.parent.appendChild(pendingDrag.item);
+  }
+  pendingDrag = null;
+}
 
 function initBoard() {
   if (typeof Sortable === "undefined") return;
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   document.querySelectorAll(".board-cards").forEach(function (column) {
     if (column._sortable) return;
+    var role = column.dataset.sortRole;
     column._sortable = new Sortable(column, {
-      group: "board",
+      group: {
+        name: "board",
+        pull: role !== "inbox-return",
+        put: function (to, from) {
+          var targetRole = to.el.dataset.sortRole;
+          var sourceRole = from.el.dataset.sortRole;
+          if (targetRole === "pipeline") return true;
+          return targetRole === "inbox-return" && sourceRole === "pipeline";
+        },
+      },
+      sort: false,
       animation: reduced ? 0 : 140,
       ghostClass: "sortable-ghost",
       chosenClass: "sortable-chosen",
       dragClass: "sortable-drag",
-      onStart: function () { document.body.classList.add("board-is-dragging"); },
+      filter: "[data-no-drag]",
+      preventOnFilter: false,
+      onStart: function (event) {
+        document.body.classList.add("board-is-dragging");
+        pendingDrag = {
+          item: event.item,
+          parent: event.from,
+          next: event.item.nextElementSibling,
+        };
+      },
       onEnd: function (event) {
         document.body.classList.remove("board-is-dragging");
         lastDragAt = Date.now();
-        if (event.from === event.to) return;
-        if (!event.to.dataset.status) return;
+        if (event.from === event.to || !event.to.dataset.status) {
+          pendingDrag = null;
+          return;
+        }
         htmx.ajax("POST", "/board/move", {
           values: { posting_id: event.item.dataset.id, status: event.to.dataset.status },
           target: "#board-region",
@@ -236,7 +457,53 @@ document.addEventListener("click", function (event) {
 
 /* ---------- HTMX lifecycle feedback ---------- */
 
+function showToast(text, kind) {
+  var region = document.getElementById("toast-region");
+  if (!region || !text) return;
+  var toast = document.createElement("div");
+  toast.className = "toast" + (kind === "error" ? " toast--error" : "");
+  toast.setAttribute("role", kind === "error" ? "alert" : "status");
+  var mark = document.createElement("span");
+  mark.className = "toast-mark";
+  mark.setAttribute("aria-hidden", "true");
+  mark.textContent = kind === "error" ? "!" : "✓";
+  var message = document.createElement("span");
+  message.className = "toast-text";
+  message.textContent = text;
+  toast.appendChild(mark);
+  toast.appendChild(message);
+  region.appendChild(toast);
+  window.setTimeout(function () { toast.remove(); }, kind === "error" ? 7000 : 5000);
+}
+
+function responseErrorText(event) {
+  var xhr = event.detail && event.detail.xhr;
+  if (!xhr) return "The request failed. Please try again.";
+  try {
+    var payload = JSON.parse(xhr.responseText || "{}");
+    if (payload.detail) return String(payload.detail);
+  } catch (_error) {
+    // Non-JSON server responses fall through to a concise status message.
+  }
+  return xhr.statusText || "The request failed. Please try again.";
+}
+
 document.body.addEventListener("htmx:beforeRequest", function (event) {
+  var requester = event.detail && event.detail.elt;
+  var quickForm = requester && requester.closest && requester.closest("[data-quick-status-form]");
+  if (quickForm) {
+    quickStatusFocusId = quickForm.dataset.postingId;
+    var selectedStatus = quickForm.querySelector("input[name='status']:checked");
+    quickStatusFocusLane = selectedStatus && selectedStatus.value;
+  }
+  var replacementControl = requester && requester.closest &&
+    requester.closest("[data-replacement-focus]");
+  if (replacementControl) {
+    replacementFocusKey = replacementControl.dataset.replacementFocus;
+  }
+  var swapFocusControl = requester && requester.closest &&
+    requester.closest("[data-focus-after-swap]");
+  if (swapFocusControl) swapFocusSelector = swapFocusControl.dataset.focusAfterSwap;
   var target = event.detail && event.detail.target;
   if (target) target.setAttribute("aria-busy", "true");
 });
@@ -244,6 +511,10 @@ document.body.addEventListener("htmx:beforeRequest", function (event) {
 document.body.addEventListener("htmx:afterRequest", function (event) {
   var target = event.detail && event.detail.target;
   if (target) target.removeAttribute("aria-busy");
+  if (event.detail && event.detail.successful &&
+      event.detail.pathInfo && event.detail.pathInfo.requestPath === "/board/move") {
+    pendingDrag = null;
+  }
 });
 
 document.body.addEventListener("htmx:afterSwap", function () {
@@ -255,9 +526,15 @@ document.body.addEventListener("htmx:afterSwap", function () {
 });
 
 document.body.addEventListener("htmx:afterSettle", function (event) {
-  if (drawerOpen && event.detail && event.detail.target &&
-      event.detail.target.id === "drawer-body") {
+  var target = event.detail && event.detail.target;
+  if (drawerOpen && target && target.id === "drawer-body") {
     focusDrawerContents(0);
+  }
+  if (target && ["board-region", "company-list", "source-list"].includes(target.id)) {
+    // Wait for the primary target to settle so an out-of-band nav swap cannot
+    // consume the focus key before the replacement control exists.
+    restoreQuickStatusFocus();
+    restoreReplacementFocus();
   }
 });
 
@@ -267,7 +544,15 @@ document.body.addEventListener("htmx:oobAfterSwap", function () {
 
 document.body.addEventListener("htmx:responseError", function (event) {
   var path = event.detail && event.detail.pathInfo && event.detail.pathInfo.requestPath;
-  if (path === "/board/move") window.location.reload();
+  if (path === "/board/move") restorePendingDrag();
+  clearPendingReplacementFocus();
+  showToast(responseErrorText(event), "error");
+});
+
+document.body.addEventListener("htmx:sendError", function () {
+  restorePendingDrag();
+  clearPendingReplacementFocus();
+  showToast("Could not reach internsHELPer. Please try again.", "error");
 });
 
 /* ---------- boot ---------- */

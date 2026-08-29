@@ -1,10 +1,42 @@
-<li class="card board-card" id="card-{{ r.posting_id | dom_id }}" data-id="{{ r.posting_id }}"
-    data-drawer-trigger role="button" tabindex="0"
-    aria-label="Open {{ r.title }} at {{ r.company }}"
-    hx-get="/board/card/{{ r.posting_id }}?view=board" hx-target="#drawer-body" hx-swap="innerHTML">
+<li class="card board-card" id="card-{{ r.posting_id | dom_id }}"
+    data-id="{{ r.posting_id }}" data-card-open>
   <div class="card-top">
     <div class="card-company">{{ r.company }}</div>
-    {% if (r.status or 'Untracked') not in pipeline_lanes %}
+    {% set current_status = r.status or 'Untracked' %}
+    {% if current_status in pipeline_lanes %}
+    <details class="quick-status" data-quick-status data-no-drawer data-no-drag>
+      <summary class="quick-status-chip pill pill--status-{{ current_status | lower }}"
+               data-status-trigger
+               aria-label="Change application status. Current status: {{ current_status }}">
+        {{ current_status }}<span aria-hidden="true">▾</span>
+      </summary>
+      <form class="quick-status-popover" data-quick-status-form
+            data-posting-id="{{ r.posting_id }}" data-current-status="{{ current_status }}"
+            hx-post="/board/move" hx-target="#board-region" hx-swap="innerHTML">
+        <input type="hidden" name="posting_id" value="{{ r.posting_id }}">
+        <fieldset class="quick-status-options">
+          <legend>Move application from {{ current_status }}</legend>
+          {% for status in pipeline_lanes %}
+          <label class="quick-status-option{% if status == current_status %} is-current{% endif %}">
+            <input type="radio" name="status" value="{{ status }}"
+                   {% if status == current_status %}checked disabled{% endif %}>
+            <span class="dot dot--lane-{{ status | lower }}" aria-hidden="true"></span>
+            <span>{{ status }}</span>
+            {% if status == current_status %}<small>Current</small>{% endif %}
+          </label>
+          {% endfor %}
+        </fieldset>
+        <div class="quick-status-notes" data-status-notes hidden>
+          <label for="quick-notes-{{ r.posting_id | dom_id }}">Private notes</label>
+          <textarea class="input" id="quick-notes-{{ r.posting_id | dom_id }}"
+                    name="notes" rows="4">{{ r.notes or '' }}</textarea>
+          <button class="btn btn-primary btn-sm" type="submit" data-status-submit disabled>
+            Move application
+          </button>
+        </div>
+      </form>
+    </details>
+    {% else %}
     <div class="card-actions">
       <button class="card-flag btn btn-icon btn-sm" type="button" aria-label="Flag {{ r.title }} for investigation" title="Flag for investigation" x-on:click.stop
               hx-post="/board/flag" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
@@ -15,18 +47,24 @@
     </div>
     {% endif %}
   </div>
-  <div class="card-title">{{ r.title }}</div>
-  <div class="card-meta">
-    {% if r.location %}<span>{{ r.location }}</span>{% endif %}
-    <span>{{ r.posted_at | release(r.first_seen) }}</span>
-    <span title="{{ r.source_key }}">{{ r.source_key | source_label }}</span>
-  </div>
-  {% if r.applied_date or r.notes or (not r.is_active) or r.status == 'Interested' %}
-  <div class="card-foot">
-    {% if r.status == 'Interested' %}<span class="card-star" title="interested">★</span>{% endif %}
-    {% if r.applied_date %}<span class="pill pill--neutral">applied {{ r.applied_date }}</span>{% endif %}
-    {% if not r.is_active %}<span class="pill pill--nomatch">closed</span>{% endif %}
-    {% if r.notes %}<span class="card-note" title="{{ r.notes }}">✎</span>{% endif %}
-  </div>
-  {% endif %}
+  <button class="card-open" type="button" data-drawer-trigger
+          data-posting-id="{{ r.posting_id }}"
+          aria-label="Open {{ r.title }} at {{ r.company }}"
+          hx-get="/board/card/{{ r.posting_id }}?view=board"
+          hx-target="#drawer-body" hx-swap="innerHTML">
+    <span class="card-title">{{ r.title }}</span>
+    <span class="card-meta">
+      {% if r.location %}<span>{{ r.location }}</span>{% endif %}
+      <span>{{ r.posted_at | release(r.first_seen) }}</span>
+      <span title="{{ r.source_key }}">{{ r.source_key | source_label }}</span>
+    </span>
+    {% if r.applied_date or r.notes or (not r.is_active) or r.status == 'Interested' %}
+    <span class="card-foot">
+      {% if r.status == 'Interested' %}<span class="card-star" title="interested">★</span>{% endif %}
+      {% if r.applied_date %}<span class="pill pill--neutral">applied {{ r.applied_date }}</span>{% endif %}
+      {% if not r.is_active %}<span class="pill pill--nomatch">closed</span>{% endif %}
+      {% if r.notes %}<span class="card-note" title="{{ r.notes }}">✎</span>{% endif %}
+    </span>
+    {% endif %}
+  </button>
 </li>

@@ -45,12 +45,13 @@ an inversion. Muted and faint text must maintain at least 4.5:1 contrast at norm
 
 - Normal desktop: 190px labeled sidebar; page content uses the available width. The Board is a
   two-track workspace: company Inbox on the left and a 2×2 pipeline on the right.
-- Approximately 980×640: sidebar becomes a 62px icon rail. The Board exposes an explicit
+- At 1143px wide and below (including the 980×640 minimum): the sidebar becomes a 62px icon rail. The Board exposes an explicit
   Opportunities/Pipeline switch so neither track is squeezed. Company names remain visible and
   the document has no horizontal page overflow.
 - Wider desktop: Inbox and pipeline grow proportionally; content does not become oversized.
 - Page scrolling remains the primary scroll model. Avoid independently scrolling application
-  panes. Tables may scroll horizontally inside their own bounded surface.
+  panes. Large Board lenses paginate on the server (100 rows for tables/history, 25 duplicate
+  decision groups); tables may scroll horizontally inside their own bounded surface.
 - Drawer: 440px inspection drawer on normal desktop; up to 55% of the viewport near minimum size.
   Long drawer content scrolls within the drawer while the background is inert.
 
@@ -104,6 +105,9 @@ an inversion. Muted and faint text must maintain at least 4.5:1 contrast at norm
 
 The complete web suite must pass. Focused assertions cover semantic disclosures, accessible icon
 names, current navigation, drawer dialog semantics, labeled filters, and the two company systems.
+The optional Playwright suite (`pytest -m browser`) covers the 1143/1144px boundary, a cross-page
+980/1143/1144/1440px overflow matrix, popover/drawer keyboard behavior, quick pipeline changes,
+HTMX focus restoration for replaced controls, and progressive source-removal confirmation.
 Manual verification covers every Board lens, company expansion, pipeline lanes and drag feedback,
 drawer editing/actions, Companies approvals, Sources states, Health exceptions, light/dark/system
 themes, keyboard-only operation, reduced motion, 980×640, normal and wide desktop, and pywebview.

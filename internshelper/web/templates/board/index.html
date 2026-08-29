@@ -13,7 +13,7 @@
         <a class="seg-item{% if view == 'board' %} is-active{% endif %}" href="/board"{% if view == 'board' %} aria-current="page"{% endif %}>Board</a>
         <a class="seg-item{% if view == 'table' %} is-active{% endif %}" href="/board?view=table"{% if view == 'table' %} aria-current="page"{% endif %}>Table</a>
       </div>
-      <details class="view-menu">
+      <details class="view-menu" data-popover>
         <summary class="btn btn-secondary">Exceptions{% if view in ('dismissed', 'flagged', 'duplicates') %} · {{ view | title }}{% elif flagged_count or dup_count %}<span class="pill pill--neutral pill--count">{{ flagged_count + dup_count }}</span>{% endif %}</summary>
         <div class="view-menu-popover">
           <a{% if view == 'dismissed' %} class="is-active" aria-current="page"{% endif %} href="/board?show=dismissed"><span>Dismissed</span><small>Roles hidden from the Board</small></a>
@@ -24,12 +24,16 @@
       {% if view != 'dismissed' and (hygiene.closed or hygiene.leaks) %}
       {% if hygiene.closed %}
       <button class="btn btn-secondary btn-sm" title="These vanished from their source boards"
-              hx-post="/board/hygiene-closed" hx-target="#board-region" hx-swap="innerHTML">
+              hx-post="/board/hygiene-closed"
+              hx-vals='{"return_view": {{ view | tojson }}, "page": {{ page }}, "possible_page": {{ possible_page }}, "merged_page": {{ merged_page }}, "kept_page": {{ kept_page }}}'
+              hx-target="#board-region" hx-swap="innerHTML">
         Dismiss {{ hygiene.closed }} closed</button>
       {% endif %}
       {% if hygiene.leaks %}
       <button class="btn btn-secondary btn-sm" title="These fail their source's current title guard"
-              hx-post="/board/hygiene-leaks" hx-target="#board-region" hx-swap="innerHTML">
+              hx-post="/board/hygiene-leaks"
+              hx-vals='{"return_view": {{ view | tojson }}, "page": {{ page }}, "possible_page": {{ possible_page }}, "merged_page": {{ merged_page }}, "kept_page": {{ kept_page }}}'
+              hx-target="#board-region" hx-swap="innerHTML">
         Dismiss {{ hygiene.leaks }} guard leak{{ '' if hygiene.leaks == 1 else 's' }}</button>
       {% endif %}
       {% endif %}

@@ -20,6 +20,9 @@ web = ["fastapi>=0.115,<1", "uvicorn>=0.30", "jinja2>=3.1"]
 # pywebview pulls the heavy pyobjc framework wheels (~100MB) on macOS.
 app = ["internshelper[web]", "pywebview>=5.1"]
 dev = ["pytest>=8.0"]
+# Optional real-browser regression checks. Install the browser separately with
+# `.venv/bin/python -m playwright install chromium` after installing this extra.
+ui = ["internshelper[dev,web]", "pytest-playwright>=0.7"]
 
 [tool.setuptools.packages.find]
 include = ["internshelper*"]
@@ -29,6 +32,10 @@ internshelper = ["web/templates/**/*.html", "web/static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not browser'"
+markers = [
+    "browser: optional Playwright checks that require the ui extra and Chromium",
+]
 filterwarnings = [
     # starlette's TestClient warns about its own httpx dependency; not ours to fix.
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",

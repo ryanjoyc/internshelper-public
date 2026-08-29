@@ -32,6 +32,7 @@
   <form class="drawer-form"
         hx-post="/board/card/{{ r.posting_id }}" hx-target="#drawer-body" hx-swap="innerHTML">
     <input type="hidden" name="view" value="{{ view }}">
+    <input type="hidden" name="page" value="{{ page | default(1) }}">
     <div class="drawer-form-grid">
       <label class="field">
         <span class="field-label">Status</span>
@@ -67,14 +68,18 @@
       <p>Flag for review when data looks suspicious. This does not affect ranking.</p>
     </div>
     <button class="btn btn-secondary btn-sm" type="button" x-show="!showFlag"
-            x-on:click="showFlag = true">Flag for investigation</button>
+            x-ref="flagTrigger"
+            x-on:click="showFlag = true; $nextTick(() => $refs.flagReason.focus())">Flag for investigation</button>
     <form class="drawer-inline-form" x-show="showFlag" x-cloak hx-post="/board/flag"
           hx-target="#board-region" hx-swap="innerHTML">
       <input type="hidden" name="posting_id" value="{{ r.posting_id }}">
+      <input type="hidden" name="return_view" value="{{ view }}">
+      <input type="hidden" name="page" value="{{ page | default(1) }}">
       <label class="sr-only" for="flag-reason-{{ r.posting_id | dom_id }}">Reason for flagging</label>
       <input class="input" id="flag-reason-{{ r.posting_id | dom_id }}" type="text" name="reason"
-             placeholder="Why? e.g. the link shows nothing">
-      <button class="btn btn-ghost btn-sm" type="button" x-on:click="showFlag = false">Cancel</button>
+             x-ref="flagReason" placeholder="Why? e.g. the link shows nothing">
+      <button class="btn btn-ghost btn-sm" type="button"
+              x-on:click="showFlag = false; $nextTick(() => $refs.flagTrigger.focus())">Cancel</button>
       <button class="btn btn-primary btn-sm" type="submit">Flag</button>
     </form>
   </div>
@@ -86,12 +91,15 @@
       <p>Dismiss this role from the Board. You can restore it later.</p>
     </div>
     <button class="btn btn-danger-text btn-sm" type="button" x-show="!confirmDismiss"
-            x-on:click="confirmDismiss = true">Dismiss posting</button>
+            x-ref="dismissTrigger"
+            x-on:click="confirmDismiss = true; $nextTick(() => $refs.dismissConfirm.focus())">Dismiss posting</button>
     <div class="confirm-inline" x-show="confirmDismiss" x-cloak>
       <span>This hides the role and creates an Undo action.</span>
-      <button class="btn btn-ghost btn-sm" type="button" x-on:click="confirmDismiss = false">Cancel</button>
-      <button class="btn btn-danger btn-sm"
-              hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+      <button class="btn btn-ghost btn-sm" type="button"
+              x-on:click="confirmDismiss = false; $nextTick(() => $refs.dismissTrigger.focus())">Cancel</button>
+      <button class="btn btn-danger btn-sm" x-ref="dismissConfirm"
+              hx-post="/board/dismiss"
+              hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "return_view": {{ view | tojson }}, "page": {{ page | default(1) }}}'
               hx-target="#board-region" hx-swap="innerHTML">Confirm dismissal</button>
     </div>
   </div>

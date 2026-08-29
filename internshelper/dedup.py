@@ -103,11 +103,13 @@ def title_norm(title: str | None) -> str:
 def _pick_survivor(rows: list[sqlite3.Row]) -> sqlite3.Row:
     """The row to KEEP from a duplicate group (the rest point at it).
 
-    Prefer active > higher rank_score > richer description > earliest first_seen, with
-    posting_id as a stable final tiebreak so the choice is deterministic across runs.
+    Preserve explicit user curation first: if exactly one row has application state, it
+    survives. Then prefer active > higher rank_score > richer description > earliest
+    first_seen, with posting_id as a stable final tiebreak.
     """
     def key(r: sqlite3.Row):
         return (
+            0 if "application_id" in r.keys() and r["application_id"] else 1,
             0 if r["is_active"] else 1,
             -(r["rank_score"] if r["rank_score"] is not None else -1.0),
             -len(r["description"] or ""),
@@ -135,11 +137,17 @@ def collapse_url_duplicates(conn: sqlite3.Connection) -> int:
     stay survivors and a newly-arrived same-key row simply joins the existing group. Idempotent.
     """
     rows = conn.execute(
-        "SELECT posting_id, url, is_active, rank_score, description, first_seen "
-        "FROM postings WHERE duplicate_of IS NULL"
+        "SELECT p.posting_id, p.url, p.is_active, p.rank_score, p.description, "
+        "p.first_seen, a.posting_id AS application_id "
+        "FROM postings p LEFT JOIN applications a ON a.posting_id = p.posting_id "
+        "WHERE p.duplicate_of IS NULL"
     ).fetchall()
     updates: list[tuple[str, str]] = []
     for group in _group(rows, lambda r: url_dedup_key(r["url"])):
+        # Never silently hide one curated application record behind another. This
+        # conflict remains visible as separate postings for explicit resolution.
+        if sum(bool(r["application_id"]) for r in group) > 1:
+            continue
         survivor = _pick_survivor(group)
         for r in group:
             if r["posting_id"] != survivor["posting_id"]:
@@ -155,26 +163,69 @@ def collapse_url_duplicates(conn: sqlite3.Connection) -> int:
 def find_possible_duplicates(conn: sqlite3.Connection) -> list[dict]:
     """Company+title lookalike groups awaiting human confirmation (live-computed, not stored).
 
-    Candidates are inbox-scope, active, not already a duplicate, and not marked keep-separate.
-    Each returned group carries every row's company/title/location/url/source so the reviewer can
-    see the differences before merging. Survivor suggestion = `_pick_survivor`.
+    Candidates are inbox-scope, active, and not already a duplicate. A fully reviewed group stays
+    hidden, but a newly arrived unreviewed row resurfaces the complete group so it can be reviewed
+    against the earlier keep-separate decision. Each returned group carries every row's
+    company/title/location/url/source so the reviewer can see the differences before merging.
+    Survivor suggestion = `_pick_survivor`.
     """
     rows = conn.execute(
-        "SELECT posting_id, company, title, location, url, source_key, "
-        "is_active, rank_score, description, first_seen "
-        f"FROM postings WHERE {store.INBOX_SQL} AND is_active = 1 AND dedup_keep = 0"
+        "SELECT p.posting_id, p.company, p.title, p.location, p.url, p.source_key, "
+        "p.is_active, p.rank_score, p.description, p.first_seen, p.dedup_keep, "
+        "a.posting_id AS application_id, a.status AS application_status "
+        "FROM postings p LEFT JOIN applications a ON a.posting_id = p.posting_id "
+        f"WHERE {store.INBOX_SQL} AND p.is_active = 1 "
+        "ORDER BY p.company COLLATE NOCASE, p.title COLLATE NOCASE, p.posting_id"
     ).fetchall()
     out: list[dict] = []
     for group in _group(rows, lambda r: f"{normalize_company(r['company'] or '')}|{title_norm(r['title'])}"):
+        if all(r["dedup_keep"] for r in group):
+            continue
         survivor = _pick_survivor(group)
+        application_count = sum(bool(r["application_id"]) for r in group)
         out.append({
             "company": survivor["company"] or "Unknown",
             "title": survivor["title"],
             "survivor_id": survivor["posting_id"],
+            "merge_blocked": application_count > 1,
             "rows": [{
                 "posting_id": r["posting_id"], "company": r["company"], "title": r["title"],
                 "location": r["location"], "url": r["url"], "source_key": r["source_key"],
                 "is_survivor": r["posting_id"] == survivor["posting_id"],
+                "application_status": r["application_status"],
+                "has_application": bool(r["application_id"]),
+            } for r in group],
+        })
+    return out
+
+
+def find_kept_separate(conn: sqlite3.Connection) -> list[dict]:
+    """Reviewed lookalike groups kept distinct, for durable reversal in the UI."""
+    rows = conn.execute(
+        "SELECT posting_id, company, title, location, url, source_key, "
+        "is_active, rank_score, description, first_seen "
+        "FROM postings WHERE dedup_keep = 1 AND duplicate_of IS NULL "
+        "AND posting_id NOT IN ("
+        "SELECT duplicate_of FROM postings WHERE duplicate_of IS NOT NULL"
+        ") ORDER BY company, title, posting_id"
+    ).fetchall()
+    buckets: "OrderedDict[str, list[sqlite3.Row]]" = OrderedDict()
+    for row in rows:
+        key = f"{normalize_company(row['company'] or '')}|{title_norm(row['title'])}"
+        buckets.setdefault(key, []).append(row)
+    out: list[dict] = []
+    for group in buckets.values():
+        survivor = _pick_survivor(group)
+        out.append({
+            "company": survivor["company"] or "Unknown",
+            "title": survivor["title"],
+            "rows": [{
+                "posting_id": r["posting_id"],
+                "company": r["company"],
+                "title": r["title"],
+                "location": r["location"],
+                "url": r["url"],
+                "source_key": r["source_key"],
             } for r in group],
         })
     return out

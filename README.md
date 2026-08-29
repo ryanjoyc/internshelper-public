@@ -278,6 +278,16 @@ curates sources + views the dashboard can set `COLLECT=0` and `EMAIL=0`. Other p
 .venv/bin/python -m pytest
 ```
 
+Optional browser-level UI checks cover responsive breakpoints and overflow, disclosure/drawer
+keyboard behavior, pipeline status persistence and errors, HTMX replacement focus, and source
+removal confirmation:
+
+```bash
+.venv/bin/python -m pip install -e ".[ui]"
+.venv/bin/python -m playwright install chromium
+.venv/bin/python -m pytest -m browser
+```
+
 Connector tests run against frozen real fixtures (no live calls); store/run/notify/review logic
 (close-detection, payload capture, Top-target digest, company grouping, reversible deduplication,
 and schema migrations) is unit-tested. The portability layer is covered too: URL→source detection

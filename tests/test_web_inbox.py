@@ -8,6 +8,7 @@ Bistro). No application rows, no rank scores (cold start).
 import sqlite3
 
 from internshelper import db, review, store
+from internshelper.models import Posting
 
 
 def _exec(db_path, sql, params=()):
@@ -106,6 +107,66 @@ def test_table_lens_has_group_column_and_dismiss(client):
     assert "<th>Group</th>" in r.text
     assert "<th>Company</th>" in r.text
     assert "/board/dismiss" in r.text
+    assert 'data-row-open' in r.text
+    assert '<tr class="table-row-click" data-drawer-trigger' not in r.text
+
+
+def test_board_table_uses_stable_hundred_row_pages(client, seeded_db):
+    conn = db.connect(seeded_db)
+    for i in range(205):
+        store.upsert(
+            conn,
+            Posting(
+                posting_id=f"page:{i:03d}",
+                source_key="greenhouse:paging",
+                title=f"Paged role {i:03d}",
+                company="Paging Co",
+                url=f"https://example.test/{i}",
+            ),
+            now=f"2026-08-25T12:{i % 60:02d}:00+00:00",
+        )
+    conn.close()
+
+    first = client.get("/board?view=table")
+    second = client.get("/board?view=table&page=2")
+    last = client.get("/board?view=table&page=999")
+    assert first.text.count("data-row-open") == 100
+    assert second.text.count("data-row-open") == 100
+    assert last.text.count("data-row-open") == 9
+    assert "Page 3 of 3" in last.text
+
+
+def test_dismissed_lens_paginates_and_restore_stays_in_lens(client, seeded_db):
+    conn = db.connect(seeded_db)
+    for i in range(105):
+        store.upsert(
+            conn,
+            Posting(
+                posting_id=f"dismissed:{i:03d}",
+                source_key="greenhouse:dismissed",
+                title=f"Dismissed role {i:03d}",
+                company="Archive Co",
+                url=f"https://example.test/d/{i}",
+            ),
+            now="2026-08-25T12:00:00+00:00",
+        )
+    conn.execute(
+        "UPDATE postings SET verdict='no_match', reviewed_at='2026-08-26T12:00:00+00:00' "
+        "WHERE posting_id LIKE 'dismissed:%'"
+    )
+    conn.commit()
+    conn.close()
+
+    r = client.get("/board?show=dismissed&page=2")
+    assert "Page 2 of 2" in r.text
+    assert r.text.count("/board/undo-dismiss") == 5
+    posting_id = "dismissed:000"
+    r = client.post("/board/undo-dismiss", data={
+        "posting_id": posting_id, "return_view": "dismissed", "page": 2,
+    })
+    assert r.status_code == 200
+    assert "Dismissed postings pagination" in r.text
+    assert "Company inbox" not in r.text
 
 
 def test_dismissed_view_lists_and_restores(client, seeded_db):

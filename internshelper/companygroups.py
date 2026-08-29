@@ -276,6 +276,18 @@ def _cmd_list(path: str) -> int:
     return 0
 
 
+def _sync_posting_groups(path: str) -> None:
+    """Keep the CLI's persisted compatibility tiers aligned with its config write."""
+    from internshelper import db, tiers
+
+    conn = db.connect(default_path("INTERNSHELPER_DB", "data/internshelper.db"))
+    try:
+        db.init_db(conn)
+        tiers.retier_inbox(conn, tiers.load_tier_map(path))
+    finally:
+        conn.close()
+
+
 def main(argv=None) -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(prog="internshelper.companygroups")
@@ -303,15 +315,18 @@ def main(argv=None) -> int:
             return _cmd_list(path)
         if args.cmd == "set":
             entry = set_group(path, args.name, args.group, reason=args.reason)
+            _sync_posting_groups(path)
             print(f"{entry.name} -> {entry.group}")
         elif args.cmd == "clear":
             clear_group(path, args.name)
+            _sync_posting_groups(path)
             print(f"{args.name} -> unclassified")
         elif args.cmd == "propose":
             propose_discovery(path, args.name, reason=args.reason, evidence=args.evidence)
             print(f"discovery proposal recorded for {args.name}")
         elif args.cmd == "approve":
             entry = approve_proposal(path, args.name)
+            _sync_posting_groups(path)
             print(f"{entry.name} -> discovery")
         elif args.cmd == "reject":
             reject_proposal(path, args.name)

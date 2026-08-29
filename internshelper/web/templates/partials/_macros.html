@@ -24,3 +24,13 @@
   {% if href %}<a class="btn btn-primary" href="{{ href }}">{{ label }}</a>{% endif %}
 </div>
 {%- endmacro %}
+
+{% macro pager(page, pages, prev_href, next_href, label='Page') -%}
+{% if pages > 1 %}
+<nav class="pager" aria-label="{{ label }} pagination">
+  {% if page > 1 %}<a class="btn btn-secondary btn-sm" href="{{ prev_href }}">‹ Prev</a>{% endif %}
+  <span class="pager-label">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn btn-secondary btn-sm" href="{{ next_href }}">Next ›</a>{% endif %}
+</nav>
+{% endif %}
+{%- endmacro %}

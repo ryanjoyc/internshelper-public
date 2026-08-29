@@ -16,11 +16,12 @@
       </div>
     </header>
     <div class="company-system-body">
-      <div class="company-group-overview" aria-label="Companies currently visible on the Board">
+      <div class="company-group-overview" aria-label="Active companies currently visible on the Board">
         {% for key in ['top_target', 'known', 'discovery', 'unclassified'] %}
         <div class="company-group-stat">
           <strong>{{ priority_counts[key] }}</strong>
-          <span>{{ priority_labels[key] }}</span>
+          <span>Active · {{ priority_labels[key] }}</span>
+          <small>{% if key == 'unclassified' %}Automatic default{% else %}{{ priority_configured_counts[key] }} configured{% endif %}</small>
         </div>
         {% endfor %}
       </div>
@@ -56,10 +57,12 @@
             </details>
             <div class="discovery-actions">
               <button class="btn btn-primary btn-sm" type="button"
+                      data-focus-after-swap="#company-list"
                       hx-post="/companies/group/approve"
                       hx-vals='{"name": {{ c.name | tojson }}}'
                       hx-target="#company-list" hx-swap="innerHTML">Approve Board group</button>
               <button class="btn btn-secondary btn-sm" type="button"
+                      data-focus-after-swap="#company-list"
                       hx-post="/companies/group/reject"
                       hx-vals='{"name": {{ c.name | tojson }}}'
                       hx-target="#company-list" hx-swap="innerHTML">Reject proposal</button>
@@ -80,7 +83,7 @@
         {% for group, items in priority_groups.items() %}
         {% if items %}
         <details class="company-roster"{% if group in ('top_target', 'known') %} open{% endif %}>
-          <summary><span>{{ priority_labels[group] }}</span><span>{{ items | length }} companies</span></summary>
+          <summary><span>{{ priority_labels[group] }}</span><span>{{ items | length }} configured companies</span></summary>
           <div class="company-roster-body">
             {% for c in items %}
             <div class="company-roster-row">
@@ -88,10 +91,12 @@
                 <div class="source-label">{{ c.name }}</div>
                 {% if c.reason %}<div class="source-key">{{ c.reason }}</div>{% endif %}
               </div>
-              <form hx-post="/companies/group/set" hx-target="#company-list" hx-swap="innerHTML">
+              <form hx-post="/companies/group/set" hx-target="#company-list" hx-swap="innerHTML"
+                    hx-trigger="change"
+                    data-replacement-focus="company-page:{{ c.name | dom_id }}">
                 <input type="hidden" name="name" value="{{ c.name }}">
                 <select class="input" name="group" aria-label="{{ c.name }} Board group"
-                        x-on:change="$el.form.requestSubmit()">
+                        data-replacement-focus="company-page:{{ c.name | dom_id }}">
                   {% for key in ['top_target', 'known', 'discovery', 'unclassified'] %}
                   {% if key != 'discovery' or group == 'discovery' %}
                   <option value="{{ key }}"{% if key == group %} selected{% endif %}>{{ priority_labels[key] }}</option>
@@ -150,9 +155,11 @@
               </div>
               <div class="resolution-actions">
                 <button class="btn btn-primary btn-sm" hx-post="/companies/approve"
+                        data-focus-after-swap="#company-list"
                         hx-vals='{"name": {{ c.name | tojson }}}'
                         hx-target="#company-list" hx-swap="innerHTML">Add collection source</button>
                 <button class="btn btn-secondary btn-sm" hx-post="/companies/reject"
+                        data-focus-after-swap="#company-list"
                         hx-vals='{"name": {{ c.name | tojson }}}'
                         hx-target="#company-list" hx-swap="innerHTML">Reject board</button>
               </div>
@@ -174,11 +181,14 @@
 
 {% if toast %}
 <div hx-swap-oob="beforeend:#toast-region">
-  <div class="toast" role="status" x-data="{ t: setTimeout(() => $el.remove(), 5000) }">
-    <span class="toast-mark" aria-hidden="true">✓</span>
+  <div class="toast{% if toast.kind == 'error' %} toast--error{% endif %}"
+       role="{{ 'alert' if toast.kind == 'error' else 'status' }}"
+       x-data="{ t: setTimeout(() => $el.remove(), {{ 7000 if toast.kind == 'error' else 5000 }}) }">
+    <span class="toast-mark" aria-hidden="true">{{ '!' if toast.kind == 'error' else '✓' }}</span>
     <span class="toast-text">{{ toast.text }}</span>
     {% if toast.undo_url %}
-    <form hx-post="{{ toast.undo_url }}" hx-target="#company-list" hx-swap="innerHTML">
+    <form hx-post="{{ toast.undo_url }}" hx-target="#company-list" hx-swap="innerHTML"
+          data-focus-after-swap="#company-list">
       {% for name, value in toast.fields.items() %}
       <input type="hidden" name="{{ name }}" value="{{ value }}">
       {% endfor %}

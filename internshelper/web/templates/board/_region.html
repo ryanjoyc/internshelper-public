@@ -19,7 +19,7 @@
         <td class="cell-num">{{ r.reviewed_at | release }}</td>
         <td>
           <button class="btn btn-secondary btn-sm" hx-post="/board/undo-dismiss"
-                  hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+                  hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "return_view": "dismissed", "page": {{ page }}}'
                   hx-target="#board-region" hx-swap="innerHTML">Restore</button>
         </td>
       </tr>
@@ -27,6 +27,10 @@
     </tbody>
   </table>
 </div>
+{{ m.pager(page, pages,
+           '/board?show=dismissed&page=' ~ (page - 1),
+           '/board?show=dismissed&page=' ~ (page + 1),
+           'Dismissed postings') }}
 {% endif %}
 {% elif view == 'flagged' %}
 {% if not flagged %}
@@ -49,7 +53,7 @@
         <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
         <td>
           <button class="btn btn-secondary btn-sm" hx-post="/board/unflag"
-                  hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+                  hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "return_view": "flagged", "page": {{ page }}}'
                   hx-target="#board-region" hx-swap="innerHTML">Restore</button>
         </td>
       </tr>
@@ -57,9 +61,13 @@
     </tbody>
   </table>
 </div>
+{{ m.pager(page, pages,
+           '/board?show=flagged&page=' ~ (page - 1),
+           '/board?show=flagged&page=' ~ (page + 1),
+           'Flagged postings') }}
 {% endif %}
 {% elif view == 'duplicates' %}
-{% if not possible and not merged %}
+{% if not possible and not merged and not kept %}
 {{ m.empty_state("No duplicates to review.",
                  "The same job on more than one list is collapsed automatically when the apply links match. Lookalikes (same company + title) show up here to confirm.",
                  "/board", "Back to board") }}
@@ -83,22 +91,31 @@
         {% if r.posting_id == g.survivor_id %}<span class="dup-keep-badge">Recommended survivor</span>{% endif %}
         <strong>{{ r.title }}</strong>
         <span>{{ r.location or "Location unavailable" }}</span>
+        {% if r.has_application %}<span>Saved application: {{ r.application_status or "Untracked" }}</span>{% endif %}
         <a class="btn btn-ghost btn-sm" aria-label="Open {{ r.title }} from {{ r.source_key | source_label }}"
            href="{{ r.url | safe_url }}" target="_blank" rel="noopener">Open original <span aria-hidden="true">↗</span></a>
       </article>
       {% endfor %}
     </div>
     <div class="dup-group-actions">
+      {% if g.merge_blocked %}
+      <span class="notice notice--warn">Merge is unavailable because more than one record has saved application progress. Keep them separate so no notes or status are hidden.</span>
+      {% else %}
       <button class="btn btn-primary btn-sm" hx-post="/board/dedup/confirm"
-              hx-vals='{"survivor_id": {{ g.survivor_id | tojson }}, "posting_ids": {{ ids | tojson }}}'
+              hx-vals='{"survivor_id": {{ g.survivor_id | tojson }}, "posting_ids": {{ ids | tojson }}, "possible_page": {{ possible_page }}, "merged_page": {{ merged_page }}, "kept_page": {{ kept_page }}}'
               hx-target="#board-region" hx-swap="innerHTML">Merge and keep {{ survivor.source_key | source_label }} record</button>
+      {% endif %}
       <button class="btn btn-secondary btn-sm" hx-post="/board/dedup/keep"
-              hx-vals='{"posting_ids": {{ ids | tojson }}}'
+              hx-vals='{"posting_ids": {{ ids | tojson }}, "possible_page": {{ possible_page }}, "merged_page": {{ merged_page }}, "kept_page": {{ kept_page }}}'
               hx-target="#board-region" hx-swap="innerHTML">Keep separate</button>
       <span class="dup-reversible">Either decision can be reversed.</span>
     </div>
   </section>
   {% endfor %}
+  {{ m.pager(possible_page, possible_pages,
+             '/board?show=duplicates&possible_page=' ~ (possible_page - 1) ~ '&merged_page=' ~ merged_page ~ '&kept_page=' ~ kept_page,
+             '/board?show=duplicates&possible_page=' ~ (possible_page + 1) ~ '&merged_page=' ~ merged_page ~ '&kept_page=' ~ kept_page,
+             'Possible duplicates') }}
   {% endif %}
 
   {% if merged %}
@@ -117,7 +134,7 @@
           <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
           <td>
             <button class="btn btn-secondary btn-sm" hx-post="/board/dedup/undo"
-                    hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+                    hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "survivor_id": {{ r.duplicate_of | tojson }}, "possible_page": {{ possible_page }}, "merged_page": {{ merged_page }}, "kept_page": {{ kept_page }}}'
                     hx-target="#board-region" hx-swap="innerHTML">Un-merge</button>
           </td>
         </tr>
@@ -125,11 +142,38 @@
       </tbody>
     </table>
   </div>
+  {{ m.pager(merged_page, merged_pages,
+             '/board?show=duplicates&possible_page=' ~ possible_page ~ '&merged_page=' ~ (merged_page - 1) ~ '&kept_page=' ~ kept_page,
+             '/board?show=duplicates&possible_page=' ~ possible_page ~ '&merged_page=' ~ (merged_page + 1) ~ '&kept_page=' ~ kept_page,
+             'Merged duplicates') }}
+  {% endif %}
+
+  {% if kept %}
+  <h2 class="dup-section-title">Reviewed as separate</h2>
+  <p class="dup-hint">These look alike, but you chose to keep them as distinct roles. Review again to return a group to the pending queue.</p>
+  {% for g in kept %}
+  {% set ids = g.rows | map(attribute='posting_id') | join(',') %}
+  <section class="dup-group">
+    <div class="dup-group-head">
+      <div><span class="dup-group-co">{{ g.company }}</span><span class="dup-group-title">{{ g.title }}</span></div>
+      <span class="dup-group-count">{{ g.rows | length }} distinct records</span>
+    </div>
+    <div class="dup-group-actions">
+      <button class="btn btn-secondary btn-sm" hx-post="/board/dedup/undo-keep"
+              hx-vals='{"posting_ids": {{ ids | tojson }}, "possible_page": {{ possible_page }}, "merged_page": {{ merged_page }}, "kept_page": {{ kept_page }}}'
+              hx-target="#board-region" hx-swap="innerHTML">Review again</button>
+    </div>
+  </section>
+  {% endfor %}
+  {{ m.pager(kept_page, kept_pages,
+             '/board?show=duplicates&possible_page=' ~ possible_page ~ '&merged_page=' ~ merged_page ~ '&kept_page=' ~ (kept_page - 1),
+             '/board?show=duplicates&possible_page=' ~ possible_page ~ '&merged_page=' ~ merged_page ~ '&kept_page=' ~ (kept_page + 1),
+             'Reviewed separate groups') }}
   {% endif %}
 </div>
 {% endif %}
 {% elif view == 'table' %}
-{% if not rows %}
+{% if not table_rows %}
 {{ m.empty_state("Nothing collected yet.",
                  "New postings land here after each collect run.") }}
 {% else %}
@@ -139,39 +183,34 @@
       <tr><th>Status</th><th>Group</th><th>Company</th><th>Title</th><th>Location</th><th>Posted</th><th></th><th></th></tr>
     </thead>
     <tbody>
-      {% for g in inbox_groups %}{% for r in g.rows %}
-      <tr class="table-row-click" data-drawer-trigger role="button" tabindex="0"
-          aria-label="Open {{ r.title }} at {{ r.company }}" hx-get="/board/card/{{ r.posting_id }}?view=table"
-          hx-target="#drawer-body" hx-swap="innerHTML">
+      {% for item in table_rows %}
+      {% set r = item.row %}
+      <tr class="table-row-click" data-row-open>
         <td>{{ m.status_pill(r.status) }}</td>
-        <td>{{ g.group | replace('_', ' ') | title }}</td>
+        <td>{{ item.group | replace('_', ' ') | title }}</td>
         <td>{{ r.company }}</td>
-        <td class="cell-strong">{{ r.title }}</td>
+        <td class="cell-strong"><button class="table-open" type="button" data-drawer-trigger
+            data-posting-id="{{ r.posting_id }}"
+            aria-label="Open {{ r.title }} at {{ r.company }}"
+            hx-get="/board/card/{{ r.posting_id }}?view=table&amp;page={{ page }}"
+            hx-target="#drawer-body" hx-swap="innerHTML">{{ r.title }}</button></td>
         <td>{{ r.location or "—" }}</td>
         <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
         <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        {% if item.group != 'pipeline' %}
         <td><button class="btn btn-icon btn-sm" aria-label="Dismiss {{ r.title }}" title="Dismiss" x-on:click.stop
-                    hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}}'
+                    hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "return_view": "table", "page": {{ page }}}'
                     hx-target="#board-region" hx-swap="innerHTML">×</button></td>
+        {% else %}<td></td>{% endif %}
       </tr>
-      {% endfor %}{% endfor %}
-      {% for lane in pipeline_lanes %}{% for r in columns[lane] %}
-      <tr class="table-row-click" data-drawer-trigger role="button" tabindex="0"
-          aria-label="Open {{ r.title }} at {{ r.company }}" hx-get="/board/card/{{ r.posting_id }}?view=table"
-          hx-target="#drawer-body" hx-swap="innerHTML">
-        <td>{{ m.status_pill(r.status) }}</td>
-        <td>Pipeline</td>
-        <td>{{ r.company }}</td>
-        <td class="cell-strong">{{ r.title }}</td>
-        <td>{{ r.location or "—" }}</td>
-        <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
-        <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
-        <td></td>
-      </tr>
-      {% endfor %}{% endfor %}
+      {% endfor %}
     </tbody>
   </table>
 </div>
+{{ m.pager(page, pages,
+           '/board?view=table&page=' ~ (page - 1),
+           '/board?view=table&page=' ~ (page + 1),
+           'Board table') }}
 {% endif %}
 {% else %}
 <div class="board board--inbox" data-board-workspace>
@@ -181,6 +220,11 @@
       <span class="pill pill--neutral pill--count" id="col-count-inbox">{{ inbox_total }}</span>
       <span class="board-col-note">Browse by priority group</span>
     </header>
+    <div class="inbox-return">
+      <span>Return to Opportunities</span>
+      <ul class="board-cards board-return-drop" data-status="Untracked"
+          data-sort-role="inbox-return" aria-label="Return an application to Opportunities"></ul>
+    </div>
     {% for tier in inbox_tiers %}
     <section class="tier-section tier-section--{{ tier.key }}"
              x-data="{ open: tierOpen('group:{{ tier.key }}', {{ 'true' if tier.open else 'false' }}) }">
@@ -205,10 +249,12 @@
               <span class="tier-chevron" :class="{ 'is-open': open }" aria-hidden="true">▸</span>
             </button>
             <form class="co-group-form" hx-post="/board/company-group"
-                  hx-target="#board-region" hx-swap="innerHTML" x-on:click.stop>
+                  data-replacement-focus="company:{{ g.slug }}"
+                  hx-target="#board-region" hx-swap="innerHTML"
+                  hx-trigger="change" x-on:click.stop>
               <input type="hidden" name="company" value="{{ g.company }}">
               <select name="group" aria-label="{{ g.company }} Board group"
-                      x-on:change="$el.form.requestSubmit()">
+                      data-replacement-focus="company:{{ g.slug }}">
                 {% for option in company_group_options %}
                 {% if option.key != 'discovery' or g.group == 'discovery' %}
                 <option value="{{ option.key }}"{% if option.key == g.group %} selected{% endif %}>{{ option.label }}</option>
@@ -219,7 +265,7 @@
           </div>
           {% if g.reason %}<p class="co-reason">Why it is worth a look: {{ g.reason }}</p>{% endif %}
           <div class="co-rows" x-show="open" x-collapse.duration.200ms style="display: none">
-            <ul class="board-cards" data-status="Untracked">
+            <ul class="board-cards" data-status="Untracked" data-sort-role="inbox-source">
               {% for r in g.rows %}{% include "board/_card.html" %}{% endfor %}
             </ul>
           </div>
@@ -242,6 +288,8 @@
   {% for lane in pipeline_lanes %}
   {% if lane in hidden_lanes %}
   <button class="board-col board-col--lane board-col--strip" type="button" aria-label="Show {{ lane }} lane"
+          data-lane-strip="{{ lane }}"
+          data-replacement-focus="lane:{{ lane }}"
           hx-post="/board/lane" hx-vals='{"lane": {{ lane | tojson }}}'
           hx-target="#board-region" hx-swap="innerHTML">
     <span class="dot dot--lane-{{ lane | lower }}" aria-hidden="true"></span>
@@ -256,10 +304,11 @@
       <span class="board-col-title">{{ lane }}</span>
       <span class="pill pill--neutral pill--count" id="col-count-{{ lane | lower }}">{{ columns[lane] | length }}</span>
       <button class="btn btn-icon btn-sm lane-hide" aria-label="Hide {{ lane }} lane"
+              data-replacement-focus="lane:{{ lane }}"
               hx-post="/board/lane" hx-vals='{"lane": {{ lane | tojson }}}'
               hx-target="#board-region" hx-swap="innerHTML">−</button>
     </header>
-    <ul class="board-cards" data-status="{{ lane }}">
+    <ul class="board-cards" data-status="{{ lane }}" data-sort-role="pipeline">
       {% for r in columns[lane] %}{% include "board/_card.html" %}{% endfor %}
     </ul>
   </section>

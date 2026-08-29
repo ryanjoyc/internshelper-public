@@ -1,6 +1,8 @@
 """Companies page: browsing groups plus board-resolution Approval A."""
 
-from internshelper import companies, companygroups, config
+import sqlite3
+
+from internshelper import companies, companygroups, config, db, review, store
 
 
 def test_companies_page_renders_groups(client, companies_file):
@@ -36,6 +38,8 @@ def test_add_duplicate_flashes_not_500(client, companies_file):
     r = client.post("/companies/add", data={"name": "Goldman Sachs"})
     assert r.status_code == 200
     assert "already" in r.text
+    assert 'class="toast toast--error"' in r.text
+    assert 'role="alert"' in r.text
 
 
 def test_approve_proposal_writes_source_and_resolves(client, companies_file,
@@ -67,6 +71,40 @@ def test_set_company_group_round_trip(client, company_groups_file):
     assert companygroups.find(companygroups.load_company_groups(company_groups_file)[0],
                               "Capital One").group == "known"
     assert "Capital One" in r.text and "Known companies" in r.text
+
+
+def test_company_group_change_immediately_syncs_persisted_posting_tiers(
+    client, seeded_db, company_groups_file
+):
+    r = client.post("/companies/group/set", data={"name": "Stripe", "group": "known"})
+    assert r.status_code == 200
+    conn = sqlite3.connect(seeded_db)
+    tiers = {row[0] for row in conn.execute(
+        "SELECT tier FROM postings WHERE company = 'Stripe'"
+    )}
+    conn.close()
+    assert tiers == {"known"}
+
+
+def test_company_counts_distinguish_active_and_configured(client):
+    r = client.get("/companies")
+    assert "Active · Top targets" in r.text
+    assert "1 configured" in r.text
+    assert "Automatic default" in r.text
+
+
+def test_company_counts_include_interested_roles_in_the_inbox(
+    client, seeded_db, company_groups_file
+):
+    conn = db.connect(seeded_db)
+    store.set_application_status(conn, "greenhouse:plain", "Interested")
+    entries, errors = companygroups.load_company_groups(company_groups_file)
+    assert not errors
+    active_counts, posting_counts = review.company_group_activity(conn, entries)
+    conn.close()
+
+    assert active_counts["unclassified"] == 1
+    assert posting_counts["Bistro"] == 1
 
 
 def test_discovery_proposal_approve_and_reject(client, company_groups_file):

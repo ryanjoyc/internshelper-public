@@ -95,6 +95,42 @@ def test_collapse_hides_losers_and_is_idempotent(tmp_path):
     assert dedup.collapse_url_duplicates(c) == 0  # idempotent second run
 
 
+def test_url_collapse_preserves_single_curated_application(tmp_path):
+    c = _db(tmp_path)
+    _add(c, "markdown:applied", url="https://careers.sig.com/jobs/10838")
+    _add(c, "markdown:ranked", url="https://careers.sig.com/jobs/10838?utm_source=x")
+    c.execute(
+        "UPDATE postings SET rank_score = 0, description = '' WHERE posting_id = ?",
+        ("markdown:applied",),
+    )
+    c.execute(
+        "UPDATE postings SET rank_score = 1, description = 'richer' WHERE posting_id = ?",
+        ("markdown:ranked",),
+    )
+    store.set_application(
+        c, "markdown:applied", status="Applied", notes="do not lose",
+        applied_date="2026-08-20",
+    )
+
+    assert dedup.collapse_url_duplicates(c) == 1
+    assert c.execute(
+        "SELECT duplicate_of FROM postings WHERE posting_id = 'markdown:ranked'"
+    ).fetchone()["duplicate_of"] == "markdown:applied"
+
+
+def test_url_collapse_leaves_multiple_curated_applications_visible(tmp_path):
+    c = _db(tmp_path)
+    _add(c, "markdown:1", url="https://careers.sig.com/jobs/10838")
+    _add(c, "markdown:2", url="https://careers.sig.com/jobs/10838?utm_source=x")
+    store.set_application(c, "markdown:1", status="Applied", notes="first")
+    store.set_application(c, "markdown:2", status="Interviewing", notes="second")
+
+    assert dedup.collapse_url_duplicates(c) == 0
+    assert c.execute(
+        "SELECT count(*) FROM postings WHERE duplicate_of IS NULL"
+    ).fetchone()[0] == 2
+
+
 def test_confirmed_duplicate_is_excluded_by_inbox_sql(tmp_path):
     c = _db(tmp_path)
     _add(c, "markdown:1", url="https://careers.sig.com/jobs/10838")
@@ -125,6 +161,66 @@ def test_fuzzy_groups_by_company_and_title_and_respects_keep(tmp_path):
     review.keep_separate(c, ["markdown:1", "markdown:2"])
     assert dedup.find_possible_duplicates(c) == []  # keep-separate silences the suggestion
 
+    # A later arrival must be compared with the prior decision, not hidden forever.
+    _add(c, "markdown:3", url="https://example.com/circleback/ccc", company="Circleback",
+         title="Software Engineering Intern Summer 2027")
+    groups = dedup.find_possible_duplicates(c)
+    assert len(groups) == 1
+    assert {r["posting_id"] for r in groups[0]["rows"]} == {
+        "markdown:1", "markdown:2", "markdown:3",
+    }
+    review.confirm_duplicates(
+        c, groups[0]["survivor_id"], [r["posting_id"] for r in groups[0]["rows"]]
+    )
+    assert dedup.find_kept_separate(c) == []
+    losers = [
+        r["posting_id"] for r in groups[0]["rows"]
+        if r["posting_id"] != groups[0]["survivor_id"]
+    ]
+    review.undo_duplicates(c, losers, survivor_id=groups[0]["survivor_id"])
+    assert dedup.find_possible_duplicates(c)
+    assert {
+        row["posting_id"]
+        for group in dedup.find_kept_separate(c)
+        for row in group["rows"]
+    } == {"markdown:1", "markdown:2"}
+
+
+def test_kept_separate_history_retains_rows_after_title_drift(tmp_path):
+    c = _db(tmp_path)
+    _add(c, "markdown:1", url="https://a.com/x", company="Acme", title="Data Intern")
+    _add(c, "markdown:2", url="https://b.com/y", company="Acme", title="Data Intern")
+    review.keep_separate(c, ["markdown:1", "markdown:2"])
+    c.execute("UPDATE postings SET title = 'Data Science Intern' WHERE posting_id = 'markdown:2'")
+    c.commit()
+
+    history_ids = {
+        row["posting_id"]
+        for group in dedup.find_kept_separate(c)
+        for row in group["rows"]
+    }
+    assert history_ids == {"markdown:1", "markdown:2"}
+
+
+def test_possible_duplicate_order_is_stable_across_pagination_slices(tmp_path):
+    c = _db(tmp_path)
+    for index in reversed(range(27)):
+        for variant in ("a", "b"):
+            _add(
+                c,
+                f"markdown:{index:02d}:{variant}",
+                url=f"https://{variant}.example/{index}",
+                company=f"Company {index:02d}",
+                title="Software Intern",
+            )
+
+    first = dedup.find_possible_duplicates(c)
+    second = dedup.find_possible_duplicates(c)
+    first_ids = [group["rows"][0]["posting_id"] for group in first]
+    assert first_ids == [group["rows"][0]["posting_id"] for group in second]
+    assert len(first_ids) == 27
+    assert set(first_ids[:25]).isdisjoint(first_ids[25:])
+
 
 def test_confirm_then_undo_roundtrip(tmp_path):
     c = _db(tmp_path)
@@ -139,3 +235,27 @@ def test_confirm_then_undo_roundtrip(tmp_path):
     review.undo_duplicate(c, "markdown:2")
     assert c.execute("SELECT duplicate_of FROM postings WHERE posting_id='markdown:2'"
                      ).fetchone()["duplicate_of"] is None
+
+
+def test_fuzzy_merge_preserves_one_application_and_blocks_two(tmp_path):
+    c = _db(tmp_path)
+    _add(c, "markdown:1", url="https://a.com/x", company="Acme", title="Data Intern")
+    _add(c, "markdown:2", url="https://b.com/y", company="Acme", title="Data Intern")
+    store.set_application(c, "markdown:2", status="Applied", notes="curated")
+
+    group = dedup.find_possible_duplicates(c)[0]
+    assert group["survivor_id"] == "markdown:2"
+    assert group["merge_blocked"] is False
+
+    store.set_application(c, "markdown:1", status="Interviewing", notes="also curated")
+    group = dedup.find_possible_duplicates(c)[0]
+    assert group["merge_blocked"] is True
+    try:
+        review.confirm_duplicates(
+            c, group["survivor_id"], [r["posting_id"] for r in group["rows"]]
+        )
+    except ValueError as exc:
+        assert "saved application records cannot be merged safely" in str(exc)
+    else:
+        raise AssertionError("merge should reject multiple curated applications")
+    assert review.keep_separate(c, ["markdown:1", "markdown:2"]) == 2

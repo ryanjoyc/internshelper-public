@@ -358,22 +358,29 @@ def set_application_status(
     posting_id: str,
     status: str,
     applied_date_if_empty: str | None = None,
+    *,
+    notes: str | None = None,
+    update_notes: bool = False,
 ) -> None:
-    """Status-only upsert: existing notes/applied_date are left untouched.
+    """Update application status while always preserving the application date.
 
     `applied_date_if_empty` fills the applied date ONLY when none is recorded yet
     (a board drag into Applied stamps today without clobbering a hand-set date).
+    Notes are also preserved by default.  Quick status actions pass `update_notes`
+    so their complete editor value is committed atomically with the new status.
     """
     if status not in STATUS_OPTIONS:
         raise ValueError(f"status must be one of {STATUS_OPTIONS}, got {status!r}")
     conn.execute(
         """
-        INSERT INTO applications (posting_id, status, applied_date) VALUES (?,?,?)
+        INSERT INTO applications (posting_id, status, notes, applied_date) VALUES (?,?,?,?)
         ON CONFLICT(posting_id) DO UPDATE SET
             status = excluded.status,
+            notes = CASE WHEN ? THEN excluded.notes ELSE applications.notes END,
             applied_date = COALESCE(NULLIF(applications.applied_date, ''), excluded.applied_date)
         """,
-        (posting_id, status, applied_date_if_empty),
+        (posting_id, status, notes if update_notes else None, applied_date_if_empty,
+         int(update_notes)),
     )
     conn.commit()
 
@@ -383,6 +390,50 @@ def get_application(conn: sqlite3.Connection, posting_id: str) -> sqlite3.Row | 
         "SELECT status, notes, applied_date FROM applications WHERE posting_id = ?",
         (posting_id,),
     ).fetchone()
+
+
+def restore_application_if_unchanged(
+    conn: sqlite3.Connection,
+    posting_id: str,
+    *,
+    expected_status: str | None,
+    expected_notes: str | None,
+    expected_applied_date: str | None,
+    restore_exists: bool,
+    restore_status: str | None,
+    restore_notes: str | None,
+    restore_applied_date: str | None,
+) -> bool:
+    """Atomically restore an Undo only if no newer application edit replaced it."""
+    if restore_status is not None and restore_status not in STATUS_OPTIONS:
+        raise ValueError(
+            f"status must be one of {STATUS_OPTIONS}, got {restore_status!r}"
+        )
+    expected = (
+        posting_id,
+        expected_status,
+        expected_notes,
+        expected_applied_date,
+    )
+    if restore_exists:
+        cur = conn.execute(
+            "UPDATE applications SET status = ?, notes = ?, applied_date = ? "
+            "WHERE posting_id = ? AND status IS ? AND notes IS ? AND applied_date IS ?",
+            (
+                restore_status,
+                restore_notes,
+                restore_applied_date,
+                *expected,
+            ),
+        )
+    else:
+        cur = conn.execute(
+            "DELETE FROM applications WHERE posting_id = ? "
+            "AND status IS ? AND notes IS ? AND applied_date IS ?",
+            expected,
+        )
+    conn.commit()
+    return cur.rowcount == 1
 
 
 def inbox_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -401,13 +452,22 @@ def inbox_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
-def dismissed_rows(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:
+def dismissed_rows(
+    conn: sqlite3.Connection, limit: int = 200, offset: int = 0
+) -> list[sqlite3.Row]:
     """Recently dismissed postings, newest verdict first — the board's dismissed filter."""
     return conn.execute(
         "SELECT * FROM postings WHERE verdict = 'no_match' "
-        "ORDER BY reviewed_at DESC, posting_id LIMIT ?",
-        (limit,),
+        "ORDER BY reviewed_at DESC, posting_id LIMIT ? OFFSET ?",
+        (limit, offset),
     ).fetchall()
+
+
+def dismissed_count(conn: sqlite3.Connection) -> int:
+    """Number of postings in the Board's dismissed lens."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM postings WHERE verdict = 'no_match'"
+    ).fetchone()[0]
 
 
 # A flag resolved by dismissal ("confirmed gone") leaves the queue — dismissed wins
@@ -415,12 +475,14 @@ def dismissed_rows(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.R
 FLAGGED_SQL = "(flagged_at IS NOT NULL AND (verdict IS NULL OR verdict != 'no_match'))"
 
 
-def flagged_rows(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:
+def flagged_rows(
+    conn: sqlite3.Connection, limit: int = 200, offset: int = 0
+) -> list[sqlite3.Row]:
     """Postings flagged for review, newest flag first — the board's flagged view."""
     return conn.execute(
         f"SELECT * FROM postings WHERE {FLAGGED_SQL} "
-        "ORDER BY flagged_at DESC, posting_id LIMIT ?",
-        (limit,),
+        "ORDER BY flagged_at DESC, posting_id LIMIT ? OFFSET ?",
+        (limit, offset),
     ).fetchall()
 
 

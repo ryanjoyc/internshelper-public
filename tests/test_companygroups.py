@@ -1,6 +1,7 @@
 import pytest
 
-from internshelper import companygroups
+from internshelper import companygroups, db, store
+from internshelper.models import Posting
 
 
 def test_set_clear_and_round_trip(tmp_path):
@@ -36,3 +37,36 @@ def test_reject_discovery_proposal_removes_unclassified_stub(tmp_path):
 def test_discovery_cannot_bypass_proposal_approval(tmp_path):
     with pytest.raises(ValueError, match="proposal and approval"):
         companygroups.set_group(tmp_path / "groups.yaml", "Acme", "discovery")
+
+
+def test_cli_group_change_syncs_persisted_posting_tiers(tmp_path, monkeypatch):
+    groups_path = tmp_path / "groups.yaml"
+    db_path = tmp_path / "internshelper.db"
+    companygroups.set_group(groups_path, "Acme", "top_target")
+    conn = db.connect(db_path)
+    db.init_db(conn)
+    store.upsert(
+        conn,
+        Posting(
+            posting_id="greenhouse:acme",
+            source_key="greenhouse:acme",
+            title="Software Engineering Intern",
+            company="Acme",
+            url="https://example.test/acme",
+        ),
+        now="2026-08-27T12:00:00+00:00",
+    )
+    conn.execute(
+        "UPDATE postings SET tier = 'top_target' WHERE posting_id = 'greenhouse:acme'"
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("INTERNSHELPER_COMPANY_GROUPS", str(groups_path))
+    monkeypatch.setenv("INTERNSHELPER_DB", str(db_path))
+
+    assert companygroups.main(["set", "Acme", "known"]) == 0
+    conn = db.connect(db_path)
+    assert conn.execute(
+        "SELECT tier FROM postings WHERE posting_id = 'greenhouse:acme'"
+    ).fetchone()[0] == "known"
+    conn.close()

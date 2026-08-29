@@ -9,7 +9,7 @@
   </div>
   <div class="source-side">
     {{ m.pill(e.type) }}
-    <details class="source-manage" x-data="{ confirmRm: false }">
+    <details class="source-manage" data-popover x-data="{ confirmRm: false }">
       <summary class="btn btn-secondary btn-sm">Manage</summary>
       <div class="source-manage-popover">
         {% if e.title_must_match %}
@@ -21,12 +21,15 @@
         <p class="source-rule-empty">No title guard configured.</p>
         {% endif %}
         <button class="btn btn-danger-text btn-sm" type="button" x-show="!confirmRm"
-                x-on:click="confirmRm = true">Remove source</button>
+                x-ref="removeTrigger"
+                x-on:click="confirmRm = true; $nextTick(() => $refs.removeConfirm.focus())">Remove source</button>
         <div class="confirm-stack" x-show="confirmRm" x-cloak>
           <p>Stop future collection from this source? Historical postings remain searchable.</p>
           <div>
-            <button class="btn btn-ghost btn-sm" type="button" x-on:click="confirmRm = false">Cancel</button>
-            <button class="btn btn-danger btn-sm" type="button"
+            <button class="btn btn-ghost btn-sm" type="button"
+                    x-on:click="confirmRm = false; $nextTick(() => $refs.removeTrigger.focus())">Cancel</button>
+            <button class="btn btn-danger btn-sm" type="button" x-ref="removeConfirm"
+                    data-focus-after-swap="#source-list"
                     hx-post="/sources/remove" hx-vals='{"source_key": {{ e.source_key | tojson }}}'
                     hx-target="#source-list" hx-swap="innerHTML">Confirm removal</button>
           </div>

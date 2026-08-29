@@ -11,33 +11,20 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, Form, Request
 
-from internshelper import companies, companygroups, config, store
+from internshelper import companies, companygroups, config, review, tiers
 from internshelper.web.deps import get_conn, nav_context
 from internshelper.web.templating import templates
 
 router = APIRouter()
 
 
-def _board_group_counts(
-    conn: sqlite3.Connection,
-    priority_entries: list[companygroups.CompanyGroupEntry],
-) -> tuple[dict[str, int], dict[str, int]]:
-    """Count the company cards and postings currently visible in each Board group."""
-    mapping = companygroups.group_map(priority_entries)
-    companies_by_group = {key: set() for key in companygroups.ALL_GROUPS}
-    posting_counts: dict[str, int] = {}
-    for row in store.inbox_with_status(conn):
-        if row["status"] not in (None, "Untracked"):
-            continue
-        raw_name = (row["company"] or "").strip()
-        group, entry = companygroups.classify(raw_name, mapping)
-        display_name = entry.name if entry else (raw_name or "Unknown")
-        identity = companygroups.normalize_company(display_name) or "unknown"
-        companies_by_group[group].add(identity)
-        posting_counts[display_name] = posting_counts.get(display_name, 0) + 1
-    return (
-        {key: len(names) for key, names in companies_by_group.items()},
-        posting_counts,
+def _message(text: str, *, error: bool = False) -> dict:
+    return {"text": text, "kind": "error" if error else "success"}
+
+
+def _sync_board_groups(request: Request, conn: sqlite3.Connection) -> None:
+    tiers.retier_inbox(
+        conn, tiers.load_tier_map(request.app.state.company_groups_path)
     )
 
 
@@ -60,13 +47,19 @@ def _ctx(
         key: [entry for entry in priority_entries if entry.group == key]
         for key in companygroups.GROUPS
     }
+    priority_configured_counts = {
+        key: len(priority_groups.get(key, [])) for key in companygroups.ALL_GROUPS
+    }
     priority_proposals = [entry for entry in priority_entries if entry.proposal]
-    priority_counts, posting_counts = _board_group_counts(conn, priority_entries)
+    priority_counts, posting_counts = review.company_group_activity(
+        conn, priority_entries
+    )
     return {"groups": groups, "total": len(entries), "errors": errors,
             "priority_groups": priority_groups,
             "priority_labels": companygroups.GROUP_LABELS,
             "priority_proposals": priority_proposals,
             "priority_counts": priority_counts,
+            "priority_configured_counts": priority_configured_counts,
             "posting_counts": posting_counts,
             "priority_errors": priority_errors,
             "dangling": companies.dangling(entries, source_keys), "toast": toast}
@@ -93,10 +86,10 @@ def add_company(
 ):
     try:
         companies.add_company(request.app.state.companies_path, name)
-        text = f"added {name}"
+        toast = _message(f"Added {name}")
     except (ValueError, config.ConfigError) as e:
-        text = str(e)
-    return _list(request, conn, {"text": text})
+        toast = _message(str(e), error=True)
+    return _list(request, conn, toast)
 
 
 @router.post("/companies/approve")
@@ -108,10 +101,10 @@ def approve(
     try:
         src = companies.approve(request.app.state.companies_path,
                                 request.app.state.sources_path, name)
-        text = f"{name} resolved -> {src.source_key}"
+        toast = _message(f"{name} resolved → {src.source_key}")
     except (ValueError, config.ConfigError) as e:
-        text = str(e)
-    return _list(request, conn, {"text": text})
+        toast = _message(str(e), error=True)
+    return _list(request, conn, toast)
 
 
 @router.post("/companies/set-tier")
@@ -123,10 +116,10 @@ def set_tier(
 ):
     try:
         companies.set_tier(request.app.state.companies_path, name, tier)
-        text = f"{name}: legacy tier field updated (Board groups are separate)"
+        toast = _message(f"{name}: legacy tier field updated (Board groups are separate)")
     except (ValueError, config.ConfigError) as e:
-        text = str(e)
-    return _list(request, conn, {"text": text})
+        toast = _message(str(e), error=True)
+    return _list(request, conn, toast)
 
 
 @router.post("/companies/group/set")
@@ -147,10 +140,11 @@ def set_group(
             companygroups.clear_group(request.app.state.company_groups_path, name)
         else:
             companygroups.set_group(request.app.state.company_groups_path, name, group)
-        text = f"{name} -> {companygroups.GROUP_LABELS[group]}"
+        _sync_board_groups(request, conn)
+        toast = _message(f"{name} → {companygroups.GROUP_LABELS[group]}")
     except (ValueError, config.ConfigError) as e:
-        text = str(e)
-    return _list(request, conn, {"text": text})
+        toast = _message(str(e), error=True)
+    return _list(request, conn, toast)
 
 
 @router.post("/companies/group/approve")
@@ -170,6 +164,7 @@ def approve_group(
         previous_group = entry.group
         previous_reason = entry.reason
         companygroups.approve_proposal(request.app.state.company_groups_path, name)
+        _sync_board_groups(request, conn)
         toast = {
             "text": f"{name} approved -> Worth discovering",
             "undo_url": "/companies/group/undo-approve",
@@ -182,7 +177,7 @@ def approve_group(
             },
         }
     except (ValueError, config.ConfigError) as e:
-        toast = {"text": str(e)}
+        toast = _message(str(e), error=True)
     return _list(request, conn, toast)
 
 
@@ -211,7 +206,7 @@ def reject_group(
             },
         }
     except (ValueError, config.ConfigError) as e:
-        toast = {"text": str(e)}
+        toast = _message(str(e), error=True)
     return _list(request, conn, toast)
 
 
@@ -241,10 +236,11 @@ def undo_approve_group(
             reason=reason,
             evidence=evidence,
         )
-        text = f"restored discovery proposal for {name}"
+        _sync_board_groups(request, conn)
+        toast = _message(f"restored discovery proposal for {name}")
     except (ValueError, config.ConfigError) as e:
-        text = str(e)
-    return _list(request, conn, {"text": text})
+        toast = _message(str(e), error=True)
+    return _list(request, conn, toast)
 
 
 @router.post("/companies/group/undo-reject")
@@ -262,10 +258,10 @@ def undo_reject_group(
             reason=reason,
             evidence=evidence,
         )
-        text = f"restored discovery proposal for {name}"
+        toast = _message(f"restored discovery proposal for {name}")
     except (ValueError, config.ConfigError) as e:
-        text = str(e)
-    return _list(request, conn, {"text": text})
+        toast = _message(str(e), error=True)
+    return _list(request, conn, toast)
 
 
 @router.post("/companies/reject")
@@ -277,7 +273,7 @@ def reject(
 ):
     try:
         companies.reject(request.app.state.companies_path, name, notes=notes)
-        text = f"{name} -> no-board"
+        toast = _message(f"{name} → no-board")
     except (ValueError, config.ConfigError) as e:
-        text = str(e)
-    return _list(request, conn, {"text": text})
+        toast = _message(str(e), error=True)
+    return _list(request, conn, toast)

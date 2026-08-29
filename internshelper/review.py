@@ -15,7 +15,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from internshelper import clock, config, db, store, text, tiers
+from internshelper import clock, companygroups, config, db, store, text, tiers
 from internshelper.dotenv import load_dotenv
 
 VERDICTS = ("match", "no_match")
@@ -27,6 +27,29 @@ CLOSED_REASON = "bulk: closed on source"
 
 # Payload keys tried (in order) for a human-readable description, across connector shapes.
 _DESCRIPTION_KEYS = ("content", "description", "descriptionPlain", "descriptionHtml", "plain")
+
+
+def company_group_activity(
+    conn: sqlite3.Connection,
+    entries: list[companygroups.CompanyGroupEntry],
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Count companies and postings in the Board's company-grouped Inbox."""
+    mapping = companygroups.group_map(entries)
+    companies_by_group = {key: set() for key in companygroups.ALL_GROUPS}
+    posting_counts: dict[str, int] = {}
+    for row in store.inbox_with_status(conn):
+        if row["status"] in store.PIPELINE_STATUSES:
+            continue
+        raw_name = (row["company"] or "").strip()
+        group, entry = companygroups.classify(raw_name, mapping)
+        display_name = entry.name if entry else (raw_name or "Unknown")
+        identity = companygroups.normalize_company(display_name) or "unknown"
+        companies_by_group[group].add(identity)
+        posting_counts[display_name] = posting_counts.get(display_name, 0) + 1
+    return (
+        {key: len(names) for key, names in companies_by_group.items()},
+        posting_counts,
+    )
 
 
 def set_verdict(
@@ -297,48 +320,140 @@ def confirm_duplicates(
     Orthogonal to dismiss/flag: no ranking label — a duplicate is not a preference signal.
     The survivor is never pointed at itself. Returns the number of rows hidden.
     """
-    targets = [pid for pid in dup_ids if pid != survivor_id]
-    if not targets:
-        return 0
-    conn.executemany(
-        "UPDATE postings SET duplicate_of = ? WHERE posting_id = ?",
-        [(survivor_id, pid) for pid in targets],
-    )
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        ids, expected_survivor, merge_blocked = _validate_possible_duplicate_group(
+            conn, dup_ids
+        )
+        if merge_blocked:
+            raise ValueError(
+                "multiple saved application records cannot be merged safely"
+            )
+        if survivor_id != expected_survivor:
+            raise ValueError("duplicate survivor no longer matches the live suggestion")
+        targets = [pid for pid in ids if pid != survivor_id]
+        marks = ",".join("?" for _ in targets)
+        cur = conn.execute(
+            f"UPDATE postings SET duplicate_of = ? "
+            f"WHERE duplicate_of IS NULL AND posting_id IN ({marks})",
+            (survivor_id, *targets),
+        )
+        if cur.rowcount != len(targets):
+            raise ValueError("possible-duplicate group changed during confirmation")
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
-    return len(targets)
+    return cur.rowcount
+
+
+def _validate_possible_duplicate_group(
+    conn: sqlite3.Connection, posting_ids: list[str]
+) -> tuple[list[str], str, bool]:
+    """Resolve an exact live suggestion or reject stale/arbitrary client IDs."""
+    from internshelper import dedup
+
+    ids = list(dict.fromkeys(pid for pid in posting_ids if pid))
+    requested = set(ids)
+    if len(requested) < 2:
+        raise ValueError("a possible-duplicate group requires at least two postings")
+    for group in dedup.find_possible_duplicates(conn):
+        live_ids = {row["posting_id"] for row in group["rows"]}
+        if requested == live_ids:
+            return ids, group["survivor_id"], group["merge_blocked"]
+    raise ValueError("possible-duplicate group is stale or invalid")
 
 
 def keep_separate(conn: sqlite3.Connection, posting_ids: list[str]) -> int:
     """Record a "these are distinct roles" decision so the fuzzy group stops resurfacing."""
     if not posting_ids:
-        return 0
-    conn.executemany(
-        "UPDATE postings SET dedup_keep = 1 WHERE posting_id = ?",
-        [(pid,) for pid in posting_ids],
-    )
+        raise ValueError("a possible-duplicate group requires at least two postings")
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        ids, _survivor, _merge_blocked = _validate_possible_duplicate_group(
+            conn, posting_ids
+        )
+        marks = ",".join("?" for _ in ids)
+        cur = conn.execute(
+            f"UPDATE postings SET dedup_keep = 1 WHERE posting_id IN ({marks})",
+            ids,
+        )
+        if cur.rowcount != len(ids):
+            raise ValueError("possible-duplicate group changed during review")
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
-    return len(posting_ids)
+    return cur.rowcount
+
+
+def undo_duplicates(
+    conn: sqlite3.Connection,
+    posting_ids: list[str],
+    *,
+    survivor_id: str | None = None,
+) -> int:
+    """Un-merge rows, optionally only when they still point at the expected survivor."""
+    ids = list(dict.fromkeys(pid for pid in posting_ids if pid))
+    if not ids:
+        return 0
+    marks = ",".join("?" for _ in ids)
+    if survivor_id:
+        cur = conn.execute(
+            f"UPDATE postings SET duplicate_of = NULL "
+            f"WHERE duplicate_of = ? AND posting_id IN ({marks})",
+            (survivor_id, *ids),
+        )
+    else:
+        cur = conn.execute(
+            f"UPDATE postings SET duplicate_of = NULL "
+            f"WHERE duplicate_of IS NOT NULL AND posting_id IN ({marks})",
+            ids,
+        )
+    conn.commit()
+    return cur.rowcount
 
 
 def undo_duplicate(conn: sqlite3.Connection, posting_id: str) -> None:
-    """Un-merge a duplicate: clear the pointer so the posting returns to the Inbox."""
-    conn.execute(
-        "UPDATE postings SET duplicate_of = NULL WHERE posting_id = ?", (posting_id,)
+    """Backward-compatible single-row un-merge helper."""
+    undo_duplicates(conn, [posting_id])
+
+
+def undo_keep_separate(conn: sqlite3.Connection, posting_ids: list[str]) -> int:
+    """Clear a reviewed-distinct decision so its fuzzy group can surface again."""
+    ids = list(dict.fromkeys(pid for pid in posting_ids if pid))
+    if not ids:
+        return 0
+    marks = ",".join("?" for _ in ids)
+    cur = conn.execute(
+        f"UPDATE postings SET dedup_keep = 0 "
+        f"WHERE dedup_keep = 1 AND posting_id IN ({marks})",
+        ids,
     )
     conn.commit()
+    return cur.rowcount
 
 
-def merged_duplicates(conn: sqlite3.Connection, limit: int = 200) -> list[dict]:
+def merged_duplicates(
+    conn: sqlite3.Connection, limit: int = 200, offset: int = 0
+) -> list[dict]:
     """Confirmed duplicates (the hidden losers), newest-survived first — the Merged view."""
     return [
         dict(r)
         for r in conn.execute(
             "SELECT posting_id, source_key, company, title, location, url, duplicate_of "
             "FROM postings WHERE duplicate_of IS NOT NULL "
-            "ORDER BY company, title, posting_id LIMIT ?",
-            (limit,),
+            "ORDER BY company, title, posting_id LIMIT ? OFFSET ?",
+            (limit, offset),
         )
     ]
+
+
+def merged_duplicates_count(conn: sqlite3.Connection) -> int:
+    """Number of currently hidden, human-confirmed duplicate rows."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM postings WHERE duplicate_of IS NOT NULL"
+    ).fetchone()[0]
 
 
 def count_possible_duplicates(conn: sqlite3.Connection) -> int:

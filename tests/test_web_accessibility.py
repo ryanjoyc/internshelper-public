@@ -19,7 +19,8 @@ def test_board_uses_semantic_disclosures_and_minimum_window_modes(client):
     assert 'class="co-toggle" type="button" :aria-expanded="open"' in response.text
     assert 'data-board-panel="inbox"' in response.text
     assert 'data-board-panel="pipeline"' in response.text
-    assert 'data-drawer-trigger role="button" tabindex="0"' in response.text
+    assert 'class="card-open" type="button" data-drawer-trigger' in response.text
+    assert 'data-drawer-trigger role="button"' not in response.text
     assert 'aria-label="Stripe Board group"' in response.text
 
 
@@ -73,9 +74,11 @@ def test_sources_render_as_managed_connections(client, sources_file):
 def test_styles_and_script_include_responsive_focus_contracts(client):
     css = client.get("/static/css/app.css").text
     script = client.get("/static/js/app.js").text
-    assert '@media (max-width: 1100px)' in css
+    assert '@media (max-width: 1143px)' in css
     assert 'html[data-board-panel="inbox"] .board-pipeline' in css
     assert "prefers-reduced-motion" in css
     assert "shell.inert = true" in script
-    assert "drawerOpener.focus()" in script
+    assert "matchingDrawerTrigger(drawerOpenerPostingId)" in script
     assert "reduced ? 0 : 140" in script
+    assert 'sort: false' in script
+    assert 'details[data-popover]' in script
