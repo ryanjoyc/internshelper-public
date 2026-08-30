@@ -16,6 +16,7 @@ kept in Git history, not beside active guidance.
 
 | Document | Use it for |
 |---|---|
+| [`codex-cloud.md`](codex-cloud.md) | Reproduce the pstack engineering and test environment in Codex Cloud without real data or operations. |
 | [`source-coverage.md`](source-coverage.md) | Supported connectors, configured footprint, known boundaries, and connector acceptance criteria. |
 | [`ui-design-system.md`](ui-design-system.md) | Approved interface principles, tokens, component contracts, responsive behavior, and verification criteria. |
 | [`availability-verification-catalog.md`](availability-verification-catalog.md) | Generated, the user-readable cases for the future availability policy. |

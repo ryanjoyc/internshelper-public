@@ -150,6 +150,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - `README.md` — setup and operator workflows.
 - `ROADMAP.md` — forward-looking product direction only.
 - `docs/source-coverage.md` — connector support, boundaries, and acceptance criteria.
+- `docs/codex-cloud.md` — engineering-only Codex Cloud environment, pstack portability, safety
+  boundaries, and verification.
 - `docs/availability-verification-{catalog,coverage}.md` — generated future-availability cases,
   coverage, locked expectations, and contract-suite commands.
 - Completed or superseded plans are intentionally absent from the active tree; use Git history.
@@ -168,6 +170,8 @@ bash scripts/bootstrap.sh
 .venv/bin/python -m pip install -e ".[ui]"             # optional browser-test dependencies
 .venv/bin/python -m playwright install chromium        # one-time browser install
 .venv/bin/python -m pytest -m browser                  # Playwright responsive/keyboard checks
+bash scripts/setup-codex-cloud.sh                      # Cloud-only engineering dependencies + graph
+bash scripts/verify-codex-cloud.sh                     # Cloud pstack/graph/offline/browser acceptance
 .venv/bin/python -m internshelper.run                  # one collection cycle
 .venv/bin/python -m internshelper.web                  # web UI → http://127.0.0.1:8510
 .venv/bin/python -m internshelper.appbundle --install  # Dock app → ~/Applications (macOS)
@@ -210,8 +214,8 @@ bash scripts/bootstrap.sh
   posting live (ATS JSON-API fallbacks), re-enumerates its source to compare URLs, then unflags
   false alarms, dismisses confirmed-gone postings, and diagnoses connector/URL bugs. The deepest
   per-posting pass of the three.
-- **`internshelper-engineering`** — connects the personal `pstack-codex` engineering workflow to
-  this repository's state, code-review graph, venv, domain boundaries, UI verification, and
-  end-of-session tracking rules. It coordinates substantial code work; task-specific collection
-  and review skills keep their own authority boundaries.
+- **`internshelper-engineering`** — connects the repository-scoped `pstack-codex` workflow to this
+  repository's state, code-review graph, venv, domain boundaries, UI verification, and end-of-session
+  tracking rules. Codex Cloud loads the vendored pstack skills from `.agents/skills`; task-specific
+  collection and review skills keep their own authority boundaries.
 - **`update-internshelper-guide`** — refresh THIS guide after a structural change.
