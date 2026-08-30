@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fix root causes"
+  short_description: "Trace symptoms to the defect that creates them"
+  default_prompt: "Use $principle-fix-root-causes while diagnosing this bug."

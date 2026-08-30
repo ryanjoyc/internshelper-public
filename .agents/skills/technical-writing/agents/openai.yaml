@@ -1,0 +1,4 @@
+interface:
+  display_name: "Technical writing"
+  short_description: "Write precise maintainer-facing documentation"
+  default_prompt: "Use $technical-writing to revise this documentation for clarity."

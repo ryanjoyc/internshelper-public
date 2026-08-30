@@ -1,0 +1,4 @@
+interface:
+  display_name: "How"
+  short_description: "Explain a subsystem from its real code paths"
+  default_prompt: "Use $how to explain how this subsystem works."

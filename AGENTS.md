@@ -2,9 +2,10 @@
 
 This repo ships its own onboarding skills. Use them rather than re-deriving the layout from scratch.
 
-For code work, check `.code-review-graph/` first and use `code-review-graph` to narrow the affected
-files and symbols. The graph may be stale or built on another branch, so report that condition and
-verify changed code directly before editing.
+For code work, check `.code-review-graph/` first and use `.venv/bin/code-review-graph` when it is
+installed, otherwise `code-review-graph`, to narrow the affected files and symbols. The graph may
+be stale or built on another branch, so report that condition and verify changed code directly
+before editing.
 
 ## New-instance reading order
 
@@ -29,5 +30,17 @@ verify changed code directly before editing.
   specific term — e.g. Summer 2027 — plus profile fit, by opening every posting's live link),
   and `investigate-flags` (resolve the Board's ⚑ flagged-for-review queue: dead links,
   suspect data, connector-bug diagnosis).
+
+## Codex Cloud safety
+
+When `INTERNSHELPER_CLOUD=1`, treat the checkout as engineering-only:
+
+- Use temporary databases and frozen fixtures. Never create `.env`, upload or open the user's real
+  `data/`, or configure SMTP credentials.
+- Do not run collection, email, scheduling, source/config mutation, user-state mutation,
+  `live_canary`, Dock-app, or launchd commands.
+- Keep agent internet access disabled. Package installation belongs to the setup phase.
+- Run `bash scripts/verify-codex-cloud.sh` to check pstack, the branch-local graph, and the offline
+  test surfaces.
 
 Always run Python via the project venv: `.venv/bin/python`.

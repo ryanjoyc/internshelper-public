@@ -1,0 +1,4 @@
+interface:
+  display_name: "Experience first"
+  short_description: "Choose the user experience over convenience"
+  default_prompt: "Use $principle-experience-first to evaluate this product tradeoff."

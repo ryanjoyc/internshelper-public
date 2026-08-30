@@ -1,0 +1,4 @@
+interface:
+  display_name: "Engineering mode"
+  short_description: "Run a rigorous, verified engineering workflow"
+  default_prompt: "Use $engineering-mode to complete and verify this task."

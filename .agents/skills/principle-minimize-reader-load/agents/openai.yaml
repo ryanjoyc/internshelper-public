@@ -1,0 +1,4 @@
+interface:
+  display_name: "Minimize reader load"
+  short_description: "Reduce indirection and hidden mutable state"
+  default_prompt: "Use $principle-minimize-reader-load to simplify this code structure."

@@ -1,0 +1,10 @@
+pstack-codex is a Codex-native adaptation of selected workflows from pstack.
+
+Upstream project: https://github.com/cursor/plugins/tree/main/pstack
+Upstream version reviewed: 0.14.5
+Upstream author: Lauren Tan
+License: MIT
+
+The adaptation replaces Cursor-specific agents, model routing, configuration,
+automation, and shipping commands with Codex skills, plans, goals, collaboration
+tools, approval boundaries, and repository-local instructions.

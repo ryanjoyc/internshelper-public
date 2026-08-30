@@ -1,0 +1,4 @@
+interface:
+  display_name: "Guard the context window"
+  short_description: "Keep bulk evidence out of the coordinating thread"
+  default_prompt: "Use $principle-guard-the-context-window to structure this large investigation."

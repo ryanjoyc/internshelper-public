@@ -1,0 +1,4 @@
+interface:
+  display_name: "Interrogate"
+  short_description: "Run an independent adversarial code review"
+  default_prompt: "Use $interrogate to challenge this diff and find blind spots."

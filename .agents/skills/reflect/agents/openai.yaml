@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reflect"
+  short_description: "Turn a work session into durable lessons"
+  default_prompt: "Use $reflect to extract durable lessons from this session."

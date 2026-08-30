@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prove it works"
+  short_description: "Verify the real artifact before declaring success"
+  default_prompt: "Use $principle-prove-it-works to verify this result directly."

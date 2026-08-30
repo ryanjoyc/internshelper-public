@@ -1,0 +1,4 @@
+interface:
+  display_name: "Blast radius"
+  short_description: "Prove what a change could break elsewhere"
+  default_prompt: "Use $blast-radius to analyze what this change could break."

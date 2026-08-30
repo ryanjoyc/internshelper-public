@@ -12,7 +12,11 @@ Use `$engineering-mode` as the general workflow, then apply these repository-spe
 1. Read `STATE.md` through `$project-state`.
 2. Read `$internshelper-guide` before locating or changing code.
 3. Read `docs/README.md` and only the active reference needed for the task.
-4. Check `.code-review-graph/` first for code work. Run `code-review-graph status`; when the graph matches the branch, use its available change-impact query to narrow the affected files and symbols. If the graph is stale or the installed CLI exposes no suitable query, report that limitation, then narrow with the actual diff, `rg`, callers, tests, and direct code inspection.
+4. Check `.code-review-graph/` first for code work. Run `.venv/bin/code-review-graph status` when
+   the project venv provides it, otherwise `code-review-graph status`. When the graph matches the
+   branch, use its available change-impact query to narrow the affected files and symbols. If the
+   graph is stale or the installed CLI exposes no suitable query, report that limitation, then
+   narrow with the actual diff, `rg`, callers, tests, and direct code inspection.
 5. Snapshot `git status` and preserve all pre-existing work. Do not fold unrelated changes into the task.
 
 ## Route

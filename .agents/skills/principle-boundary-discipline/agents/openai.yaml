@@ -1,0 +1,4 @@
+interface:
+  display_name: "Boundary discipline"
+  short_description: "Validate at boundaries and keep internals direct"
+  default_prompt: "Use $principle-boundary-discipline to review these validation boundaries."
