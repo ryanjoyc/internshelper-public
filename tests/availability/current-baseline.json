@@ -1,0 +1,1632 @@
+{
+  "schema_version": 1,
+  "baseline_name": "pre_availability_implementation",
+  "baseline_revision": "a8abdc8",
+  "generated_on": "2026-08-30",
+  "corpus_policy_version": "availability-policy-v1",
+  "corpus_approval": {
+    "status": "approved",
+    "approved_by": "the user",
+    "approved_on": "2026-08-30"
+  },
+  "classification": {
+    "pass": "Current code consumes the relevant evidence and matches every approved semantic field.",
+    "mismatch": "At least one user-visible or persisted semantic field differs from the approved result.",
+    "unsupported": "Outputs happen to match, but current code does not consume a capability required to establish them."
+  },
+  "summary": {
+    "mismatch": 29,
+    "pass": 0,
+    "unsupported": 5
+  },
+  "results": [
+    {
+      "case_id": "ats_live_initial",
+      "status": "unsupported",
+      "expected": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [],
+      "unsupported_capabilities": [
+        "destination_validation"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "community_checked_before_display",
+      "status": "unsupported",
+      "expected": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [],
+      "unsupported_capabilities": [
+        "community_pre_display_validation",
+        "cross_source_reconciliation",
+        "destination_validation"
+      ],
+      "consumed_evidence": [
+        1
+      ],
+      "ignored_evidence": [
+        2
+      ]
+    },
+    {
+      "case_id": "unknown_redirect_to_live",
+      "status": "unsupported",
+      "expected": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [],
+      "unsupported_capabilities": [
+        "destination_validation"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1,
+        2
+      ]
+    },
+    {
+      "case_id": "unusual_title_live_job",
+      "status": "unsupported",
+      "expected": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [],
+      "unsupported_capabilities": [
+        "content_aware_closure",
+        "destination_validation"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "multiple_sources_agree_live",
+      "status": "unsupported",
+      "expected": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [],
+      "unsupported_capabilities": [
+        "cross_source_reconciliation",
+        "destination_validation"
+      ],
+      "consumed_evidence": [
+        1,
+        2
+      ],
+      "ignored_evidence": [
+        3
+      ]
+    },
+    {
+      "case_id": "single_404_guarded",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "guarded",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "single_410_guarded",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "guarded",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "repeated_404_closed",
+      "status": "mismatch",
+      "expected": {
+        "availability": "closed",
+        "board_treatment": "archived",
+        "primary_action": "none",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action"
+      ],
+      "unsupported_capabilities": [
+        "destination_validation",
+        "evidence_history_and_retries"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1,
+        2
+      ]
+    },
+    {
+      "case_id": "repeated_410_interested_visible",
+      "status": "mismatch",
+      "expected": {
+        "availability": "closed",
+        "board_treatment": "visible_closed",
+        "primary_action": "none",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "destination_validation",
+        "evidence_history_and_retries"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1,
+        2
+      ]
+    },
+    {
+      "case_id": "employer_closure_applied_visible",
+      "status": "mismatch",
+      "expected": {
+        "availability": "closed",
+        "board_treatment": "visible_closed",
+        "primary_action": "none",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "content_aware_closure",
+        "destination_validation"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "generic_error_text_uncertain",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "content_aware_closure",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "ats_absence_once_uncertain",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "apply",
+        "secondary_action": "verify",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "closed",
+        "board_treatment": "visible_closed",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "tri_state_availability"
+      ],
+      "consumed_evidence": [
+        1
+      ],
+      "ignored_evidence": []
+    },
+    {
+      "case_id": "ats_absence_twice_closed",
+      "status": "mismatch",
+      "expected": {
+        "availability": "closed",
+        "board_treatment": "archived",
+        "primary_action": "none",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "closed",
+        "board_treatment": "visible_closed",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "board_treatment",
+        "primary_action"
+      ],
+      "unsupported_capabilities": [
+        "evidence_history_and_retries"
+      ],
+      "consumed_evidence": [
+        1,
+        2
+      ],
+      "ignored_evidence": []
+    },
+    {
+      "case_id": "community_removed_but_destination_live",
+      "status": "mismatch",
+      "expected": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "closed",
+        "board_treatment": "visible_closed",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment"
+      ],
+      "unsupported_capabilities": [
+        "cross_source_reconciliation",
+        "destination_validation"
+      ],
+      "consumed_evidence": [
+        1
+      ],
+      "ignored_evidence": [
+        2
+      ]
+    },
+    {
+      "case_id": "community_presence_destination_timeout",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "community_pre_display_validation",
+        "cross_source_reconciliation",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [
+        1
+      ],
+      "ignored_evidence": [
+        2
+      ]
+    },
+    {
+      "case_id": "first_party_timeout_uncertain",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "dns_failure_uncertain",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "connection_failure_uncertain",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "automation_403_keeps_apply",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "verify",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "destination_validation",
+        "tri_state_availability"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "anti_bot_keeps_apply",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "verify",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "destination_validation",
+        "tri_state_availability"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "javascript_required_keeps_apply",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "verify",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "destination_validation",
+        "tri_state_availability"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "login_required_keeps_apply",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "verify",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "destination_validation",
+        "tri_state_availability"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "rate_limited_429_outage",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "service_5xx_outage",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "maintenance_page_outage",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "redirect_loop_outage",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "destination_validation",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1
+      ]
+    },
+    {
+      "case_id": "trustworthy_evidence_conflicts",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "apply",
+        "secondary_action": "verify",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "closed",
+        "board_treatment": "visible_closed",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "cross_source_reconciliation",
+        "destination_validation",
+        "evidence_history_and_retries",
+        "tri_state_availability"
+      ],
+      "consumed_evidence": [
+        1,
+        2
+      ],
+      "ignored_evidence": [
+        3
+      ]
+    },
+    {
+      "case_id": "original_link_recovered",
+      "status": "mismatch",
+      "expected": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "original_recovered",
+        "investigation_stages": [
+          "queued",
+          "check_original",
+          "retry_original",
+          "complete"
+        ],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "investigation_outcome",
+        "investigation_stages"
+      ],
+      "unsupported_capabilities": [
+        "destination_validation",
+        "evidence_history_and_retries",
+        "investigation_workflow"
+      ],
+      "consumed_evidence": [],
+      "ignored_evidence": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "case_id": "replacement_requires_confirmation",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "guarded",
+        "primary_action": "confirm_replacement",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "replacement_found",
+        "investigation_stages": [
+          "queued",
+          "check_original",
+          "enumerate_first_party",
+          "search_replacement",
+          "review_finding",
+          "await_user_confirmation"
+        ],
+        "replacement_behavior": "offer_for_confirmation",
+        "replacement_requires_confirmation": true,
+        "replacement_candidate_url": "https://jobs.example.test/roles/replacement",
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "closed",
+        "board_treatment": "visible_closed",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "investigation_outcome",
+        "investigation_stages",
+        "primary_action",
+        "replacement_behavior",
+        "replacement_candidate_url",
+        "replacement_requires_confirmation",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "cross_source_reconciliation",
+        "destination_validation",
+        "investigation_workflow",
+        "replacement_confirmation",
+        "tri_state_availability"
+      ],
+      "consumed_evidence": [
+        2,
+        3
+      ],
+      "ignored_evidence": [
+        1,
+        4
+      ]
+    },
+    {
+      "case_id": "investigation_confirms_closure",
+      "status": "mismatch",
+      "expected": {
+        "availability": "closed",
+        "board_treatment": "archived",
+        "primary_action": "none",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "closure_confirmed",
+        "investigation_stages": [
+          "queued",
+          "check_original",
+          "retry_original",
+          "enumerate_first_party",
+          "complete"
+        ],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "closed",
+        "board_treatment": "visible_closed",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "board_treatment",
+        "investigation_outcome",
+        "investigation_stages",
+        "primary_action"
+      ],
+      "unsupported_capabilities": [
+        "destination_validation",
+        "evidence_history_and_retries",
+        "investigation_workflow"
+      ],
+      "consumed_evidence": [
+        3
+      ],
+      "ignored_evidence": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "case_id": "investigation_remains_unresolved",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "unresolved",
+        "investigation_stages": [
+          "queued",
+          "check_original",
+          "retry_original",
+          "compare_sources",
+          "complete"
+        ],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "investigation_outcome",
+        "investigation_stages",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "cross_source_reconciliation",
+        "destination_validation",
+        "evidence_history_and_retries",
+        "investigation_workflow",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [
+        3
+      ],
+      "ignored_evidence": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "case_id": "point72_cubist_sanitized",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "guarded",
+        "primary_action": "confirm_replacement",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "replacement_found",
+        "investigation_stages": [
+          "queued",
+          "check_original",
+          "enumerate_first_party",
+          "compare_sources",
+          "review_finding",
+          "await_user_confirmation"
+        ],
+        "replacement_behavior": "offer_for_confirmation",
+        "replacement_requires_confirmation": true,
+        "replacement_candidate_url": "https://jobs.example.test/point72/cubist-replacement",
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "investigation_outcome",
+        "investigation_stages",
+        "primary_action",
+        "replacement_behavior",
+        "replacement_candidate_url",
+        "replacement_requires_confirmation",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "cross_source_reconciliation",
+        "destination_validation",
+        "investigation_workflow",
+        "replacement_confirmation",
+        "tri_state_availability"
+      ],
+      "consumed_evidence": [
+        1,
+        3
+      ],
+      "ignored_evidence": [
+        2,
+        4
+      ]
+    },
+    {
+      "case_id": "voloridge_sanitized",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "guarded",
+        "primary_action": "confirm_replacement",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "replacement_found",
+        "investigation_stages": [
+          "queued",
+          "check_original",
+          "compare_sources",
+          "search_replacement",
+          "review_finding",
+          "await_user_confirmation"
+        ],
+        "replacement_behavior": "offer_for_confirmation",
+        "replacement_requires_confirmation": true,
+        "replacement_candidate_url": "https://jobs.example.test/voloridge/replacement",
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "investigation_outcome",
+        "investigation_stages",
+        "primary_action",
+        "replacement_behavior",
+        "replacement_candidate_url",
+        "replacement_requires_confirmation",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "cross_source_reconciliation",
+        "destination_validation",
+        "investigation_workflow",
+        "replacement_confirmation",
+        "tri_state_availability"
+      ],
+      "consumed_evidence": [
+        1,
+        3
+      ],
+      "ignored_evidence": [
+        2,
+        4
+      ]
+    },
+    {
+      "case_id": "workday_maintenance_sanitized",
+      "status": "mismatch",
+      "expected": {
+        "availability": "uncertain",
+        "board_treatment": "warned",
+        "primary_action": "verify",
+        "secondary_action": "open_original",
+        "ranking_effect": "none",
+        "investigation_outcome": "unresolved",
+        "investigation_stages": [
+          "queued",
+          "check_original",
+          "enumerate_first_party",
+          "retry_original",
+          "complete"
+        ],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "observed": {
+        "availability": "live",
+        "board_treatment": "normal",
+        "primary_action": "apply",
+        "secondary_action": "none",
+        "ranking_effect": "none",
+        "investigation_outcome": "not_run",
+        "investigation_stages": [],
+        "replacement_behavior": "none",
+        "replacement_requires_confirmation": false,
+        "replacement_candidate_url": null,
+        "stored_url": "original"
+      },
+      "mismatched_fields": [
+        "availability",
+        "board_treatment",
+        "investigation_outcome",
+        "investigation_stages",
+        "primary_action",
+        "secondary_action"
+      ],
+      "unsupported_capabilities": [
+        "availability_board_treatments",
+        "content_aware_closure",
+        "destination_validation",
+        "evidence_history_and_retries",
+        "investigation_workflow",
+        "tri_state_availability",
+        "verify_action"
+      ],
+      "consumed_evidence": [
+        2
+      ],
+      "ignored_evidence": [
+        1,
+        3
+      ]
+    }
+  ]
+}
