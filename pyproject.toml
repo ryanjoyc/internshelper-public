@@ -32,9 +32,11 @@ internshelper = ["web/templates/**/*.html", "web/static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not browser'"
+addopts = "-m 'not browser and not availability_contract and not live_canary'"
 markers = [
     "browser: optional Playwright checks that require the ui extra and Chromium",
+    "availability_contract: future availability behavior; xfails until a production adapter is wired",
+    "live_canary: optional read-only, informational probes of selected real sources",
 ]
 filterwarnings = [
     # starlette's TestClient warns about its own httpx dependency; not ours to fix.

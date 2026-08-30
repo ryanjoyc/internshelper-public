@@ -278,6 +278,15 @@ curates sources + views the dashboard can set `COLLECT=0` and `EMAIL=0`. Other p
 .venv/bin/python -m pytest
 ```
 
+The default offline suite also validates the future availability corpus, its frozen fixtures,
+generated [case catalog](docs/availability-verification-catalog.md), coverage matrix, and mutant
+scorecard. Availability behavior itself remains a separate contract until production work starts:
+
+```bash
+.venv/bin/python -m pytest -q -m availability_contract  # expected xfails for unimplemented behavior
+.venv/bin/python -m pytest -q -m live_canary -s          # optional read-only observations; not a gate
+```
+
 Optional browser-level UI checks cover responsive breakpoints and overflow, disclosure/drawer
 keyboard behavior, pipeline status persistence and errors, HTMX replacement focus, and source
 removal confirmation:

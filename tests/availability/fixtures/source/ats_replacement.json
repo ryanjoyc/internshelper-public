@@ -1,0 +1,11 @@
+{
+  "complete": true,
+  "postings": [
+    {
+      "id": "role-replacement",
+      "title": "Software Engineering Intern",
+      "location": "Example City",
+      "url": "https://jobs.example.test/roles/replacement"
+    }
+  ]
+}

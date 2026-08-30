@@ -1,0 +1,14 @@
+{
+  "sanitized": true,
+  "pattern": "workday_maintenance",
+  "job_route": {
+    "status": 200,
+    "title": "Site maintenance",
+    "role_specific_closure": false
+  },
+  "cxs_enumeration": {
+    "status": 503,
+    "complete": false,
+    "postings": null
+  }
+}

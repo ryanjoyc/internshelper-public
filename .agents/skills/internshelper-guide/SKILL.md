@@ -150,6 +150,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - `README.md` — setup and operator workflows.
 - `ROADMAP.md` — forward-looking product direction only.
 - `docs/source-coverage.md` — connector support, boundaries, and acceptance criteria.
+- `docs/availability-verification-{catalog,coverage}.md` — generated future-availability cases,
+  coverage, locked expectations, and contract-suite commands.
 - Completed or superseded plans are intentionally absent from the active tree; use Git history.
 
 ## Run & test
@@ -160,7 +162,9 @@ python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev,web]"
 # Or one-shot, per-machine config:
 bash scripts/bootstrap.sh
 
-.venv/bin/python -m pytest                              # tests (fixtures, no live calls)
+.venv/bin/python -m pytest                              # default offline tests
+.venv/bin/python -m pytest -q -m availability_contract # future behavior; expected xfails until wired
+.venv/bin/python -m pytest -q -m live_canary -s         # optional read-only observations, not a gate
 .venv/bin/python -m pip install -e ".[ui]"             # optional browser-test dependencies
 .venv/bin/python -m playwright install chromium        # one-time browser install
 .venv/bin/python -m pytest -m browser                  # Playwright responsive/keyboard checks
@@ -177,6 +181,8 @@ bash scripts/bootstrap.sh
 - **All persisted timestamps are UTC ISO-8601 strings** (sort-safe), via `clock`.
 - **Connectors self-register** through `base`'s registry — add the connector and a `sourceurl`
   rule rather than wiring it in elsewhere.
+- Availability expectations live in `tests/availability/corpus.yaml`; regenerate its catalog and
+  coverage report with `.venv/bin/python tests/availability/generate.py` after changing the YAML.
 - **launchd doesn't fire while the Mac is asleep**; overnight postings land on the first cycle
   after wake (`RunAtLoad=true`).
 - The curation *judgment* (dismiss/flag/apply, made in-app or by the agent) is the deliberate

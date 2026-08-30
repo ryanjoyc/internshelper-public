@@ -1,0 +1,14 @@
+{
+  "sanitized": true,
+  "pattern": "voloridge",
+  "first_observation": {
+    "host_family": "greenhouse",
+    "title": "Quantitative Developer Intern",
+    "status": 404
+  },
+  "second_observation": {
+    "host_family": "hiringthing",
+    "title": "Quantitative Developer Intern",
+    "url": "https://jobs.example.test/voloridge/replacement"
+  }
+}

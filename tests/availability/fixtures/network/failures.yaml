@@ -1,0 +1,14 @@
+timeout:
+  exception: ReadTimeout
+  response_received: false
+dns_error:
+  exception: ConnectError
+  detail: name resolution failed
+  response_received: false
+connection_error:
+  exception: ConnectError
+  detail: connection refused
+  response_received: false
+redirect_loop:
+  exception: TooManyRedirects
+  cycle: [https://jobs.example.test/a, https://jobs.example.test/b]

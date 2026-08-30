@@ -1,0 +1,6 @@
+{
+  "original_recovered": {"stored_url_changed": false},
+  "replacement_found": {"stored_url_changed": false, "awaiting_confirmation": true},
+  "closure_confirmed": {"replacement": null},
+  "unresolved": {"availability_guess": null}
+}

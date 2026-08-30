@@ -18,6 +18,8 @@ kept in Git history, not beside active guidance.
 |---|---|
 | [`source-coverage.md`](source-coverage.md) | Supported connectors, configured footprint, known boundaries, and connector acceptance criteria. |
 | [`ui-design-system.md`](ui-design-system.md) | Approved interface principles, tokens, component contracts, responsive behavior, and verification criteria. |
+| [`availability-verification-catalog.md`](availability-verification-catalog.md) | Generated, the user-readable cases for the future availability policy. |
+| [`availability-verification-coverage.md`](availability-verification-coverage.md) | Generated dimension coverage, locked expectations, mutant scorecard, and suite commands. |
 | [`../config/profile.md`](../config/profile.md) | the user's broad role-fit guidance for agent-assisted posting audits. |
 
 ## Documentation rules
@@ -29,4 +31,7 @@ kept in Git history, not beside active guidance.
   `.claude/skills/internshelper-guide/SKILL.md`.
 - New planning documents belong here only while they guide unfinished work. Once executed or
   superseded, remove them and update every inbound pointer; Git history is the archive.
+- The availability catalog and coverage report are generated from
+  `tests/availability/corpus.yaml`. Change the manifest, then run
+  `.venv/bin/python tests/availability/generate.py`; never edit either generated file directly.
 - Do not record live scan counts or timestamps here. Use the Health page and SQLite run history.

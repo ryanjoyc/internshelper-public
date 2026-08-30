@@ -1,0 +1,1828 @@
+schema_version: 1
+policy_version: availability-policy-v1
+approval:
+  status: approved
+  approved_by: the user
+  approved_on: "2026-08-30"
+
+coverage_requirements:
+  source_authority:
+    - first_party_ats
+    - community_list
+    - unknown
+  evidence_signal:
+    - live_page
+    - redirect
+    - unusual_title
+    - replacement_url
+    - multiple_source_observations
+    - single_404
+    - repeated_404
+    - single_410
+    - repeated_410
+    - employer_closure_text
+    - generic_error_text
+    - single_ats_absence
+    - repeated_ats_absence
+    - community_presence
+    - community_removal
+    - timeout
+    - dns_failure
+    - connection_failure
+    - http_403
+    - anti_bot
+    - javascript_required
+    - login_required
+    - http_429
+    - http_5xx
+    - maintenance
+    - redirect_loop
+    - conflicting_evidence
+    - original_recovered
+    - replacement_discovered
+    - closure_confirmed
+    - investigation_unresolved
+  user_state:
+    - ordinary
+    - interested
+    - applied
+  check_stage:
+    - initial_validation
+    - scheduled_retry
+    - user_investigation
+  investigation_outcome:
+    - original_recovered
+    - replacement_found
+    - closure_confirmed
+    - unresolved
+  availability:
+    - live
+    - uncertain
+    - closed
+  board_treatment:
+    - normal
+    - warned
+    - guarded
+    - archived
+    - visible_closed
+  layer:
+    - policy
+    - network
+    - board
+    - investigation
+  known_pattern:
+    - point72_cubist
+    - voloridge
+    - workday_maintenance
+
+policy_rules:
+  community_pre_display_check: Community destinations are checked before the posting is first displayed.
+  single_hard_failure_guard: One 404 or 410 keeps the posting visible and guards the failing Apply action.
+  repeated_hard_failure_close: Two consistent hard failures may confirm that a posting closed.
+  employer_closure_immediate: Specific employer-hosted closure text confirms closure immediately.
+  generic_error_not_closure: Generic error text does not prove that a posting closed.
+  first_party_absence_threshold: One complete first-party absence is uncertain; two complete absences may confirm closure.
+  conflict_stays_uncertain: Conflicting trustworthy evidence produces uncertain, not automatic closure.
+  protected_closed_visible: Applied and interested postings remain visible after closure.
+  automation_barrier_apply_primary: Checker-only 403, anti-bot, JavaScript, and login barriers keep Apply primary.
+  user_outage_verify_primary: User-facing outages make Verify and find application primary and Open Original secondary.
+  replacement_requires_confirmation: A replacement candidate cannot change the stored URL without user confirmation.
+  ranking_unchanged: Availability outcomes never become ranking labels or ranking effects.
+
+mutants:
+  archive_every_uncertain: Archive every uncertain posting.
+  trust_community_presence: Treat community-list presence as proof that the destination is live.
+  never_close_anything: Never classify any posting as closed.
+  close_after_one_ambiguous_failure: Close a posting after one ambiguous failure or outage.
+  archive_protected_jobs: Archive applied or interested postings after closure.
+  closure_negative_ranking: Turn closure into a negative ranking effect.
+  guard_apply_after_automation_403: Guard Apply after an automated checker receives 403.
+  apply_primary_during_outage: Leave Apply primary during a known user-facing outage.
+  replace_without_confirmation: Replace the stored posting URL without user confirmation.
+  conflict_definitively_closed: Treat conflicting trustworthy evidence as definitively closed.
+
+maintenance_rules:
+  - Add a corpus case for each newly discovered production availability failure before fixing that failure.
+  - Obtain the user's approval before changing an expected user-visible outcome or locked product expectation.
+  - Engineers may refactor fixtures and add cases that follow already-approved policy without a separate product decision.
+  - Keep real-derived fixtures minimal and sanitized; retain only excerpts needed to reproduce the behavior.
+  - Increment schema_version for incompatible manifest-shape changes and policy_version for approved expectation changes.
+
+live_canaries:
+  - id: stripe_greenhouse_board
+    authority: first_party_ats
+    method: GET
+    url: https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=false
+    mutates: false
+  - id: ramp_ashby_board
+    authority: first_party_ats
+    method: GET
+    url: https://api.ashbyhq.com/posting-api/job-board/ramp
+    mutates: false
+  - id: sndsh404_community_list
+    authority: community_list
+    method: GET
+    url: https://raw.githubusercontent.com/sndsh404/summer-2027-internships/main/README.md
+    mutates: false
+
+cases:
+  - id: ats_live_initial
+    category: confirmed_live
+    description: A first-party ATS job page loads normally during initial validation.
+    provenance:
+      kind: synthetic
+      note: Minimal first-party success response with a visible job title and application control.
+    source:
+      authority: first_party_ats
+      kind: greenhouse
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: job_page
+        status: 200
+        signals: [live_page]
+        note: The employer page shows the role details and an enabled application control.
+        fixture: http/live_job.html
+    user_state: ordinary
+    expected:
+      availability: live
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [ranking_unchanged]
+    justification: Direct first-party application evidence is enough to keep the ordinary Apply experience without a warning or ranking change.
+
+  - id: community_checked_before_display
+    category: community_pre_display
+    description: A community-list row is present and its destination is checked before first display.
+    provenance:
+      kind: synthetic
+      note: Community row and destination response are trimmed to the fields needed for ordering the checks.
+    source:
+      authority: community_list
+      kind: markdown
+      label: Example internship list
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: source
+        target: community_row
+        attempt: 1
+        result: present
+        signals: [community_presence]
+        note: The list contains the employer, role, and destination URL.
+        fixture: source/community_present.md
+      - sequence: 2
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: job_page
+        status: 200
+        signals: [live_page]
+        note: The destination succeeds before the posting becomes eligible for first display.
+        fixture: http/live_job.html
+    user_state: ordinary
+    expected:
+      availability: live
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [community_pre_display_check, ranking_unchanged]
+    justification: The community row supplies discovery evidence, but the successful destination check is what makes first display safe.
+
+  - id: unknown_redirect_to_live
+    category: redirect_recovery
+    description: An unfamiliar destination redirects once to a live employer-hosted job page.
+    provenance:
+      kind: synthetic
+      note: Two frozen HTTP steps exercise deterministic redirect following without assuming an ATS vendor.
+    source:
+      authority: unknown
+      kind: unfamiliar_web
+      label: Unfamiliar careers host
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: redirect
+        status: 302
+        location: https://jobs.example.test/roles/redirected
+        signals: [redirect]
+        note: The original link redirects to an employer-owned careers host.
+        fixture: http/redirect.txt
+      - sequence: 2
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: redirected_url
+        attempt: 1
+        result: job_page
+        status: 200
+        signals: [live_page]
+        note: The final page contains the role and an application control.
+        fixture: http/live_job.html
+    user_state: ordinary
+    expected:
+      availability: live
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [ranking_unchanged]
+    justification: A bounded redirect that finishes on a usable employer page is live; unfamiliar hosting alone should not add friction.
+
+  - id: unusual_title_live_job
+    category: unusual_live_page
+    description: A live employer page uses an unusual title that contains the word closed in a team name.
+    provenance:
+      kind: synthetic
+      note: The title is deliberately awkward so title-only closure heuristics fail this case.
+    source:
+      authority: first_party_ats
+      kind: lever
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: job_page
+        status: 200
+        signals: [live_page, unusual_title]
+        note: The page says Closed Loop Systems Intern and still exposes an active application form.
+        fixture: http/unusual_title_live.html
+    user_state: ordinary
+    expected:
+      availability: live
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [ranking_unchanged]
+    justification: The active form and job details outweigh a misleading title token, preventing a brittle text-only false closure.
+
+  - id: multiple_sources_agree_live
+    category: corroborated_live
+    description: First-party enumeration, a community row, and the destination all agree that a role is live.
+    provenance:
+      kind: synthetic
+      note: Frozen ATS and Markdown snippets represent independent observations of the same stable posting ID.
+    source:
+      authority: first_party_ats
+      kind: ashby
+      label: Example employer ATS with community mirror
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: source
+        target: first_party_board
+        attempt: 1
+        result: present
+        signals: [multiple_source_observations]
+        note: Complete ATS enumeration includes the posting ID.
+        fixture: source/ats_present.json
+      - sequence: 2
+        at: T+00m
+        stage: initial_validation
+        channel: source
+        target: community_row
+        attempt: 1
+        result: present
+        signals: [community_presence, multiple_source_observations]
+        note: The community list points to the same destination.
+        fixture: source/community_present.md
+      - sequence: 3
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: job_page
+        status: 200
+        signals: [live_page]
+        note: The application page is usable.
+        fixture: http/live_job.html
+    user_state: ordinary
+    expected:
+      availability: live
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [ranking_unchanged]
+    justification: Independent observations reinforce the usable destination, so no warning, guard, or ranking consequence is warranted.
+
+  - id: single_404_guarded
+    category: hard_failure_once
+    description: The original first-party link returns one 404 during initial validation.
+    provenance:
+      kind: synthetic
+      note: Minimal employer-hosted 404 response with no explicit role-closure statement.
+    source:
+      authority: first_party_ats
+      kind: greenhouse
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: not_found
+        status: 404
+        signals: [single_404]
+        note: The posting URL is missing once; no retry or board enumeration has completed yet.
+        fixture: http/not_found.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: guarded
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [single_hard_failure_guard, ranking_unchanged]
+    justification: One hard failure can be transient or caused by a moved posting, so the row stays visible while the known-bad Apply path is guarded.
+
+  - id: single_410_guarded
+    category: hard_failure_once
+    description: The original first-party link returns one 410 during initial validation.
+    provenance:
+      kind: synthetic
+      note: Minimal HTTP 410 response without corroborating source enumeration.
+    source:
+      authority: first_party_ats
+      kind: lever
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: gone
+        status: 410
+        signals: [single_410]
+        note: The server reports Gone once, before the scheduled consistency check.
+        fixture: http/gone.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: guarded
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [single_hard_failure_guard, ranking_unchanged]
+    justification: A single 410 is stronger than a timeout but still receives the same one-observation safety margin before closure.
+
+  - id: repeated_404_closed
+    category: confirmed_closed
+    description: The same posting returns 404 during initial validation and a later scheduled retry.
+    provenance:
+      kind: synthetic
+      note: Identical frozen responses model two independent checks separated in time.
+    source:
+      authority: first_party_ats
+      kind: greenhouse
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: not_found
+        status: 404
+        signals: [single_404]
+        note: The first check records a hard failure but does not close the role.
+        fixture: http/not_found.html
+      - sequence: 2
+        at: T+60m
+        stage: scheduled_retry
+        channel: network
+        target: original_url
+        attempt: 2
+        result: not_found
+        status: 404
+        signals: [repeated_404]
+        note: The scheduled consistency check returns the same hard failure.
+        fixture: http/not_found.html
+    user_state: ordinary
+    expected:
+      availability: closed
+      board_treatment: archived
+      primary_action: none
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [repeated_hard_failure_close, ranking_unchanged]
+    justification: Two consistent hard failures across separate checks meet the closure threshold for an ordinary, unprotected posting.
+
+  - id: repeated_410_interested_visible
+    category: protected_closed
+    description: An interested posting returns 410 on two separate checks.
+    provenance:
+      kind: synthetic
+      note: The network evidence matches the repeated-hard-failure case while user state is protected.
+    source:
+      authority: first_party_ats
+      kind: lever
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: gone
+        status: 410
+        signals: [single_410]
+        note: The initial check records Gone.
+        fixture: http/gone.html
+      - sequence: 2
+        at: T+60m
+        stage: scheduled_retry
+        channel: network
+        target: original_url
+        attempt: 2
+        result: gone
+        status: 410
+        signals: [repeated_410]
+        note: The scheduled retry returns the same result.
+        fixture: http/gone.html
+    user_state: interested
+    expected:
+      availability: closed
+      board_treatment: visible_closed
+      primary_action: none
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [repeated_hard_failure_close, protected_closed_visible, ranking_unchanged]
+    justification: The evidence confirms closure, but the user's saved interest is durable state and keeps the closed row visible for context.
+
+  - id: employer_closure_applied_visible
+    category: protected_closed
+    description: An applied posting displays specific employer-authored text saying the role is no longer accepting applications.
+    provenance:
+      kind: synthetic
+      note: The excerpt contains a role-specific employer closure sentence rather than a generic site error.
+    source:
+      authority: first_party_ats
+      kind: workday
+      label: Example employer careers site
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: employer_closure
+        status: 200
+        signals: [employer_closure_text]
+        note: The employer page names the role and states that it no longer accepts applications.
+        fixture: http/employer_closed.html
+    user_state: applied
+    expected:
+      availability: closed
+      board_treatment: visible_closed
+      primary_action: none
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [employer_closure_immediate, protected_closed_visible, ranking_unchanged]
+    justification: Specific first-party closure language is decisive immediately, while the existing application record keeps the posting visible.
+
+  - id: generic_error_text_uncertain
+    category: ambiguous_error
+    description: The employer host returns a generic error page without role-specific closure language.
+    provenance:
+      kind: synthetic
+      note: Generic request-failure copy is frozen separately from the employer-closure fixture.
+    source:
+      authority: first_party_ats
+      kind: workday
+      label: Example employer careers site
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: generic_error_page
+        status: 200
+        signals: [generic_error_text]
+        note: The page says the request could not be completed and gives no role-specific status.
+        fixture: http/generic_error.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [generic_error_not_closure, user_outage_verify_primary, ranking_unchanged]
+    justification: Generic error copy describes the site's state, not the role's state, so the Board offers recovery without declaring closure.
+
+  - id: ats_absence_once_uncertain
+    category: source_absence
+    description: One complete first-party ATS enumeration omits a previously known posting.
+    provenance:
+      kind: synthetic
+      note: A complete successful enumeration is distinct from an empty, partial, or failed fetch.
+    source:
+      authority: first_party_ats
+      kind: ashby
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: source
+        target: first_party_board
+        attempt: 1
+        result: absent
+        signals: [single_ats_absence]
+        note: The source fetch completed and other roles were present, but this stable posting ID was absent.
+        fixture: source/ats_absent.json
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: apply
+      secondary_action: verify
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [first_party_absence_threshold, ranking_unchanged]
+    justification: One complete absence is meaningful but can reflect source lag or republishing, so it warns without closing or guarding the stored link.
+
+  - id: ats_absence_twice_closed
+    category: confirmed_closed
+    description: Two complete first-party ATS enumerations omit the same previously known posting.
+    provenance:
+      kind: synthetic
+      note: Two successful source snapshots model the absence threshold without any network ambiguity.
+    source:
+      authority: first_party_ats
+      kind: ashby
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: source
+        target: first_party_board
+        attempt: 1
+        result: absent
+        signals: [single_ats_absence]
+        note: The first complete enumeration omits the posting.
+        fixture: source/ats_absent.json
+      - sequence: 2
+        at: T+60m
+        stage: scheduled_retry
+        channel: source
+        target: first_party_board
+        attempt: 2
+        result: absent
+        signals: [repeated_ats_absence]
+        note: A later complete enumeration omits the same posting again.
+        fixture: source/ats_absent.json
+    user_state: ordinary
+    expected:
+      availability: closed
+      board_treatment: archived
+      primary_action: none
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [first_party_absence_threshold, ranking_unchanged]
+    justification: Two complete first-party absences across separate observations meet the closure threshold for an ordinary posting.
+
+  - id: community_removed_but_destination_live
+    category: community_removal
+    description: A community list removes a row while the original employer application page remains live.
+    provenance:
+      kind: synthetic
+      note: The removed community snapshot and live employer page are independent frozen fixtures.
+    source:
+      authority: community_list
+      kind: markdown
+      label: Example internship list
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: source
+        target: community_row
+        attempt: 1
+        result: removed
+        signals: [community_removal]
+        note: The latest list no longer contains the row.
+        fixture: source/community_removed.md
+      - sequence: 2
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: job_page
+        status: 200
+        signals: [live_page]
+        note: The employer destination still accepts applications.
+        fixture: http/live_job.html
+    user_state: ordinary
+    expected:
+      availability: live
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [ranking_unchanged]
+    justification: Community removal can reflect list maintenance; the usable first-party destination is stronger evidence that the role remains live.
+
+  - id: community_presence_destination_timeout
+    category: community_unverified
+    description: A community row is present, but its destination times out during the required pre-display check.
+    provenance:
+      kind: synthetic
+      note: The fixture pair distinguishes list presence from destination availability.
+    source:
+      authority: community_list
+      kind: markdown
+      label: Example internship list
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: source
+        target: community_row
+        attempt: 1
+        result: present
+        signals: [community_presence]
+        note: The list advertises the posting.
+        fixture: source/community_present.md
+      - sequence: 2
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: timeout
+        signals: [timeout]
+        note: The destination provides no user-visible response before the check deadline.
+        fixture: network/failures.yaml
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [community_pre_display_check, user_outage_verify_primary, ranking_unchanged]
+    justification: Community presence cannot override an unverified destination, so the initial Board treatment favors recovery rather than a blind Apply action.
+
+  - id: first_party_timeout_uncertain
+    category: transport_failure
+    description: A first-party application page times out on its first check.
+    provenance:
+      kind: synthetic
+      note: A scripted transport timeout contains no role-status evidence.
+    source:
+      authority: first_party_ats
+      kind: greenhouse
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: timeout
+        signals: [timeout]
+        note: The request deadline expires without an HTTP response.
+        fixture: network/failures.yaml
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [user_outage_verify_primary, ranking_unchanged]
+    justification: A timeout is an outage observation rather than closure evidence, so the recovery action leads while availability stays uncertain.
+
+  - id: dns_failure_uncertain
+    category: transport_failure
+    description: DNS resolution fails for an unfamiliar job host.
+    provenance:
+      kind: synthetic
+      note: A scripted name-resolution failure has no fabricated HTTP response.
+    source:
+      authority: unknown
+      kind: unfamiliar_web
+      label: Unfamiliar careers host
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: dns_error
+        signals: [dns_failure]
+        note: The hostname cannot be resolved during the check.
+        fixture: network/failures.yaml
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [user_outage_verify_primary, ranking_unchanged]
+    justification: DNS failure says the host is unreachable now, not that the employer closed the role, so the result remains uncertain.
+
+  - id: connection_failure_uncertain
+    category: transport_failure
+    description: A connection is refused before the job host returns an HTTP response.
+    provenance:
+      kind: synthetic
+      note: A deterministic connection failure is separate from timeout and DNS cases.
+    source:
+      authority: first_party_ats
+      kind: custom_ats
+      label: Example employer careers host
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: connection_error
+        signals: [connection_failure]
+        note: The remote endpoint refuses the connection before any page is served.
+        fixture: network/failures.yaml
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [user_outage_verify_primary, ranking_unchanged]
+    justification: A refused connection is a host-level outage with no role-specific meaning, so it triggers recovery rather than closure.
+
+  - id: automation_403_keeps_apply
+    category: checker_barrier
+    description: The automated checker receives 403 from a destination that may still work in the user's browser.
+    provenance:
+      kind: synthetic
+      note: The response identifies automated-access denial without employer closure text.
+    source:
+      authority: first_party_ats
+      kind: custom_ats
+      label: Bot-protected employer site
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: forbidden_to_checker
+        status: 403
+        signals: [http_403]
+        note: The host rejects the checker user agent and does not claim the role is closed.
+        fixture: http/forbidden.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: verify
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [automation_barrier_apply_primary, ranking_unchanged]
+    justification: The failure is specific to automation, so the user should still get the direct Apply path before an optional deeper verification.
+
+  - id: anti_bot_keeps_apply
+    category: checker_barrier
+    description: The checker receives a challenge page that asks a browser to prove it is human.
+    provenance:
+      kind: synthetic
+      note: The challenge excerpt contains no posting-status claim.
+    source:
+      authority: first_party_ats
+      kind: custom_ats
+      label: Challenge-protected employer site
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: anti_bot_challenge
+        status: 200
+        signals: [anti_bot]
+        note: The response asks for a human/browser challenge instead of serving job content.
+        fixture: http/anti_bot.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: verify
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [automation_barrier_apply_primary, ranking_unchanged]
+    justification: A human browser may pass the challenge, so guarding the direct action would turn checker weakness into user-facing friction.
+
+  - id: javascript_required_keeps_apply
+    category: checker_barrier
+    description: The checker receives only a JavaScript-required application shell.
+    provenance:
+      kind: synthetic
+      note: The frozen shell states that JavaScript is required and contains no role status.
+    source:
+      authority: first_party_ats
+      kind: custom_ats
+      label: JavaScript application site
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: javascript_shell
+        status: 200
+        signals: [javascript_required]
+        note: Static fetching cannot render the application, but a normal browser can execute it.
+        fixture: http/javascript_required.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: verify
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [automation_barrier_apply_primary, ranking_unchanged]
+    justification: Missing JavaScript execution is a checker limitation, so Apply remains the fastest way for the user to test the real browser path.
+
+  - id: login_required_keeps_apply
+    category: checker_barrier
+    description: The destination asks the visitor to sign in before showing the application.
+    provenance:
+      kind: synthetic
+      note: The login page is sanitized and carries no claim that the underlying job is closed.
+    source:
+      authority: first_party_ats
+      kind: custom_ats
+      label: Login-gated employer site
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: login_gate
+        status: 200
+        signals: [login_required]
+        note: The page requires an interactive user session before the role can be inspected.
+        fixture: http/login_required.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: verify
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [automation_barrier_apply_primary, ranking_unchanged]
+    justification: A login gate is actionable by the user and supplies no closure evidence, so Apply stays primary and the checker remains cautious.
+
+  - id: rate_limited_429_outage
+    category: user_facing_outage
+    description: The application endpoint returns 429 and a retry-after response.
+    provenance:
+      kind: synthetic
+      note: The rate-limit response is frozen without interpreting it as a role decision.
+    source:
+      authority: first_party_ats
+      kind: custom_ats
+      label: Rate-limited employer site
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: rate_limited
+        status: 429
+        signals: [http_429]
+        note: The endpoint asks the visitor to retry later and gives no posting status.
+        fixture: http/rate_limited.txt
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [user_outage_verify_primary, ranking_unchanged]
+    justification: Rate limiting blocks the current user path but says nothing about closure, so verification leads and the original remains available.
+
+  - id: service_5xx_outage
+    category: user_facing_outage
+    description: The employer application endpoint returns a server error.
+    provenance:
+      kind: synthetic
+      note: A minimal 503 response represents the 5xx family without vendor-specific copy.
+    source:
+      authority: first_party_ats
+      kind: custom_ats
+      label: Employer careers service
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: service_unavailable
+        status: 503
+        signals: [http_5xx]
+        note: The service is unavailable and provides no role-specific information.
+        fixture: http/service_unavailable.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [user_outage_verify_primary, ranking_unchanged]
+    justification: Server failure is an outage, not a hiring decision, so the Board exposes recovery while preserving an uncertain result.
+
+  - id: maintenance_page_outage
+    category: user_facing_outage
+    description: The first-party careers site shows a scheduled maintenance page.
+    provenance:
+      kind: synthetic
+      note: Generic maintenance copy is separated from the sanitized Workday production pattern.
+    source:
+      authority: first_party_ats
+      kind: custom_ats
+      label: Employer careers service
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: maintenance_page
+        status: 200
+        signals: [maintenance]
+        note: The host announces temporary maintenance and does not render the posting.
+        fixture: http/maintenance.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [generic_error_not_closure, user_outage_verify_primary, ranking_unchanged]
+    justification: Explicit maintenance describes temporary site availability, so closing or hiding the role would overstate the evidence.
+
+  - id: redirect_loop_outage
+    category: user_facing_outage
+    description: The application URL redirects between two pages until the redirect limit is reached.
+    provenance:
+      kind: synthetic
+      note: A deterministic redirect-loop script avoids relying on an HTTP client's vendor-specific exception text.
+    source:
+      authority: unknown
+      kind: unfamiliar_web
+      label: Unfamiliar careers host
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: redirect_loop
+        signals: [redirect_loop]
+        note: The destination alternates between two URLs and never reaches job content.
+        fixture: network/failures.yaml
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [user_outage_verify_primary, ranking_unchanged]
+    justification: A redirect loop makes the user path unusable but does not reveal whether the role closed, so recovery leads without closure.
+
+  - id: trustworthy_evidence_conflicts
+    category: conflicting_evidence
+    description: Repeated first-party absence conflicts with a second trustworthy employer page that is live.
+    provenance:
+      kind: synthetic
+      note: The case combines complete source snapshots with a separate employer-hosted application response.
+    source:
+      authority: unknown
+      kind: multi_source
+      label: Conflicting employer sources
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: source
+        target: first_party_board_a
+        attempt: 1
+        result: absent
+        signals: [single_ats_absence, multiple_source_observations]
+        note: One complete employer ATS omits the old stable ID.
+        fixture: source/ats_absent.json
+      - sequence: 2
+        at: T+60m
+        stage: scheduled_retry
+        channel: source
+        target: first_party_board_a
+        attempt: 2
+        result: absent
+        signals: [repeated_ats_absence]
+        note: The old ATS omits the stable ID again.
+        fixture: source/ats_absent.json
+      - sequence: 3
+        at: T+60m
+        stage: scheduled_retry
+        channel: network
+        target: employer_board_b
+        attempt: 1
+        result: job_page
+        status: 200
+        signals: [live_page, conflicting_evidence, multiple_source_observations]
+        note: A second employer-owned page shows the same role and accepts applications.
+        fixture: http/live_job.html
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: apply
+      secondary_action: verify
+      ranking_effect: none
+      investigation:
+        outcome: not_run
+        stages: []
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board]
+    policy_rules: [conflict_stays_uncertain, ranking_unchanged]
+    justification: Neither trustworthy source can be discarded automatically, so the conflict stays visible and uncertain instead of forcing closure.
+
+  - id: original_link_recovered
+    category: investigation_recovery
+    description: A user-triggered investigation retries an earlier timeout and recovers the original application page.
+    provenance:
+      kind: synthetic
+      note: The original URL is unchanged; the timeline records failure, user investigation, and recovery.
+    source:
+      authority: first_party_ats
+      kind: greenhouse
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: timeout
+        signals: [timeout]
+        note: Initial validation times out.
+        fixture: network/failures.yaml
+      - sequence: 2
+        at: T+05m
+        stage: user_investigation
+        channel: network
+        target: original_url
+        attempt: 2
+        result: job_page
+        status: 200
+        signals: [live_page]
+        note: The investigator retry reaches the original live application page.
+        fixture: http/live_job.html
+      - sequence: 3
+        at: T+05m
+        stage: user_investigation
+        channel: investigator
+        target: original_url
+        attempt: 1
+        result: original_recovered
+        signals: [original_recovered]
+        note: The investigator reports successful recovery without proposing a URL change.
+        fixture: investigator/findings.json
+    user_state: ordinary
+    expected:
+      availability: live
+      board_treatment: normal
+      primary_action: apply
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: original_recovered
+        stages: [queued, check_original, retry_original, complete]
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board, investigation]
+    policy_rules: [ranking_unchanged]
+    justification: Direct recovery of the original link removes the warning and restores Apply without touching the stored URL or rank.
+
+  - id: replacement_requires_confirmation
+    category: investigation_replacement
+    description: Investigation finds the original missing and discovers a plausible first-party replacement.
+    provenance:
+      kind: synthetic
+      note: Stable IDs and URLs use example.test while preserving the absence-to-replacement sequence.
+    source:
+      authority: first_party_ats
+      kind: greenhouse
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: user_investigation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: not_found
+        status: 404
+        signals: [single_404]
+        note: The stored URL fails during investigation.
+        fixture: http/not_found.html
+      - sequence: 2
+        at: T+00m
+        stage: user_investigation
+        channel: source
+        target: original_posting_id
+        attempt: 1
+        result: absent
+        signals: [single_ats_absence]
+        note: Complete first-party enumeration does not contain the original ID.
+        fixture: source/ats_absent.json
+      - sequence: 3
+        at: T+00m
+        stage: user_investigation
+        channel: source
+        target: replacement_candidate
+        attempt: 1
+        result: present
+        signals: [replacement_url, multiple_source_observations]
+        note: A title, company, and location match appears under a new stable ID.
+        fixture: source/ats_replacement.json
+      - sequence: 4
+        at: T+00m
+        stage: user_investigation
+        channel: investigator
+        target: replacement_candidate
+        attempt: 1
+        result: replacement_found
+        candidate_url: https://jobs.example.test/roles/replacement
+        signals: [replacement_discovered]
+        note: The investigator offers the candidate and waits for the user to confirm it.
+        fixture: investigator/findings.json
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: guarded
+      primary_action: confirm_replacement
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: replacement_found
+        stages: [queued, check_original, enumerate_first_party, search_replacement, review_finding, await_user_confirmation]
+      replacement:
+        behavior: offer_for_confirmation
+        candidate_url: https://jobs.example.test/roles/replacement
+        requires_confirmation: true
+        stored_url: original
+    layers: [policy, network, board, investigation]
+    policy_rules: [single_hard_failure_guard, replacement_requires_confirmation, ranking_unchanged]
+    justification: The candidate may represent a repost or a different role, so the user sees the evidence and the stored URL remains unchanged until confirmation.
+
+  - id: investigation_confirms_closure
+    category: investigation_closure
+    description: A user-triggered investigation repeats a hard failure and confirms complete first-party absence.
+    provenance:
+      kind: synthetic
+      note: The investigator finding summarizes only evidence already present in the frozen timeline.
+    source:
+      authority: first_party_ats
+      kind: lever
+      label: Example employer ATS
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: user_investigation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: gone
+        status: 410
+        signals: [single_410]
+        note: The investigator sees the first hard failure.
+        fixture: http/gone.html
+      - sequence: 2
+        at: T+01m
+        stage: user_investigation
+        channel: network
+        target: original_url
+        attempt: 2
+        result: gone
+        status: 410
+        signals: [repeated_410]
+        note: A bounded retry returns the same hard failure.
+        fixture: http/gone.html
+      - sequence: 3
+        at: T+01m
+        stage: user_investigation
+        channel: source
+        target: first_party_board
+        attempt: 1
+        result: absent
+        signals: [single_ats_absence]
+        note: Complete first-party enumeration also omits the posting.
+        fixture: source/ats_absent.json
+      - sequence: 4
+        at: T+01m
+        stage: user_investigation
+        channel: investigator
+        target: original_url
+        attempt: 1
+        result: closure_confirmed
+        signals: [closure_confirmed]
+        note: The investigator reports corroborated closure and no replacement.
+        fixture: investigator/findings.json
+    user_state: ordinary
+    expected:
+      availability: closed
+      board_treatment: archived
+      primary_action: none
+      secondary_action: none
+      ranking_effect: none
+      investigation:
+        outcome: closure_confirmed
+        stages: [queued, check_original, retry_original, enumerate_first_party, complete]
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board, investigation]
+    policy_rules: [repeated_hard_failure_close, ranking_unchanged]
+    justification: Consistent hard failures plus complete first-party absence give the investigation enough evidence to archive an ordinary posting.
+
+  - id: investigation_remains_unresolved
+    category: investigation_unresolved
+    description: A user-triggered investigation encounters transport failures and a failed source enumeration.
+    provenance:
+      kind: synthetic
+      note: No event invents a posting status when every evidence channel is unavailable.
+    source:
+      authority: unknown
+      kind: unfamiliar_web
+      label: Unfamiliar careers host
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: user_investigation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: timeout
+        signals: [timeout]
+        note: The original URL times out.
+        fixture: network/failures.yaml
+      - sequence: 2
+        at: T+01m
+        stage: user_investigation
+        channel: network
+        target: original_url
+        attempt: 2
+        result: dns_error
+        signals: [dns_failure]
+        note: The bounded retry cannot resolve the host.
+        fixture: network/failures.yaml
+      - sequence: 3
+        at: T+01m
+        stage: user_investigation
+        channel: source
+        target: unfamiliar_source
+        attempt: 1
+        result: source_error
+        signals: [multiple_source_observations]
+        note: No authoritative enumeration is available for the unfamiliar source.
+        fixture: source/source_error.json
+      - sequence: 4
+        at: T+01m
+        stage: user_investigation
+        channel: investigator
+        target: original_url
+        attempt: 1
+        result: unresolved
+        signals: [investigation_unresolved]
+        note: The investigator reports the evidence gap without guessing closure.
+        fixture: investigator/findings.json
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: unresolved
+        stages: [queued, check_original, retry_original, compare_sources, complete]
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board, investigation]
+    policy_rules: [user_outage_verify_primary, ranking_unchanged]
+    justification: Every path failed to produce role-status evidence, so the honest result is unresolved and visible with recovery actions.
+
+  - id: point72_cubist_sanitized
+    category: known_real_failure
+    description: A community-listed Point72/Cubist role has a dead stored link while a plausible employer-hosted repost exists.
+    provenance:
+      kind: sanitized_real
+      sanitized: true
+      pattern: point72_cubist
+      note: Frozen from the Point72/Cubist failure family; requisition IDs, dates, and response metadata were replaced.
+    source:
+      authority: community_list
+      kind: markdown
+      label: Sanitized community list
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: user_investigation
+        channel: source
+        target: community_row
+        attempt: 1
+        result: present
+        signals: [community_presence, multiple_source_observations]
+        note: The list names Point72/Cubist and retains the old application URL.
+        fixture: known/point72_cubist.json
+      - sequence: 2
+        at: T+00m
+        stage: user_investigation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: not_found
+        status: 404
+        signals: [single_404]
+        note: The stored destination no longer resolves to a posting.
+        fixture: known/point72_cubist.json
+      - sequence: 3
+        at: T+01m
+        stage: user_investigation
+        channel: source
+        target: replacement_candidate
+        attempt: 1
+        result: present
+        signals: [replacement_url, conflicting_evidence, multiple_source_observations]
+        note: Employer search exposes a similar Cubist-branded role under a new sanitized URL.
+        fixture: known/point72_cubist.json
+      - sequence: 4
+        at: T+01m
+        stage: user_investigation
+        channel: investigator
+        target: replacement_candidate
+        attempt: 1
+        result: replacement_found
+        candidate_url: https://jobs.example.test/point72/cubist-replacement
+        signals: [replacement_discovered]
+        note: Similarity is high enough to offer a candidate, not high enough to rewrite stored state.
+        fixture: investigator/findings.json
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: guarded
+      primary_action: confirm_replacement
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: replacement_found
+        stages: [queued, check_original, enumerate_first_party, compare_sources, review_finding, await_user_confirmation]
+      replacement:
+        behavior: offer_for_confirmation
+        candidate_url: https://jobs.example.test/point72/cubist-replacement
+        requires_confirmation: true
+        stored_url: original
+    layers: [policy, network, board, investigation]
+    policy_rules: [single_hard_failure_guard, conflict_stays_uncertain, replacement_requires_confirmation, ranking_unchanged]
+    justification: Brand and requisition ambiguity make automatic replacement unsafe; the user gets the candidate evidence while the original record stays intact.
+
+  - id: voloridge_sanitized
+    category: known_real_failure
+    description: A Voloridge community link fails while another list points to a plausible posting on a different ATS host.
+    provenance:
+      kind: sanitized_real
+      sanitized: true
+      pattern: voloridge
+      note: Frozen from observed Greenhouse-versus-HiringThing link drift; identifiers and dates were replaced.
+    source:
+      authority: community_list
+      kind: markdown
+      label: Sanitized Summer 2027 lists
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: user_investigation
+        channel: source
+        target: community_row_a
+        attempt: 1
+        result: present
+        signals: [community_presence, multiple_source_observations]
+        note: One list retains a sanitized Greenhouse destination.
+        fixture: known/voloridge.json
+      - sequence: 2
+        at: T+00m
+        stage: user_investigation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: not_found
+        status: 404
+        signals: [single_404]
+        note: The stored Greenhouse-style URL returns a hard failure.
+        fixture: known/voloridge.json
+      - sequence: 3
+        at: T+01m
+        stage: user_investigation
+        channel: source
+        target: community_row_b
+        attempt: 1
+        result: present
+        signals: [replacement_url, conflicting_evidence, multiple_source_observations]
+        note: A second list names a similar role on a sanitized HiringThing-style URL.
+        fixture: known/voloridge.json
+      - sequence: 4
+        at: T+01m
+        stage: user_investigation
+        channel: investigator
+        target: replacement_candidate
+        attempt: 1
+        result: replacement_found
+        candidate_url: https://jobs.example.test/voloridge/replacement
+        signals: [replacement_discovered]
+        note: The investigator offers the cross-host candidate for the user's confirmation.
+        fixture: investigator/findings.json
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: guarded
+      primary_action: confirm_replacement
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: replacement_found
+        stages: [queued, check_original, compare_sources, search_replacement, review_finding, await_user_confirmation]
+      replacement:
+        behavior: offer_for_confirmation
+        candidate_url: https://jobs.example.test/voloridge/replacement
+        requires_confirmation: true
+        stored_url: original
+    layers: [policy, network, board, investigation]
+    policy_rules: [single_hard_failure_guard, conflict_stays_uncertain, replacement_requires_confirmation, ranking_unchanged]
+    justification: Cross-list and cross-host evidence suggests a moved role but cannot prove identity, so replacement remains an explicit user decision.
+
+  - id: workday_maintenance_sanitized
+    category: known_real_failure
+    description: A Workday job route shows maintenance while the board API also fails during retry.
+    provenance:
+      kind: sanitized_real
+      sanitized: true
+      pattern: workday_maintenance
+      note: Frozen from a Workday maintenance failure family; tenant, site, requisition, and timestamps were replaced.
+    source:
+      authority: first_party_ats
+      kind: workday
+      label: Sanitized Workday employer
+    evidence_timeline:
+      - sequence: 1
+        at: T+00m
+        stage: initial_validation
+        channel: network
+        target: original_url
+        attempt: 1
+        result: maintenance_page
+        status: 200
+        signals: [maintenance, generic_error_text]
+        note: The job route displays vendor maintenance copy instead of role-specific content.
+        fixture: known/workday_maintenance.json
+      - sequence: 2
+        at: T+30m
+        stage: scheduled_retry
+        channel: source
+        target: first_party_board
+        attempt: 1
+        result: source_error
+        status: 503
+        signals: [http_5xx]
+        note: The CXS enumeration is unavailable, so absence cannot be measured safely.
+        fixture: known/workday_maintenance.json
+      - sequence: 3
+        at: T+31m
+        stage: user_investigation
+        channel: investigator
+        target: original_url
+        attempt: 1
+        result: unresolved
+        signals: [investigation_unresolved]
+        note: The investigation reports a vendor outage and no trustworthy role-status evidence.
+        fixture: investigator/findings.json
+    user_state: ordinary
+    expected:
+      availability: uncertain
+      board_treatment: warned
+      primary_action: verify
+      secondary_action: open_original
+      ranking_effect: none
+      investigation:
+        outcome: unresolved
+        stages: [queued, check_original, enumerate_first_party, retry_original, complete]
+      replacement:
+        behavior: none
+        candidate_url: null
+        requires_confirmation: false
+        stored_url: original
+    layers: [policy, network, board, investigation]
+    policy_rules: [generic_error_not_closure, user_outage_verify_primary, ranking_unchanged]
+    justification: Both Workday surfaces are unhealthy, so treating missing content as closure would convert vendor downtime into a false hiring decision.

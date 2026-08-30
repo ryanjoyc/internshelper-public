@@ -1,0 +1,14 @@
+{
+  "sanitized": true,
+  "pattern": "point72_cubist",
+  "community_row": {
+    "company": "Point72 / Cubist",
+    "title": "Quantitative Research Intern",
+    "url": "https://jobs.example.test/point72/old-role"
+  },
+  "original_response": {"status": 404},
+  "candidate": {
+    "title": "Cubist Quantitative Research Internship",
+    "url": "https://jobs.example.test/point72/cubist-replacement"
+  }
+}
