@@ -74,5 +74,8 @@ def client(seeded_db, sources_file, companies_file, company_groups_file):
 
     from internshelper.web import create_app
 
-    with TestClient(create_app()) as c:  # context manager runs the lifespan (init_db)
+    # Match the fixed loopback production origin; source-route security deliberately rejects
+    # TestClient's synthetic ``testserver`` host.
+    with TestClient(create_app(), base_url="http://127.0.0.1:8510") as c:
+        # The context manager runs the lifespan (init_db).
         yield c

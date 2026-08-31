@@ -20,7 +20,7 @@ from internshelper.dotenv import load_dotenv
 # <script> (theme bootstrap lives in static/js/theme.js), 'unsafe-eval' for Alpine.
 _CSP = (
     "default-src 'self'; script-src 'self' 'unsafe-eval'; "
-    "style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'"
 )
 
 
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     async def security_headers(request, call_next):
         response = await call_next(request)
         response.headers.setdefault("Content-Security-Policy", _CSP)
+        response.headers.setdefault("X-Frame-Options", "DENY")
         return response
 
     from internshelper.web.routes import all_routers

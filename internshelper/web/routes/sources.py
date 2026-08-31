@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Form, Request
 
 from internshelper import config, sniffer, sources
 from internshelper.sourceurl import SourceDetectionError
-from internshelper.web.deps import get_conn, nav_context
+from internshelper.web.deps import get_conn, nav_context, require_local_browser_request
 from internshelper.web.templating import templates
 
 router = APIRouter()
@@ -96,7 +96,9 @@ def add_form(request: Request):
     return _form(request)
 
 
-@router.post("/sources/detect")
+@router.post(
+    "/sources/detect", dependencies=[Depends(require_local_browser_request)]
+)
 def detect(
     request: Request,
     url: str = Form(""),
@@ -130,7 +132,9 @@ def detect(
     return _preview(request, entry, label, tmm, cols)
 
 
-@router.post("/sources/candidate")
+@router.post(
+    "/sources/candidate", dependencies=[Depends(require_local_browser_request)]
+)
 def candidate(
     request: Request,
     choice: str = Form(...),
@@ -146,7 +150,7 @@ def candidate(
     return _preview(request, entry, label, tmm, cols)
 
 
-@router.post("/sources/add")
+@router.post("/sources/add", dependencies=[Depends(require_local_browser_request)])
 def add(
     request: Request,
     type: str = Form(...),
@@ -176,7 +180,7 @@ def add(
     )
 
 
-@router.post("/sources/remove")
+@router.post("/sources/remove", dependencies=[Depends(require_local_browser_request)])
 def remove(
     request: Request,
     source_key: str = Form(...),

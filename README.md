@@ -200,7 +200,8 @@ system-aware dark/light theme, served on 127.0.0.1 only:
 - **Postings** — the full archive with search and state filters; no-match verdicts are
   archived (dimmed, reachable), never deleted.
 - **Sources** — add a board with a live fetch-test wizard (sniffer fallback for careers
-  pages, "Add anyway" gate on empty fetches), remove with confirm.
+  pages, "Add anyway" gate on empty fetches), remove with confirm. Source-action HTTP requests
+  must come from the same loopback browser origin; use the `sources` CLI for automation.
 - **Health** — per-source status cards: last run, count vs baseline, quiet/error flags.
 
 ### Dock app (macOS)

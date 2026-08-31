@@ -16,7 +16,7 @@ from urllib.request import urlopen
 
 import pytest
 
-from internshelper import db
+from internshelper import config, db
 from internshelper.availability import SourceAuthority, UserState
 from internshelper.availability_checks import (
     CheckStage,
@@ -90,6 +90,21 @@ def test_page_matrix_has_no_horizontal_document_overflow(page: Page, live_server
             page.goto(f"{live_server}{path}")
             expect(page.locator("main#page")).to_be_visible()
             assert _document_fits(page), f"{path} overflows at {width}px"
+
+
+def test_source_removal_uses_the_guarded_production_route(
+    page: Page, live_server: str, sources_file: Path
+):
+    sources_file.write_text("sources:\n  - type: greenhouse\n    token: stripe\n")
+    page.goto(f"{live_server}/sources")
+
+    source = page.locator(".source-card", has_text="greenhouse:stripe")
+    source.locator("summary").click()
+    source.get_by_role("button", name="Remove source").click()
+    source.get_by_role("button", name="Confirm removal").click()
+
+    expect(page.locator(".source-card", has_text="greenhouse:stripe")).to_have_count(0)
+    assert config.load_sources(sources_file)[0] == []
 
 
 def test_board_breakpoint_keeps_header_controls_aligned(page: Page, live_server: str):

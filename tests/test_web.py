@@ -58,3 +58,10 @@ def test_static_assets_served(client):
 def test_api_docs_disabled(client):
     assert client.get("/docs").status_code == 404
     assert client.get("/openapi.json").status_code == 404
+
+
+def test_pages_cannot_be_embedded_for_clickjacking(client):
+    response = client.get("/sources")
+
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert response.headers["x-frame-options"] == "DENY"

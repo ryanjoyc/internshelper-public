@@ -5,6 +5,8 @@ fetch-test, sniffer fallback on undetectable URLs, the "Add anyway" force gate o
 empty/degenerate fetches, and a hard stop (no confirm) on fetch errors.
 """
 
+import pytest
+
 from internshelper import config, sniffer, sources
 from internshelper.connectors import FetchResult
 from internshelper.models import Posting
@@ -37,17 +39,75 @@ def _keys(path):
     return [e.source_key for e in config.load_sources(path)[0]]
 
 
+def _source_post(client, path, *, data):
+    return client.post(
+        path, data=data, headers={"origin": "http://127.0.0.1:8510"}
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "data"),
+    [
+        ("/sources/detect", {"url": "https://boards.greenhouse.io/stripe"}),
+        ("/sources/candidate", {"choice": "lever:acme"}),
+        ("/sources/add", {"type": "lever", "token": "acme"}),
+        ("/sources/remove", {"source_key": "greenhouse:stripe"}),
+    ],
+)
+def test_source_post_routes_reject_cross_site_browser_requests(
+    client, sources_file, monkeypatch, path, data
+):
+    sources_file.write_text("sources:\n  - type: greenhouse\n    token: stripe\n")
+    _wire(monkeypatch, posts=[_post("greenhouse:1", "SWE Intern")])
+    before = sources_file.read_text()
+
+    response = client.post(
+        path,
+        data=data,
+        headers={"origin": "https://attacker.example", "sec-fetch-site": "cross-site"},
+    )
+
+    assert response.status_code == 403
+    assert sources_file.read_text() == before
+
+
+def test_source_mutation_rejects_missing_browser_provenance(client, sources_file):
+    sources_file.write_text("sources:\n  - type: greenhouse\n    token: stripe\n")
+
+    response = client.post(
+        "/sources/remove", data={"source_key": "greenhouse:stripe"}
+    )
+
+    assert response.status_code == 403
+    assert _keys(sources_file) == ["greenhouse:stripe"]
+
+
+def test_source_mutation_rejects_matching_nonlocal_origin_and_host(client, sources_file):
+    sources_file.write_text("sources:\n  - type: greenhouse\n    token: stripe\n")
+
+    response = client.post(
+        "/sources/remove",
+        data={"source_key": "greenhouse:stripe"},
+        headers={"host": "attacker.example", "origin": "http://attacker.example"},
+    )
+
+    assert response.status_code == 403
+    assert _keys(sources_file) == ["greenhouse:stripe"]
+
+
 def test_detect_then_confirm_writes_source(client, sources_file, monkeypatch):
     _wire(monkeypatch, posts=[_post("greenhouse:1", "SWE Intern")])
-    r = client.post("/sources/detect", data={"url": "https://boards.greenhouse.io/stripe",
-                                             "label": "", "tmm": "", "cols": ""})
+    r = _source_post(client, "/sources/detect",
+                     data={"url": "https://boards.greenhouse.io/stripe",
+                           "label": "", "tmm": "", "cols": ""})
     assert r.status_code == 200
     assert "greenhouse:stripe" in r.text
     assert "Confirm &amp; add" in r.text
     assert "SWE Intern" in r.text  # fetch-test titles shown
 
-    r2 = client.post("/sources/add", data={"type": "greenhouse", "token": "stripe",
-                                           "label": "", "tmm": "", "cols": "", "force": "0"})
+    r2 = _source_post(client, "/sources/add",
+                      data={"type": "greenhouse", "token": "stripe",
+                            "label": "", "tmm": "", "cols": "", "force": "0"})
     assert r2.status_code == 200
     assert _keys(sources_file) == ["greenhouse:stripe"]
 
@@ -55,8 +115,9 @@ def test_detect_then_confirm_writes_source(client, sources_file, monkeypatch):
 def test_detect_unknown_host_shows_error_and_writes_nothing(client, sources_file, monkeypatch):
     monkeypatch.setattr(sniffer, "sniff_careers_page",
                         lambda url, label=None: (_ for _ in ()).throw(sniffer.SnifferError("no boards")))
-    r = client.post("/sources/detect", data={"url": "https://example.com/careers",
-                                             "label": "", "tmm": "", "cols": ""})
+    r = _source_post(client, "/sources/detect",
+                     data={"url": "https://example.com/careers",
+                           "label": "", "tmm": "", "cols": ""})
     assert r.status_code == 200
     assert "Couldn" in r.text  # "Couldn't detect a source…"
     assert _keys(sources_file) == []
@@ -67,17 +128,20 @@ def test_sniffer_candidate_flow(client, sources_file, monkeypatch):
     monkeypatch.setattr(sniffer, "sniff_careers_page", lambda url, label=None: [cand])
     _wire(monkeypatch, posts=[_post("greenhouse:1", "Intern")])
 
-    r = client.post("/sources/detect", data={"url": "https://acme.com/careers",
-                                             "label": "", "tmm": "intern", "cols": ""})
+    r = _source_post(client, "/sources/detect",
+                     data={"url": "https://acme.com/careers",
+                           "label": "", "tmm": "intern", "cols": ""})
     assert "Use this board" in r.text
     assert "greenhouse:acme" in r.text
 
-    r2 = client.post("/sources/candidate", data={"choice": "greenhouse:acme",
-                                                 "label": "", "tmm": "intern", "cols": ""})
+    r2 = _source_post(client, "/sources/candidate",
+                      data={"choice": "greenhouse:acme",
+                            "label": "", "tmm": "intern", "cols": ""})
     assert "Confirm &amp; add" in r2.text
 
-    r3 = client.post("/sources/add", data={"type": "greenhouse", "token": "acme",
-                                           "label": "", "tmm": "intern", "cols": "", "force": "0"})
+    r3 = _source_post(client, "/sources/add",
+                      data={"type": "greenhouse", "token": "acme",
+                            "label": "", "tmm": "intern", "cols": "", "force": "0"})
     assert r3.status_code == 200
     entries, _ = config.load_sources(sources_file)
     assert entries[0].source_key == "greenhouse:acme"
@@ -87,8 +151,9 @@ def test_sniffer_candidate_flow(client, sources_file, monkeypatch):
 def test_duplicate_blocks_before_fetch(client, sources_file, monkeypatch):
     sources_file.write_text("sources:\n  - type: greenhouse\n    token: stripe\n")
     _wire(monkeypatch, exc=RuntimeError("fetch should not run for duplicates"))
-    r = client.post("/sources/detect", data={"url": "https://boards.greenhouse.io/stripe",
-                                             "label": "", "tmm": "", "cols": ""})
+    r = _source_post(client, "/sources/detect",
+                     data={"url": "https://boards.greenhouse.io/stripe",
+                           "label": "", "tmm": "", "cols": ""})
     assert r.status_code == 200
     assert "Already present" in r.text
     assert len(_keys(sources_file)) == 1
@@ -96,8 +161,9 @@ def test_duplicate_blocks_before_fetch(client, sources_file, monkeypatch):
 
 def test_add_recheck_blocks_duplicate_race(client, sources_file):
     sources_file.write_text("sources:\n  - type: greenhouse\n    token: stripe\n")
-    r = client.post("/sources/add", data={"type": "greenhouse", "token": "stripe",
-                                          "label": "", "tmm": "", "cols": "", "force": "0"})
+    r = _source_post(client, "/sources/add",
+                     data={"type": "greenhouse", "token": "stripe",
+                           "label": "", "tmm": "", "cols": "", "force": "0"})
     assert r.status_code == 200
     assert "Already present" in r.text
     assert len(_keys(sources_file)) == 1
@@ -105,8 +171,9 @@ def test_add_recheck_blocks_duplicate_race(client, sources_file):
 
 def test_empty_fetch_needs_force_gate(client, sources_file, monkeypatch):
     _wire(monkeypatch, posts=[], warnings=["no rows parsed"])
-    r = client.post("/sources/detect", data={"url": "https://boards.greenhouse.io/stripe",
-                                             "label": "", "tmm": "", "cols": ""})
+    r = _source_post(client, "/sources/detect",
+                     data={"url": "https://boards.greenhouse.io/stripe",
+                           "label": "", "tmm": "", "cols": ""})
     assert "Add anyway" in r.text
     assert 'name="force" value="1"' in r.text
     assert "no rows parsed" in r.text
@@ -114,8 +181,9 @@ def test_empty_fetch_needs_force_gate(client, sources_file, monkeypatch):
 
 def test_fetch_error_disables_confirm(client, sources_file, monkeypatch):
     _wire(monkeypatch, exc=RuntimeError("boom"))
-    r = client.post("/sources/detect", data={"url": "https://boards.greenhouse.io/stripe",
-                                             "label": "", "tmm": "", "cols": ""})
+    r = _source_post(client, "/sources/detect",
+                     data={"url": "https://boards.greenhouse.io/stripe",
+                           "label": "", "tmm": "", "cols": ""})
     assert "Fetch failed" in r.text
     assert "disabled" in r.text
     assert "Add anyway" not in r.text
@@ -123,6 +191,7 @@ def test_fetch_error_disables_confirm(client, sources_file, monkeypatch):
 
 def test_remove_source(client, sources_file):
     sources_file.write_text("sources:\n  - type: greenhouse\n    token: stripe\n")
-    r = client.post("/sources/remove", data={"source_key": "greenhouse:stripe"})
+    r = _source_post(client, "/sources/remove",
+                     data={"source_key": "greenhouse:stripe"})
     assert r.status_code == 200
     assert _keys(sources_file) == []
