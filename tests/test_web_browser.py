@@ -16,6 +16,17 @@ from urllib.request import urlopen
 
 import pytest
 
+from internshelper import db
+from internshelper.availability import SourceAuthority, UserState
+from internshelper.availability_checks import (
+    CheckStage,
+    InvestigationFinding,
+    InvestigationObservation,
+    NetworkObservation,
+    evaluate_availability,
+)
+from internshelper.availability_store import persist_evaluation
+
 pytest.importorskip("playwright.sync_api")
 from playwright.sync_api import Page, expect
 
@@ -150,6 +161,64 @@ def test_popover_and_drawer_keyboard_focus_contract(page: Page, live_server: str
     page.get_by_role("button", name="Confirm dismissal").click()
     expect(page.locator("#posting-drawer")).to_be_hidden()
     expect(page.locator(".card-open:visible").first).to_be_focused()
+
+
+def test_availability_table_confirmation_opens_drawer_and_preserves_focus(
+    page: Page, live_server: str, seeded_db: Path
+):
+    """The table's primary availability action survives its HTMX drawer swap."""
+    now = "2026-08-30T12:00:00+00:00"
+    conn = db.connect(seeded_db)
+    candidate = "https://jobs.example.test/replacement"
+    evaluation = evaluate_availability(
+        source_authority=SourceAuthority.FIRST_PARTY_ATS,
+        user_state=UserState.ORDINARY,
+        observations=(
+            NetworkObservation(
+                sequence=1,
+                observed_at=now,
+                stage=CheckStage.INITIAL_VALIDATION,
+                target="original_url",
+                attempt=1,
+                status=404,
+                body="Page not found",
+                employer_hosted=True,
+            ),
+            InvestigationObservation(
+                sequence=2,
+                observed_at=now,
+                stage=CheckStage.USER_INVESTIGATION,
+                target="replacement_candidate",
+                attempt=1,
+                finding=InvestigationFinding.REPLACEMENT_FOUND,
+                candidate_url=candidate,
+            ),
+        ),
+        investigation_stages=(
+            "queued",
+            "review_finding",
+            "await_user_confirmation",
+        ),
+    )
+    persist_evaluation(conn, "greenhouse:1", evaluation, updated_at=now)
+    conn.close()
+
+    page.goto(f"{live_server}/board?view=table")
+    confirm = page.get_by_role("button", name="Confirm replacement")
+    confirm.focus()
+    expect(confirm).to_be_focused()
+    with page.expect_response(
+        lambda response: "/board/card/greenhouse:1/replacement/confirm" in response.url
+    ):
+        confirm.click()
+
+    result = page.locator("#availability-result-greenhouse-1")
+    expect(page.locator("#posting-drawer")).to_be_visible()
+    expect(result).to_be_visible()
+    expect(result).to_be_focused()
+    expect(result).to_contain_text("Replacement confirmed")
+    expect(result).to_contain_text(candidate)
+    expect(page.get_by_role("button", name="Use original link again")).to_be_visible()
 
 
 def test_board_keyboard_shortcuts_continue_from_the_selected_card(

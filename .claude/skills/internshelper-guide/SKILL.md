@@ -15,8 +15,9 @@ fit*, not every function signature. If you make a structural change, refresh thi
 A local, $0 tool that **collects** internship / new-grad postings from boards listed in
 `config/sources.yaml`, keeps a de-duplicated archive (raw payloads saved to disk), and **emails
 a Top-target digest** when new postings arrive from explicitly prioritized companies. There is
-**no approval gate**: every collected posting lands on the Board's Inbox, organized into Top
-targets, Known companies, Worth discovering, and neutral Unclassified sections. Each company is
+**no human approval gate**: broadly collected postings land on the Board's Inbox after the
+destination safety check, organized into Top targets, Known companies, Worth discovering, and
+neutral Unclassified sections. Each company is
 one expandable card containing all broadly collected roles; rank score cannot move or demote a
 company or role. Curation is one-click: **dismiss** (hidden, undoable), **flag**
 (⚑ — park suspect data like a dead link for investigation; hidden, undoable, NO training
@@ -34,15 +35,18 @@ accurate, no API key, $0 ongoing.
 
 ```
 collect (run.py) → store (store.py / db.py) → deduplicate (dedup.py)
+    → validate + reconcile availability (availability_*.py)
     → rank hint (ranking.py) + company group (tiers.py / companygroups.py)
     → digest new Top-target arrivals (notify.py)
     → browse by company; dismiss / flag / drag-to-Applied (review.py + applications table)
 ```
 
 Each collect cycle: scrape every source → save each new posting's raw payload to
-`data/payloads/{id}.json` → store it straight into the Inbox → collapse strong cross-source URL
-duplicates → retrain + rescore + apply the company-group map → email the Top-target digest for rows never digested before
-(`notified_at` watermark, exactly-once per posting). **Nothing is gated.**
+`data/payloads/{id}.json` → store it in a hidden pending state → validate its destination →
+collapse strong cross-source URL duplicates and reconcile their evidence → retrain + rescore +
+apply the company-group map → email the Top-target digest for rows never digested before
+(`notified_at` watermark, exactly-once per posting). Availability is a safety gate, not a human
+approval gate; ambiguous results remain visible with conservative actions.
 
 Keyword flags (`is_internship` / `is_newgrad` / `is_cs_relevant`) are computed at collect time
 as **cold-start hints only**. The Board orders each company's roles newest-first. Learned
@@ -56,7 +60,7 @@ Discovery suggestions carry reason/evidence and require user approval.
 
 | Module | Responsibility |
 |--------|----------------|
-| `run` | Scheduled collector: fetch all sources, store new payloads into the Inbox, compute hint flags, retrain+rescore+regroup, email the Top-target digest (exactly-once per posting via `notified_at`). One invocation = one cycle. |
+| `run` | Scheduled collector: fetch all sources, atomically hide new rows until destination validation finishes, record source absences/retries, reconcile availability across strong URL duplicates, compute hint flags, retrain+rescore+regroup, and email the exactly-once Top-target digest. One invocation = one cycle. |
 | `review` | Inbox-actions CLI + the Board's data layer: `list_inbox` (company-group filter), `dismiss`/`undo_dismiss` (the no_match plumbing, reused), legacy `pin_tier`/`unpin` compatibility helpers, `flag`/`unflag`/`list_flagged` (suspect-data parking, no training label), duplicate inspection/override helpers, guard-leak + closed-inbox hygiene (undoable batches), `payload_summary`, `refresh_ranking`. Driven by the `review-internships` + `deep-scan-source` + `investigate-flags` skills and the board routes. |
 | `ranking` | Learned fit hint over title/JD tokens + source prior + recency. No company prior. Scores persist but do not determine Board groups or visibility. |
 | `tiers` | Compatibility bridge that applies the authoritative company-group map to posting `tier` values. Rank and candidate flags are deliberately ignored. |
@@ -65,7 +69,7 @@ Discovery suggestions carry reason/evidence and require user approval.
 | `dedup` | Cross-source duplicate handling: automatically collapse strong canonical-URL matches, surface same-company/title lookalikes for review, and preserve reversible keep/merge overrides. |
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
 | `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the launchd plist and install the Dock app on macOS. Idempotent. |
-| `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). A package, not a single file — `create_app()` factory in `__init__.py`, per-request DB connections in `deps.py`, routes/ (board — incl. the `/` and `/review` redirects, postings, health incl. `/healthz`, sources, companies), templates/ (Jinja + HTMX partials), static/ (app.css design tokens, app.js, vendored htmx/alpine/sortable, Geist fonts). UI only; data logic lives in `store` / `review` / `sources`. |
+| `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). A package, not a single file — `create_app()` factory in `__init__.py`, per-request DB connections in `deps.py`, routes/ (board — including Verify/replacement actions — postings, health incl. `/healthz`, sources, companies), templates/ (Jinja + HTMX partials), static/ (app.css design tokens, app.js, vendored htmx/alpine/sortable, Geist fonts). Routes stay thin; data and availability decisions live in domain/store modules. |
 | `app` | Dock-app runtime launcher: start the web server headless on port 8510 (under a pipe-watchdog that reaps it if the launcher dies), probe `/healthz`, show it in a native pywebview window, stop it on quit. Pidfile (`data/app.pid`) decides attach vs own for a pre-existing server; caps `data/app.log` at launch. |
 | `appbundle` | Build `InternsHELPer.app` into `build/` (Info.plist, launcher script execing `app`, `.icns` from `assets/icon-1024.png` via sips/iconutil); `--install` copies it to `~/Applications`. macOS-only. |
 
@@ -73,8 +77,14 @@ Discovery suggestions carry reason/evidence and require user approval.
 
 | Module | Responsibility |
 |--------|----------------|
-| `store` | Persistence: upsert postings, per-source close-detection, source-health/quiet detection, run logging (UTC ISO-8601). |
-| `db` | SQLite schema, connections, meta key/value store, runs-history pruning. |
+| `availability` | Pure evidence-to-policy reducer: normalized evidence → live/uncertain/closed status, Board treatment, action priority, investigation/replacement semantics, and an explicit no-ranking-effect invariant. |
+| `availability_checks` | Typed external-observation boundary and deterministic network/source/investigator interpretation; preserves chronology and adds trustworthy conflicts before calling the pure reducer. |
+| `availability_runtime` | Bounded HTTP destination checker with manual redirect history, transport normalization, cross-host trust removal, and private/local destination blocking. |
+| `availability_store` | Availability state/evidence persistence, retry windows, strong-duplicate evidence reconciliation, Board visibility/action projection, and reversible replacement confirmation without rewriting `postings.url`. |
+| `availability_investigation` | Framework-independent investigation stages and final-report validation. |
+| `availability_service` | User-triggered Verify orchestration: retry original, enumerate configured sources, compare candidates, persist the finding, and return semantic progress. |
+| `store` | Posting/application persistence, source-health/quiet detection, run logging, and availability-aware Board queries. |
+| `db` | SQLite schema (including availability state/evidence), connections, meta key/value store, and runs-history pruning. |
 | `config` | Load + validate `sources.yaml` and `settings.toml`; collects errors without halting on a single bad entry. |
 | `models` | The normalized `Posting` dataclass shared across connectors / classify / store; carries scraped + classified fields + the raw payload. |
 | `classify` | Keyword matcher (whole-word, case-insensitive) over title + HTML-stripped description → the three flag booleans. |
@@ -137,7 +147,7 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - `config/settings.toml` — neutral, committed settings (e.g. `[smtp] host`/`port`,
   classification keywords/filters).
 - `.env` — **gitignored, per-machine**: SMTP secrets + `INTERNSHELPER_FEATURE_*` toggles
-  (`COLLECT`/`EMAIL`/`SCHEDULE`/`DASHBOARD`/`APP`) and path overrides (`INTERNSHELPER_DB`/
+  (`COLLECT`/`EMAIL`/`AVAILABILITY`/`SCHEDULE`/`DASHBOARD`/`APP`) and path overrides (`INTERNSHELPER_DB`/
   `_SOURCES`/`_SETTINGS`). A real exported env var always overrides the file.
 - `data/` — **gitignored**: `data/internshelper.db` (SQLite) and `data/payloads/{id}.json` (raw
   payloads). Paths resolve off the repo root, so the scheduler's working directory doesn't matter.
@@ -152,8 +162,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - `docs/source-coverage.md` — connector support, boundaries, and acceptance criteria.
 - `docs/codex-cloud.md` — engineering-only Codex Cloud environment, pstack portability, safety
   boundaries, and verification.
-- `docs/availability-verification-{catalog,coverage}.md` — generated future-availability cases,
-  coverage, locked expectations, and contract-suite commands.
+- `docs/availability-verification-{catalog,coverage}.md` — generated availability acceptance
+  cases, coverage, locked expectations, and contract-suite commands.
 - Completed or superseded plans are intentionally absent from the active tree; use Git history.
 
 ## Run & test
@@ -165,7 +175,7 @@ python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev,web]"
 bash scripts/bootstrap.sh
 
 .venv/bin/python -m pytest                              # default offline tests
-.venv/bin/python -m pytest -q -m availability_contract # future behavior; expected xfails until wired
+.venv/bin/python -m pytest -q -m availability_contract # all 109 approved expectations
 .venv/bin/python -m pytest -q -m live_canary -s         # optional read-only observations, not a gate
 .venv/bin/python -m pip install -e ".[ui]"             # optional browser-test dependencies
 .venv/bin/python -m playwright install chromium        # one-time browser install

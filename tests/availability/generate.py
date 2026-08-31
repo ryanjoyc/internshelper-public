@@ -71,7 +71,7 @@ def render_catalog(corpus: dict[str, Any]) -> str:
         f"- Approval: `{corpus['approval']['status']}` by {corpus['approval']['approved_by']} "
         f"on `{corpus['approval']['approved_on']}`",
         f"- Cases: `{len(corpus['cases'])}`",
-        "- Scope: test fixtures and future-behavior contracts only; no production availability logic",
+        "- Scope: approved behavior contract; implementation progress is reported by the contract suite",
         "",
         "## How to read a case",
         "",
@@ -218,7 +218,7 @@ def render_coverage(corpus: dict[str, Any]) -> str:
             "# Offline integrity, generated-doc, fake-component, and mutant checks (default-running)",
             ".venv/bin/python -m pytest tests/test_availability_corpus.py",
             "",
-            "# Future behavior; clean xfails until an adapter is wired",
+            "# Approved production contract; all 109 layer expectations must pass",
             ".venv/bin/python -m pytest -q -m availability_contract",
             "",
             "# Optional, read-only, informational network probes",

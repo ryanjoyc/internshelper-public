@@ -29,7 +29,7 @@ def test_drawer_has_named_controls_and_reading_first_hierarchy(client):
     assert response.status_code == 200
     assert 'id="drawer-title"' in response.text
     assert 'aria-label="Close posting details"' in response.text
-    assert "Open original posting" in response.text
+    assert ">Apply<" in response.text
     assert response.text.index("Role overview") < response.text.index("Application tracking")
     assert 'role="status"' in response.text
     assert "x-data='{ status: \"Untracked\" }'" in response.text

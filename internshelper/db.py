@@ -47,6 +47,49 @@ CREATE TABLE IF NOT EXISTS applications (
     applied_date    TEXT
 );
 
+CREATE TABLE IF NOT EXISTS availability_state (
+    posting_id                 TEXT PRIMARY KEY,
+    source_authority           TEXT NOT NULL,
+    status                     TEXT,
+    validation_completed       INTEGER NOT NULL DEFAULT 0,
+    last_attempt               INTEGER NOT NULL DEFAULT 0,
+    last_checked_at            TEXT,
+    next_check_at              TEXT,
+    pending_candidate_url      TEXT,
+    confirmed_url              TEXT,
+    replacement_confirmed_at   TEXT,
+    investigation_outcome      TEXT NOT NULL DEFAULT 'not_run',
+    investigation_stages       TEXT NOT NULL DEFAULT '[]',
+    updated_at                 TEXT NOT NULL,
+    FOREIGN KEY (posting_id) REFERENCES postings(posting_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS availability_evidence (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    posting_id      TEXT NOT NULL,
+    record_key      TEXT NOT NULL,
+    sequence        INTEGER NOT NULL,
+    observed_at     TEXT NOT NULL,
+    stage           TEXT NOT NULL,
+    channel         TEXT NOT NULL,
+    target          TEXT NOT NULL,
+    attempt         INTEGER NOT NULL CHECK (attempt > 0),
+    signal          TEXT NOT NULL,
+    kind            TEXT,
+    status          INTEGER,
+    location        TEXT,
+    candidate_url   TEXT,
+    authority       TEXT,
+    trustworthy     INTEGER NOT NULL DEFAULT 0,
+    detail          TEXT,
+    is_current      INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (posting_id, record_key),
+    FOREIGN KEY (posting_id) REFERENCES postings(posting_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_availability_evidence_current
+    ON availability_evidence (posting_id, is_current, id);
+
 CREATE TABLE IF NOT EXISTS runs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at      TEXT NOT NULL,

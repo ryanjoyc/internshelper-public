@@ -1,4 +1,4 @@
-<li class="card board-card" id="card-{{ r.posting_id | dom_id }}"
+<li class="card board-card availability-{{ r.availability }}" id="card-{{ r.posting_id | dom_id }}"
     data-id="{{ r.posting_id }}" data-card-open>
   <div class="card-top">
     <div class="card-company">{{ r.company }}</div>
@@ -58,11 +58,12 @@
       <span>{{ r.posted_at | release(r.first_seen) }}</span>
       <span title="{{ r.source_key }}">{{ r.source_key | source_label }}</span>
     </span>
-    {% if r.applied_date or r.notes or (not r.is_active) or r.status == 'Interested' %}
+    {% if r.applied_date or r.notes or r.availability != 'live' or r.status == 'Interested' %}
     <span class="card-foot">
       {% if r.status == 'Interested' %}<span class="card-star" title="interested">★</span>{% endif %}
       {% if r.applied_date %}<span class="pill pill--neutral">applied {{ r.applied_date }}</span>{% endif %}
-      {% if not r.is_active %}<span class="pill pill--nomatch">closed</span>{% endif %}
+      {% if r.availability == 'closed' %}<span class="pill pill--nomatch">closed</span>{% endif %}
+      {% if r.availability == 'uncertain' %}<span class="pill pill--pending">verify</span>{% endif %}
       {% if r.notes %}<span class="card-note" title="{{ r.notes }}">✎</span>{% endif %}
     </span>
     {% endif %}

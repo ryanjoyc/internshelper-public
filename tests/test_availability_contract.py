@@ -1,4 +1,4 @@
-"""Future availability behavior contracts, isolated behind one test adapter."""
+"""Approved availability behavior contracts, isolated behind one test adapter."""
 
 from __future__ import annotations
 
@@ -83,7 +83,10 @@ def test_verify_progress_and_recovery(case):
     adapter = load_contract_adapter()
     scenario = build_scenario(case)
     actual = _run_or_xfail(lambda: adapter.investigate(case, scenario))
-    scenario.assert_consumed()
+    scenario.assert_consumed({"network", "source"})
+    assert scenario.investigator.remaining == 1, (
+        "production must derive the final finding instead of consuming its expected oracle"
+    )
     _assert_expected(
         actual,
         case,

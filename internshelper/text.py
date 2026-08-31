@@ -16,6 +16,7 @@ from html.parser import HTMLParser
 _BLOCK_TAGS = frozenset(
     ("p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "br")
 )
+_NON_VISIBLE_TAGS = frozenset(("script", "style", "template"))
 
 # A real markup tag (not a stray "a < b") left in the output after a parse pass
 # means the input was escaped HTML — decode again.
@@ -29,14 +30,25 @@ class _Stripper(HTMLParser):
         # convert_charrefs=True (default) means entities arrive already decoded.
         super().__init__()
         self._parts: list[str] = []
+        self._suppressed_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag in _NON_VISIBLE_TAGS:
+            self._suppressed_depth += 1
+            return
+        if self._suppressed_depth:
+            return
         if tag == "br":
             self._parts.append("\n")
         elif tag == "li":
             self._parts.append("\n• ")
 
     def handle_endtag(self, tag: str) -> None:
+        if tag in _NON_VISIBLE_TAGS:
+            self._suppressed_depth = max(0, self._suppressed_depth - 1)
+            return
+        if self._suppressed_depth:
+            return
         # Paragraphs and headings read better with a blank line after them.
         # <li>/<br> already break on the start tag — a close-newline too would
         # put a blank line between every bullet.
@@ -46,7 +58,8 @@ class _Stripper(HTMLParser):
             self._parts.append("\n")
 
     def handle_data(self, data: str) -> None:
-        self._parts.append(data)
+        if not self._suppressed_depth:
+            self._parts.append(data)
 
     def text(self) -> str:
         return "".join(self._parts)

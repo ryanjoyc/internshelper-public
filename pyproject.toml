@@ -36,7 +36,7 @@ addopts = "-m 'not browser and not availability_baseline and not availability_co
 markers = [
     "browser: optional Playwright checks that require the ui extra and Chromium",
     "availability_baseline: optional replay of the frozen pre-implementation availability baseline",
-    "availability_contract: future availability behavior; xfails until a production adapter is wired",
+    "availability_contract: approved availability behavior exercised through the production adapter",
     "live_canary: optional read-only, informational probes of selected real sources",
 ]
 filterwarnings = [

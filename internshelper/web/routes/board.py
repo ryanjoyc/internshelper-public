@@ -20,6 +20,11 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from internshelper import clock, companygroups, config, db, dedup, review, store, tiers
+from internshelper.availability_service import verify_posting
+from internshelper.availability_store import (
+    confirm_replacement,
+    undo_replacement_confirmation,
+)
 from internshelper.web.deps import get_conn, nav_context
 from internshelper.web.templating import templates
 
@@ -249,10 +254,50 @@ def _hygiene_counts(conn: sqlite3.Connection) -> dict:
 
 
 def _board_row(conn: sqlite3.Connection, posting_id: str) -> sqlite3.Row:
-    for r in store.inbox_with_status(conn):
-        if r["posting_id"] == posting_id:
-            return r
+    row = store.posting_with_status(conn, posting_id)
+    if row is not None:
+        return row
     raise HTTPException(status_code=404, detail=f"no board posting {posting_id!r}")
+
+
+def _posting_row(
+    conn: sqlite3.Connection, posting_id: str, *, include_archived: bool = False
+):
+    row = store.posting_with_status(
+        conn, posting_id, include_archived=include_archived
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no posting {posting_id!r}")
+    return row
+
+
+def _drawer_context(
+    request: Request,
+    conn: sqlite3.Connection,
+    row,
+    *,
+    view: str,
+    page: int,
+    availability_result=None,
+    availability_message: str = "",
+    oob_board: bool = False,
+) -> dict:
+    ctx = {
+        "r": row,
+        "view": _normalize_view(view),
+        "page": page,
+        "payload": review.payload_summary(row["payload_path"]),
+        "tier_ui": TIER_UI,
+        "availability_result": availability_result,
+        "availability_message": availability_message,
+    }
+    if oob_board:
+        board_ctx = _board_ctx(conn, view, request.app.state.company_groups_path)
+        _populate_view(board_ctx, conn, view, page=page)
+        board_ctx.update(ctx)
+        board_ctx["oob_board"] = True
+        return board_ctx
+    return ctx
 
 
 def _region(
@@ -329,12 +374,10 @@ def drawer(
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     r = _board_row(conn, posting_id)
-    payload = review.payload_summary(r["payload_path"])
     response = templates.TemplateResponse(
         request,
         "drawer/_posting.html",
-        {"r": r, "view": _normalize_view(view), "page": page,
-         "payload": payload, "tier_ui": TIER_UI},
+        _drawer_context(request, conn, r, view=view, page=page),
     )
     response.headers["HX-Trigger"] = "drawer-open"
     return response
@@ -366,6 +409,108 @@ def drawer_save(
     ctx.update({"r": r, "view": view, "payload": payload, "tier_ui": TIER_UI,
                 "page": page, "oob_board": True, "saved": True})
     return templates.TemplateResponse(request, "drawer/_posting.html", ctx)
+
+
+@router.post("/board/card/{posting_id}/verify")
+def verify_availability(
+    request: Request,
+    posting_id: str,
+    view: str = Form("board"),
+    page: int = Form(1),
+    open_drawer: str = Form(""),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    _board_row(conn, posting_id)
+    operation = getattr(request.app.state, "availability_verify", verify_posting)
+    try:
+        result = operation(
+            conn,
+            posting_id,
+            sources_path=request.app.state.sources_path,
+            now=clock.now_iso(),
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    row = _posting_row(conn, posting_id, include_archived=True)
+    ctx = _drawer_context(
+        request,
+        conn,
+        row,
+        view=view,
+        page=page,
+        availability_result=result.report.stage_items,
+        availability_message="Verification complete",
+        oob_board=True,
+    )
+    response = templates.TemplateResponse(request, "drawer/_posting.html", ctx)
+    response.headers["HX-Trigger"] = (
+        "availability-updated, drawer-open" if open_drawer else "availability-updated"
+    )
+    return response
+
+
+@router.post("/board/card/{posting_id}/replacement/confirm")
+def confirm_availability_replacement(
+    request: Request,
+    posting_id: str,
+    view: str = Form("board"),
+    page: int = Form(1),
+    open_drawer: str = Form(""),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    _board_row(conn, posting_id)
+    try:
+        confirmed = confirm_replacement(
+            conn, posting_id, confirmed_at=clock.now_iso()
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    row = _posting_row(conn, posting_id, include_archived=True)
+    ctx = _drawer_context(
+        request,
+        conn,
+        row,
+        view=view,
+        page=page,
+        availability_message=f"Replacement confirmed: {confirmed}",
+        oob_board=True,
+    )
+    response = templates.TemplateResponse(request, "drawer/_posting.html", ctx)
+    response.headers["HX-Trigger"] = (
+        "availability-updated, drawer-open" if open_drawer else "availability-updated"
+    )
+    return response
+
+
+@router.post("/board/card/{posting_id}/replacement/undo")
+def undo_availability_replacement(
+    request: Request,
+    posting_id: str,
+    view: str = Form("board"),
+    page: int = Form(1),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    if not undo_replacement_confirmation(
+        conn, posting_id, updated_at=clock.now_iso()
+    ):
+        raise HTTPException(status_code=409, detail="posting has no confirmed replacement")
+    row = _posting_row(conn, posting_id, include_archived=True)
+    ctx = _drawer_context(
+        request,
+        conn,
+        row,
+        view=view,
+        page=page,
+        availability_message="Restored the original application link",
+        oob_board=True,
+    )
+    response = templates.TemplateResponse(request, "drawer/_posting.html", ctx)
+    response.headers["HX-Trigger"] = "availability-updated"
+    return response
 
 
 @router.post("/board/move")

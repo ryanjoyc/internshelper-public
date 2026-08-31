@@ -186,7 +186,11 @@
       {% for item in table_rows %}
       {% set r = item.row %}
       <tr class="table-row-click" data-row-open>
-        <td>{{ m.status_pill(r.status) }}</td>
+        <td>
+          {{ m.status_pill(r.status) }}
+          {% if r.availability == 'uncertain' %}<span class="pill pill--pending" aria-label="Availability uncertain">verify</span>{% endif %}
+          {% if r.availability == 'closed' %}<span class="pill pill--nomatch" aria-label="Availability closed">closed</span>{% endif %}
+        </td>
         <td>{{ item.group | replace('_', ' ') | title }}</td>
         <td>{{ r.company }}</td>
         <td class="cell-strong"><button class="table-open" type="button" data-drawer-trigger
@@ -196,7 +200,41 @@
             hx-target="#drawer-body" hx-swap="innerHTML">{{ r.title }}</button></td>
         <td>{{ r.location or "—" }}</td>
         <td class="cell-num">{{ r.posted_at | release(r.first_seen) }}</td>
-        <td><a class="btn btn-icon btn-sm" aria-label="Open {{ r.title }} at {{ r.company }}" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">↗</a></td>
+        <td class="table-availability-actions">
+          {% if r.primary_action == 'apply' %}
+          <a class="btn btn-icon btn-sm" aria-label="Apply to {{ r.title }} at {{ r.company }}" href="{{ r.effective_url | safe_url }}" target="_blank" rel="noopener">↗</a>
+          {% elif r.primary_action == 'verify' %}
+          <form action="/board/card/{{ r.posting_id }}/verify" method="post"
+                hx-post="/board/card/{{ r.posting_id }}/verify" hx-target="#drawer-body" hx-swap="innerHTML">
+            <input type="hidden" name="view" value="table">
+            <input type="hidden" name="page" value="{{ page }}">
+            <input type="hidden" name="open_drawer" value="1">
+            <button class="btn btn-primary btn-sm" type="submit"
+                    data-focus-after-swap="#availability-result-{{ r.posting_id | dom_id }}">Verify</button>
+          </form>
+          {% elif r.primary_action == 'confirm_replacement' %}
+          <form action="/board/card/{{ r.posting_id }}/replacement/confirm" method="post"
+                hx-post="/board/card/{{ r.posting_id }}/replacement/confirm" hx-target="#drawer-body" hx-swap="innerHTML">
+            <input type="hidden" name="view" value="table">
+            <input type="hidden" name="page" value="{{ page }}">
+            <input type="hidden" name="open_drawer" value="1">
+            <button class="btn btn-primary btn-sm" type="submit"
+                    data-focus-after-swap="#availability-result-{{ r.posting_id | dom_id }}">Confirm replacement</button>
+          </form>
+          {% endif %}
+          {% if r.secondary_action == 'open_original' %}
+          <a class="btn btn-ghost btn-sm" aria-label="Open original {{ r.title }} at {{ r.company }}" href="{{ r.original_url | safe_url }}" target="_blank" rel="noopener">Open original <span aria-hidden="true">↗</span></a>
+          {% elif r.secondary_action == 'verify' %}
+          <form action="/board/card/{{ r.posting_id }}/verify" method="post"
+                hx-post="/board/card/{{ r.posting_id }}/verify" hx-target="#drawer-body" hx-swap="innerHTML">
+            <input type="hidden" name="view" value="table">
+            <input type="hidden" name="page" value="{{ page }}">
+            <input type="hidden" name="open_drawer" value="1">
+            <button class="btn btn-secondary btn-sm" type="submit"
+                    data-focus-after-swap="#availability-result-{{ r.posting_id | dom_id }}">Verify</button>
+          </form>
+          {% endif %}
+        </td>
         {% if item.group != 'pipeline' %}
         <td><button class="btn btn-icon btn-sm" aria-label="Dismiss {{ r.title }}" title="Dismiss" x-on:click.stop
                     hx-post="/board/dismiss" hx-vals='{"posting_id": {{ r.posting_id | tojson }}, "return_view": "table", "page": {{ page }}}'

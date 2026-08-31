@@ -46,6 +46,14 @@ def test_migration_adds_v2_columns_to_v1_db_without_data_loss(tmp_path):
     ).fetchone()
     assert row["title"] == "Old Role"  # data preserved
     assert row["review_status"] == "pending"  # default applied to the migrated row
+    tables = {
+        item[0]
+        for item in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    assert {"availability_state", "availability_evidence"} <= tables
+    assert conn.execute("SELECT COUNT(*) FROM availability_state").fetchone()[0] == 0
 
 
 def test_fresh_db_has_v3_rank_columns(tmp_path):

@@ -7,6 +7,11 @@ Each company is one expandable card containing all broadly collected roles. A lo
 (FastAPI + HTMX, no build step) also tracks applications, the full archive, source health, and
 evidence-backed discovery proposals.
 
+New postings also carry a separate availability state. The collector validates destinations
+before first display, keeps ambiguous failures visible with safer actions, archives only
+confirmed-closed ordinary roles, and preserves saved or applied roles as visible closed history.
+Availability never trains or changes the ranker.
+
 **Why this shape:** keyword matching alone is too noisy to decide what the user should see. The hourly
 collector therefore stays broad and free; company groups are explicit user choices, rank score is
 only a hint, and an agent can audit saved payloads or research lesser-known companies on demand.
@@ -37,8 +42,9 @@ git clone <repo-url> && cd internsHELPer
 bash scripts/bootstrap.sh
 ```
 
-It prompts for what *this* machine should do — email nudges (and your SMTP creds), the hourly
-schedule (macOS launchd), the dashboard — and writes a **gitignored `.env`** with your answers.
+It prompts for what *this* machine should do — email nudges (and your SMTP creds), availability
+checks, the hourly schedule (macOS launchd), and the dashboard — then writes a **gitignored `.env`**
+with your answers.
 Secrets never leave the machine via git. It's **idempotent**: re-running reuses the venv and
 never overwrites an existing `.env`. Use `bash scripts/bootstrap.sh --no-input` to accept
 defaults (reads any `INTERNSHELPER_*` you've already exported).
@@ -143,10 +149,14 @@ With creds in `.env`, the collector loads them itself — no inline env var need
 ```
 
 Each run: scrape → apply each source's coarse title guard → save raw payloads under
-`data/payloads/` → upsert the local archive → collapse strong URL duplicates → refresh ranking
-hints and company groups → send the exactly-once Top-target digest. Data lives in
-`data/internshelper.db` (gitignored). Set `INTERNSHELPER_FEATURE_COLLECT=0` to disable a machine's
-collector, or `INTERNSHELPER_FEATURE_EMAIL=0` to collect without emailing.
+`data/payloads/` → upsert the local archive → validate new destinations → collapse strong URL
+duplicates and reconcile their availability evidence → refresh ranking hints and company groups
+→ send the exactly-once Top-target digest. Community-list rows remain hidden until their
+destination check finishes. Data lives in `data/internshelper.db` (gitignored).
+
+Set `INTERNSHELPER_FEATURE_COLLECT=0` to disable a machine's collector,
+`INTERNSHELPER_FEATURE_AVAILABILITY=0` to retain legacy collection without destination checks, or
+`INTERNSHELPER_FEATURE_EMAIL=0` to collect without emailing.
 
 ## 5. Audit postings with the agent (optional)
 
@@ -182,6 +192,9 @@ system-aware dark/light theme, served on 127.0.0.1 only:
   Worth discovering, and neutral Unclassified. Each company is one expandable card containing
   all of its roles; rank score never hides or demotes them. Drag roles into Applied →
   Interviewing → Offer / Rejected, or use the table/dismissed/flagged/duplicates lenses.
+  Availability notices guard broken links, keep browser-only barriers actionable, and offer
+  replacement links for explicit confirmation. **Verify and find application** reports semantic
+  progress without changing the stored URL until you confirm a replacement.
 - **Companies** — manage the separate browsing-group index and approve evidence-backed
   "Worth discovering" proposals; career-board resolution remains an independent workflow.
 - **Postings** — the full archive with search and state filters; no-match verdicts are
@@ -263,6 +276,7 @@ INTERNSHELPER_SMTP_RECIPIENT=you@gmail.com
 INTERNSHELPER_SMTP_PASSWORD=your-16-char-app-password
 INTERNSHELPER_FEATURE_COLLECT=1     # run the hourly collector on this machine
 INTERNSHELPER_FEATURE_EMAIL=1       # send Top-target digests (needs the SMTP creds above)
+INTERNSHELPER_FEATURE_AVAILABILITY=1 # validate new links and enable availability actions
 INTERNSHELPER_FEATURE_SCHEDULE=1    # install the launchd schedule (macOS)
 INTERNSHELPER_FEATURE_DASHBOARD=1   # use the web dashboard
 INTERNSHELPER_FEATURE_APP=1         # install the Dock app (macOS; needs DASHBOARD)
@@ -278,12 +292,12 @@ curates sources + views the dashboard can set `COLLECT=0` and `EMAIL=0`. Other p
 .venv/bin/python -m pytest
 ```
 
-The default offline suite also validates the future availability corpus, its frozen fixtures,
+The default offline suite also validates the approved availability corpus, its frozen fixtures,
 generated [case catalog](docs/availability-verification-catalog.md), coverage matrix, and mutant
-scorecard. Availability behavior itself remains a separate contract until production work starts:
+scorecard. The separate acceptance contract exercises all 109 approved layer expectations:
 
 ```bash
-.venv/bin/python -m pytest -q -m availability_contract  # expected xfails for unimplemented behavior
+.venv/bin/python -m pytest -q -m availability_contract  # 109 production-contract cases
 .venv/bin/python -m pytest -q -m live_canary -s          # optional read-only observations; not a gate
 ```
 

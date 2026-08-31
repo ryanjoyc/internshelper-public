@@ -1,6 +1,6 @@
 # internsHELPer roadmap
 
-_Last updated: 2026-08-25 · forward-looking product direction, not a release log_
+_Last updated: 2026-08-30 · forward-looking product direction, not a release log_
 
 For current runtime and Git status, read `STATE.md`. For the implementation map, use the
 `internshelper-guide` skill. Completed designs and implementation plans live in Git history rather
@@ -43,6 +43,9 @@ The core promise is:
   `company-groups.yaml` controls Board priority and evidence-backed discovery proposals.
 - A Top-target email digest with an exactly-once `notified_at` watermark.
 - A relocation-safe macOS Dock bundle that launches the local web app from the current checkout.
+- Evidence-based posting availability: pre-display destination validation, conservative retries,
+  saved/applied closed-history visibility, explicit replacement confirmation, and a user-triggered
+  investigation flow that cannot affect ranking.
 - Repository-local onboarding and task skills for source addition, company resolution, posting
   review, deep source verification, flagged-posting investigation, and project-state maintenance.
 
@@ -77,7 +80,6 @@ The core promise is:
 ### 4. Improve application tracking
 
 - Add deadlines and follow-up reminders without turning the Board into a CRM.
-- Surface when a saved or applied posting later closes.
 - Export applications and visible postings to CSV/JSON.
 
 ### 5. Package for non-technical distribution

@@ -1,4 +1,4 @@
-"""One stable seam between the corpus and a future production availability system."""
+"""One stable seam between the corpus and the production availability system."""
 
 from __future__ import annotations
 
@@ -12,14 +12,15 @@ from .fakes import Scenario
 
 
 ADAPTER_ENV = "INTERNSHELPER_AVAILABILITY_CONTRACT_ADAPTER"
+DEFAULT_ADAPTER = "availability.production_adapter:create_adapter"
 
 
 class ContractNotImplemented(RuntimeError):
-    """The corpus is ready, but no production adapter has been selected yet."""
+    """An adapter method has not been implemented."""
 
 
 class AvailabilityContractAdapter(Protocol):
-    """Future implementations translate their own objects at this boundary."""
+    """Production implementations translate their own objects at this boundary."""
 
     def decide(self, case: dict[str, Any]) -> Mapping[str, Any]: ...
 
@@ -32,32 +33,10 @@ class AvailabilityContractAdapter(Protocol):
     def investigate(self, case: dict[str, Any], scenario: Scenario) -> Mapping[str, Any]: ...
 
 
-class MissingAvailabilityAdapter:
-    def _missing(self):
-        raise ContractNotImplemented(
-            "future availability behavior is not implemented; set "
-            f"{ADAPTER_ENV}=module:factory when the production adapter exists"
-        )
-
-    def decide(self, case):
-        self._missing()
-
-    def interpret(self, case, scenario):
-        self._missing()
-
-    def collect_to_board(self, case, scenario, db_path):
-        self._missing()
-
-    def investigate(self, case, scenario):
-        self._missing()
-
-
 def load_contract_adapter() -> AvailabilityContractAdapter:
-    """Load an opt-in adapter factory without imposing a production module layout."""
+    """Load the test translation seam without imposing a production module layout."""
 
-    spec = os.environ.get(ADAPTER_ENV)
-    if not spec:
-        return MissingAvailabilityAdapter()
+    spec = os.environ.get(ADAPTER_ENV, DEFAULT_ADAPTER)
     module_name, separator, factory_name = spec.partition(":")
     if not separator or not module_name or not factory_name:
         raise ValueError(f"{ADAPTER_ENV} must use module:factory syntax")

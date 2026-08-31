@@ -3,6 +3,8 @@ import json
 import pytest
 
 from internshelper import config, db, review, store
+from internshelper.availability import SourceAuthority
+from internshelper.availability_store import ensure_pending
 from internshelper.models import Posting
 
 
@@ -36,6 +38,19 @@ def test_list_inbox_limit(tmp_path):
     for i in range(5):
         store.upsert(c, _p(f"g:{i}", cs=True), now=f"2026-06-18T10:0{i}:00+00:00")
     assert len(review.list_inbox(c, limit=2)) == 2
+
+
+def test_list_inbox_hides_availability_pending_rows(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:pending", cs=True), now="2026-06-18T10:00:00+00:00")
+    ensure_pending(
+        c,
+        "g:pending",
+        SourceAuthority.COMMUNITY_LIST,
+        now="2026-06-18T10:01:00+00:00",
+    )
+
+    assert review.list_inbox(c) == []
 
 
 def test_list_inbox_orders_by_recency_within_candidate_tier(tmp_path):
@@ -273,6 +288,31 @@ def test_find_and_clear_closed_inbox(tmp_path):
     applied_row = c.execute("SELECT review_status FROM postings "
                             "WHERE posting_id='g:closedapplied'").fetchone()
     assert applied_row["review_status"] == "pending"  # applied guard held
+
+
+def test_closed_hygiene_never_turns_availability_into_a_ranking_label(tmp_path):
+    c = _conn(tmp_path)
+    store.upsert(c, _p("g:tracked", title="Data Intern"), now="2026-07-10T10:00:00+00:00")
+    c.execute("UPDATE postings SET is_active=0 WHERE posting_id='g:tracked'")
+    c.commit()
+    ensure_pending(
+        c,
+        "g:tracked",
+        SourceAuthority.FIRST_PARTY_ATS,
+        now="2026-07-10T10:01:00+00:00",
+    )
+
+    assert review.find_closed_inbox(c) == []
+    assert review.clear_closed_inbox(c, now="2026-07-10T11:00:00+00:00") == 0
+    row = c.execute(
+        "SELECT verdict, verdict_reason, review_status FROM postings "
+        "WHERE posting_id='g:tracked'"
+    ).fetchone()
+    assert dict(row) == {
+        "verdict": None,
+        "verdict_reason": None,
+        "review_status": "pending",
+    }
 
 
 def test_payload_summary_extracts_and_strips_description(tmp_path):

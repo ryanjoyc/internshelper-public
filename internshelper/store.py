@@ -58,6 +58,8 @@ def upsert(
     posting: Posting,
     now: str,
     payloads_dir: str | Path | None = None,
+    *,
+    commit: bool = True,
 ) -> None:
     """Insert a new posting, or update an existing one in place.
 
@@ -110,7 +112,8 @@ def upsert(
             now, now, payload_path, posting.posted_at,
         ),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def apply_close_detection(
@@ -436,20 +439,68 @@ def restore_application_if_unchanged(
     return cur.rowcount == 1
 
 
-def inbox_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+def inbox_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row | dict]:
     """Every non-dismissed posting with its application state, best-first — the Board
     query. Pipeline rows ride along (the route splits them into lanes); `tier` is the
     authoritative company group. Legacy per-posting pins do not override it."""
-    return conn.execute(
+    rows = conn.execute(
         f"""
-        SELECT p.*, a.status, a.notes, a.applied_date
+        SELECT p.*, a.posting_id AS application_row_id,
+               a.status, a.notes, a.applied_date,
+               av.posting_id AS availability_state_id,
+               av.source_authority AS availability_source_authority,
+               av.validation_completed AS availability_validation_completed,
+               av.last_checked_at AS availability_last_checked_at,
+               av.confirmed_url AS availability_confirmed_url,
+               av.pending_candidate_url AS availability_pending_candidate_url,
+               av.investigation_stages AS availability_investigation_stages
         FROM postings p
         LEFT JOIN applications a ON a.posting_id = p.posting_id
+        LEFT JOIN availability_state av ON av.posting_id = p.posting_id
         WHERE {INBOX_SQL}
         ORDER BY (p.rank_score IS NULL), p.rank_score DESC, {CANDIDATE_SQL} DESC,
                  (p.posted_at IS NULL), p.posted_at DESC, p.first_seen DESC, p.posting_id
         """
     ).fetchall()
+    # Local import keeps the persistence module independent from the shared store
+    # constants while making this long-standing Board entry point availability-aware.
+    from internshelper.availability_store import project_board_rows
+
+    return project_board_rows(conn, rows)
+
+
+def posting_with_status(
+    conn: sqlite3.Connection,
+    posting_id: str,
+    *,
+    include_archived: bool = False,
+) -> sqlite3.Row | dict | None:
+    """One availability-enriched posting, optionally including an archived result."""
+
+    row = conn.execute(
+        f"""
+        SELECT p.*, a.posting_id AS application_row_id,
+               a.status, a.notes, a.applied_date,
+               av.posting_id AS availability_state_id,
+               av.source_authority AS availability_source_authority,
+               av.validation_completed AS availability_validation_completed,
+               av.last_checked_at AS availability_last_checked_at,
+               av.confirmed_url AS availability_confirmed_url,
+               av.pending_candidate_url AS availability_pending_candidate_url,
+               av.investigation_stages AS availability_investigation_stages
+        FROM postings p
+        LEFT JOIN applications a ON a.posting_id = p.posting_id
+        LEFT JOIN availability_state av ON av.posting_id = p.posting_id
+        WHERE p.posting_id = ? AND {INBOX_SQL}
+        """,
+        (posting_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    from internshelper.availability_store import project_board_rows
+
+    projected = project_board_rows(conn, [row], include_archived=include_archived)
+    return projected[0] if projected else None
 
 
 def dismissed_rows(
@@ -494,12 +545,4 @@ def flagged_count(conn: sqlite3.Connection) -> int:
 
 def inbox_count(conn: sqlite3.Connection) -> int:
     """Inbox size (non-dismissed, not yet in the pipeline) — the nav badge."""
-    ph = ",".join("?" * len(PIPELINE_STATUSES))
-    return conn.execute(
-        f"""
-        SELECT COUNT(*) FROM postings p
-        LEFT JOIN applications a ON a.posting_id = p.posting_id
-        WHERE {INBOX_SQL} AND (a.status IS NULL OR a.status NOT IN ({ph}))
-        """,
-        PIPELINE_STATUSES,
-    ).fetchone()[0]
+    return sum(row["status"] not in PIPELINE_STATUSES for row in inbox_with_status(conn))

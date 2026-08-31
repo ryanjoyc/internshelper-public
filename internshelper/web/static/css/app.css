@@ -871,6 +871,10 @@ kbd {
 .table tbody tr:hover { background: var(--surface-2); }
 .cell-strong { font-weight: 600; }
 .cell-num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-2); }
+.table td.table-availability-actions { white-space: nowrap; }
+.table-availability-actions > * { margin-right: 4px; vertical-align: middle; }
+.table-availability-actions > *:last-child { margin-right: 0; }
+.table-availability-actions form { display: inline-flex; }
 tr.is-archived { opacity: 0.55; }
 
 /* ---------- toolbar + pager ---------- */
@@ -1704,6 +1708,51 @@ h3 { font-size: 13px; }
 .drawer-company { margin-top: 8px; color: var(--accent); font-size: 13px; font-weight: 700; }
 .drawer-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .drawer-original { margin-top: 16px; }
+.availability-notice {
+  display: grid;
+  gap: 3px;
+  margin-top: 16px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--pending-fg) 22%, var(--border));
+  border-radius: 8px;
+  color: var(--pending-fg);
+  background: var(--pending-bg);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.availability-notice--normal {
+  color: var(--text-2);
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+.availability-notice--closed {
+  color: var(--nomatch-fg);
+  border-color: var(--border);
+  background: var(--nomatch-bg);
+}
+.drawer-availability-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.drawer-availability-actions form { margin: 0; }
+.availability-result:focus { outline: 3px solid var(--accent-ring); outline-offset: -3px; }
+.availability-result-message { font-weight: 650; }
+.availability-progress {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.availability-progress li { display: flex; align-items: center; gap: 7px; color: var(--text-2); font-size: 12px; }
+.availability-progress li span { color: var(--ok); font-weight: 700; }
+.availability-candidate { margin-top: 10px; overflow-wrap: anywhere; font-size: 12px; }
+.availability-result-note { margin-top: 5px; color: var(--muted); font-size: 11px; }
+.board-card.availability-uncertain { border-color: color-mix(in srgb, var(--pending-fg) 24%, var(--border)); }
+.board-card.availability-closed { opacity: .82; }
 .drawer-section { padding: 19px 21px; border-top: 1px solid var(--border); }
 .drawer-section > h3 {
   margin-bottom: 12px;

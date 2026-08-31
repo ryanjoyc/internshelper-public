@@ -15,13 +15,15 @@ REPO = Path(__file__).resolve().parent.parent
 
 def test_render_env_has_all_keys_and_reflects_flags():
     out = setup.render_env("a@x", "b@x", "pw", email=False, schedule=False, dashboard=True,
-                           app=False)
+                           app=False, availability=False)
     for key in ("INTERNSHELPER_SMTP_SENDER", "INTERNSHELPER_SMTP_RECIPIENT",
                 "INTERNSHELPER_SMTP_PASSWORD", "INTERNSHELPER_FEATURE_COLLECT",
-                "INTERNSHELPER_FEATURE_EMAIL", "INTERNSHELPER_FEATURE_SCHEDULE",
+                "INTERNSHELPER_FEATURE_EMAIL", "INTERNSHELPER_FEATURE_AVAILABILITY",
+                "INTERNSHELPER_FEATURE_SCHEDULE",
                 "INTERNSHELPER_FEATURE_DASHBOARD", "INTERNSHELPER_FEATURE_APP"):
         assert key in out
     assert "INTERNSHELPER_FEATURE_EMAIL=0" in out
+    assert "INTERNSHELPER_FEATURE_AVAILABILITY=0" in out
     assert "INTERNSHELPER_FEATURE_SCHEDULE=0" in out
     assert "INTERNSHELPER_FEATURE_DASHBOARD=1" in out
     assert "INTERNSHELPER_FEATURE_APP=0" in out
@@ -30,11 +32,12 @@ def test_render_env_has_all_keys_and_reflects_flags():
 
 def test_prompt_uses_getpass_for_password(monkeypatch):
     # The password must NOT be read via echoing input(); _prompt uses getpass.
-    answers = iter(["y", "s@x", "r@x", "n", "n"])  # email? sender recipient schedule? dashboard?
+    answers = iter(["y", "s@x", "r@x", "y", "n", "n"])
     monkeypatch.setattr("builtins.input", lambda *a: next(answers))
     monkeypatch.setattr(setup.getpass, "getpass", lambda *a: "SECRET-PW")
-    email, schedule, dashboard, app, sender, recipient, password = setup._prompt()
+    email, availability, schedule, dashboard, app, sender, recipient, password = setup._prompt()
     assert email is True and password == "SECRET-PW"
+    assert availability is True
     assert sender == "s@x" and recipient == "r@x"
     assert schedule is False and dashboard is False
     assert app is False  # dashboard off short-circuits the Dock-app question
@@ -42,9 +45,10 @@ def test_prompt_uses_getpass_for_password(monkeypatch):
 
 def test_prompt_asks_dock_app_only_with_dashboard(monkeypatch):
     # email? schedule? dashboard? dock-app?  (email off, so no SMTP inputs)
-    answers = iter(["n", "n", "y", "y"])
+    answers = iter(["n", "y", "n", "y", "y"])
     monkeypatch.setattr("builtins.input", lambda *a: next(answers))
-    email, schedule, dashboard, app, *_ = setup._prompt()
+    email, availability, schedule, dashboard, app, *_ = setup._prompt()
+    assert availability is True
     assert dashboard is True and app is True
 
 
@@ -96,6 +100,7 @@ def test_real_plist_template_has_no_password():
 def test_main_no_input_email_off_skips_creds(tmp_path, monkeypatch):
     (tmp_path / ".gitignore").write_text(".env\n")
     monkeypatch.setenv("INTERNSHELPER_FEATURE_EMAIL", "0")
+    monkeypatch.setenv("INTERNSHELPER_FEATURE_AVAILABILITY", "0")
     monkeypatch.setenv("INTERNSHELPER_FEATURE_SCHEDULE", "0")
     monkeypatch.setenv("INTERNSHELPER_FEATURE_APP", "0")
     monkeypatch.setenv("INTERNSHELPER_SMTP_PASSWORD", "should-not-be-written")
@@ -103,6 +108,7 @@ def test_main_no_input_email_off_skips_creds(tmp_path, monkeypatch):
     assert rc == 0
     env = (tmp_path / ".env").read_text()
     assert "INTERNSHELPER_FEATURE_EMAIL=0" in env
+    assert "INTERNSHELPER_FEATURE_AVAILABILITY=0" in env
     assert "should-not-be-written" not in env       # creds skipped when email off
     assert "INTERNSHELPER_SMTP_PASSWORD=" in env     # key present but empty
 

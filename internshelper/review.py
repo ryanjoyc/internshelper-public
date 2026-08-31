@@ -125,17 +125,19 @@ def clear_guard_leaks(
 
 
 def find_closed_inbox(conn: sqlite3.Connection) -> list[dict]:
-    """Inbox rows whose posting vanished from its source board (close-detection).
+    """Legacy Inbox rows whose posting vanished from its source board.
 
-    They can't be applied to anymore, yet they linger in the Inbox because the inbox
-    queries ignore `is_active` (a closed pill marks them instead — close-detection
-    has false positives, so nothing auto-dismisses). Applied posting_ids are never
+    Availability-managed rows have their own evidence-backed Board projection and are
+    deliberately excluded: sweeping one into ``verdict='no_match'`` would turn an
+    availability outcome into ranker training data. Applied posting_ids are never
     flagged.
     """
     applied_ids = _applied_ids(conn)
     rows = conn.execute(
-        "SELECT posting_id, title, company, source_key FROM postings "
-        f"WHERE {store.INBOX_SQL} AND is_active = 0 ORDER BY source_key, posting_id"
+        "SELECT p.posting_id, p.title, p.company, p.source_key FROM postings p "
+        "LEFT JOIN availability_state av ON av.posting_id = p.posting_id "
+        f"WHERE {store.INBOX_SQL} AND p.is_active = 0 "
+        "AND av.posting_id IS NULL ORDER BY p.source_key, p.posting_id"
     )
     return [dict(r) for r in rows if r["posting_id"] not in applied_ids]
 
@@ -166,33 +168,6 @@ def undo_bulk_clear(conn: sqlite3.Connection, reviewed_at: str, reason: str) -> 
 
 # ---------- inbox actions (company-grouped Board: no gate, just curation) ----------
 
-_INBOX_FIELDS = (
-    "p.posting_id, p.source_key, p.title, p.company, p.location, p.url, p.payload_path, "
-    "p.posted_at, p.first_seen, p.is_internship, p.is_newgrad, p.is_cs_relevant, "
-    "p.rank_score, p.rank_reasons, p.is_active, "
-    "p.tier, p.pinned_tier"
-)
-
-
-def _inbox_where(
-    q: str = "", source: str = "", tier: str | None = None
-) -> tuple[str, list[object]]:
-    ph = ",".join("?" * len(store.PIPELINE_STATUSES))
-    clauses = [store.INBOX_SQL, f"(a.status IS NULL OR a.status NOT IN ({ph}))"]
-    params: list[object] = list(store.PIPELINE_STATUSES)
-    if q:
-        clauses.append("(LOWER(p.title) LIKE ? OR LOWER(p.company) LIKE ?)")
-        like = f"%{q.lower()}%"
-        params += [like, like]
-    if source:
-        clauses.append("p.source_key = ?")
-        params.append(source)
-    if tier:
-        clauses.append("p.tier = ?")
-        params.append(tier)
-    return " WHERE " + " AND ".join(clauses), params
-
-
 def list_inbox(
     conn: sqlite3.Connection,
     limit: int | None = None,
@@ -207,18 +182,21 @@ def list_inbox(
     `tier` filters on the authoritative company group. Legacy `pinned_tier` remains
     visible for compatibility but cannot override company classification.
     """
-    where, params = _inbox_where(q, source, tier)
-    sql = (
-        f"SELECT {_INBOX_FIELDS} FROM postings p "
-        f"LEFT JOIN applications a ON a.posting_id = p.posting_id{where} "
-        "ORDER BY (p.rank_score IS NULL), p.rank_score DESC, "
-        f"{store.CANDIDATE_SQL} DESC, "
-        "(p.posted_at IS NULL), p.posted_at DESC, p.first_seen DESC, p.posting_id"
-    )
-    if limit is not None or offset:
-        sql += " LIMIT ? OFFSET ?"
-        params += [-1 if limit is None else limit, offset]
-    return [dict(r) for r in conn.execute(sql, params)]
+    needle = q.lower()
+    rows = [
+        dict(row)
+        for row in store.inbox_with_status(conn)
+        if row["status"] not in store.PIPELINE_STATUSES
+        and (
+            not needle
+            or needle in (row["title"] or "").lower()
+            or needle in (row["company"] or "").lower()
+        )
+        and (not source or row["source_key"] == source)
+        and (not tier or row["tier"] == tier)
+    ]
+    end = None if limit is None else offset + limit
+    return rows[offset:end]
 
 
 def dismiss(conn: sqlite3.Connection, posting_id: str, reason: str, now: str) -> None:

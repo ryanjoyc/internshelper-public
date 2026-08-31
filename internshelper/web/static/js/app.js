@@ -341,7 +341,13 @@ function onDrawerOpen() {
   // HTMX may dispatch drawer-open before its target swap finishes. Reassert
   // focus after the short drawer transition so replacement content cannot
   // leave keyboard focus on <body>.
-  window.setTimeout(function () { if (drawerOpen) focusDrawerContents(0); }, 400);
+  window.setTimeout(function () {
+    var drawer = document.getElementById("posting-drawer");
+    var active = document.activeElement;
+    if (drawerOpen && (!drawer || !active || active === document.body || !drawer.contains(active))) {
+      focusDrawerContents(0);
+    }
+  }, 400);
 }
 
 function onDrawerClose() {
@@ -501,8 +507,13 @@ document.body.addEventListener("htmx:beforeRequest", function (event) {
   if (replacementControl) {
     replacementFocusKey = replacementControl.dataset.replacementFocus;
   }
+  var activeControl = document.activeElement;
   var swapFocusControl = requester && requester.closest &&
     requester.closest("[data-focus-after-swap]");
+  if (!swapFocusControl && requester && requester.contains &&
+      activeControl && requester.contains(activeControl) && activeControl.closest) {
+    swapFocusControl = activeControl.closest("[data-focus-after-swap]");
+  }
   if (swapFocusControl) swapFocusSelector = swapFocusControl.dataset.focusAfterSwap;
   var target = event.detail && event.detail.target;
   if (target) target.setAttribute("aria-busy", "true");
@@ -528,7 +539,11 @@ document.body.addEventListener("htmx:afterSwap", function () {
 document.body.addEventListener("htmx:afterSettle", function (event) {
   var target = event.detail && event.detail.target;
   if (drawerOpen && target && target.id === "drawer-body") {
-    focusDrawerContents(0);
+    if (swapFocusSelector || replacementFocusKey) {
+      restoreReplacementFocus();
+    } else {
+      focusDrawerContents(0);
+    }
   }
   if (target && ["board-region", "company-list", "source-list"].includes(target.id)) {
     // Wait for the primary target to settle so an out-of-band nav swap cannot

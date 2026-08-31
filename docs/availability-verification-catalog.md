@@ -7,7 +7,7 @@ This file is generated from `tests/availability/corpus.yaml`. Edit the YAML and 
 - Policy version: `availability-policy-v1`
 - Approval: `approved` by the user on `2026-08-30`
 - Cases: `34`
-- Scope: test fixtures and future-behavior contracts only; no production availability logic
+- Scope: approved behavior contract; implementation progress is reported by the contract suite
 
 ## How to read a case
 

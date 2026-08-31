@@ -12,12 +12,88 @@
     {% if r.location %}<span class="pill pill--neutral">{{ r.location }}</span>{% endif %}
     <span class="pill pill--neutral">{{ r.posted_at | release(r.first_seen) }}</span>
     <span class="pill pill--neutral" title="{{ r.source_key }}">{{ r.source_key | source_label }}</span>
-    {% if not r.is_active %}{{ m.pill('closed', 'nomatch') }}{% endif %}
+    {% if r.availability == 'closed' %}{{ m.pill('closed', 'nomatch') }}{% endif %}
+    {% if r.availability == 'uncertain' %}{{ m.pill('uncertain', 'pending') }}{% endif %}
   </div>
-  <a class="btn btn-primary drawer-original" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">
-    Open original posting <span aria-hidden="true">↗</span>
-  </a>
+  {% if r.availability == 'uncertain' %}
+  <div class="availability-notice availability-notice--{{ r.board_treatment }}" role="status">
+    <strong>Availability uncertain</strong>
+    {% if r.board_treatment == 'normal' %}
+    <span>The automated checker could not use this page, but the link may still work in your browser.</span>
+    {% elif r.primary_action == 'confirm_replacement' %}
+    <span>A plausible replacement was found. Your saved link has not changed.</span>
+    {% else %}
+    <span>The application could not be confirmed. Verify it before relying on the link.</span>
+    {% endif %}
+  </div>
+  {% elif r.availability == 'closed' %}
+  <div class="availability-notice availability-notice--closed" role="status">
+    <strong>Availability closed</strong>
+    {% if r.board_treatment == 'archived' %}
+    <span>This role was removed from the Board after closure was confirmed. Its history and original link remain available here.</span>
+    {% else %}
+    <span>This role stays visible because you saved or applied to it.</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="drawer-availability-actions" aria-label="Availability actions">
+    {% if r.primary_action == 'apply' %}
+    <a class="btn btn-primary" href="{{ r.effective_url | safe_url }}" target="_blank" rel="noopener">Apply</a>
+    {% elif r.primary_action == 'verify' %}
+    <form hx-post="/board/card/{{ r.posting_id }}/verify" hx-target="#drawer-body" hx-swap="innerHTML">
+      <input type="hidden" name="view" value="{{ view }}">
+      <input type="hidden" name="page" value="{{ page | default(1) }}">
+      <button class="btn btn-primary" type="submit" data-focus-after-swap="#availability-result-{{ r.posting_id | dom_id }}">
+        Verify and find application <span class="htmx-indicator" aria-hidden="true">…</span>
+      </button>
+    </form>
+    {% elif r.primary_action == 'confirm_replacement' %}
+    <form hx-post="/board/card/{{ r.posting_id }}/replacement/confirm" hx-target="#drawer-body" hx-swap="innerHTML">
+      <input type="hidden" name="view" value="{{ view }}">
+      <input type="hidden" name="page" value="{{ page | default(1) }}">
+      <button class="btn btn-primary" type="submit" data-focus-after-swap="#availability-result-{{ r.posting_id | dom_id }}">Confirm replacement</button>
+    </form>
+    {% endif %}
+
+    {% if r.secondary_action == 'open_original' %}
+    <a class="btn btn-secondary" href="{{ r.original_url | safe_url }}" target="_blank" rel="noopener">Open original <span aria-hidden="true">↗</span></a>
+    {% elif r.secondary_action == 'verify' %}
+    <form hx-post="/board/card/{{ r.posting_id }}/verify" hx-target="#drawer-body" hx-swap="innerHTML">
+      <input type="hidden" name="view" value="{{ view }}">
+      <input type="hidden" name="page" value="{{ page | default(1) }}">
+      <button class="btn btn-secondary" type="submit" data-focus-after-swap="#availability-result-{{ r.posting_id | dom_id }}">Verify and find application</button>
+    </form>
+    {% endif %}
+  </div>
 </header>
+
+{% if availability_message or availability_result or r.replacement_candidate_url or r.confirmed_url %}
+<section class="drawer-section availability-result" id="availability-result-{{ r.posting_id | dom_id }}"
+         tabindex="-1" aria-live="polite" aria-labelledby="availability-result-heading-{{ r.posting_id | dom_id }}">
+  <h3 id="availability-result-heading-{{ r.posting_id | dom_id }}">Verification result</h3>
+  {% if availability_message %}<p class="availability-result-message">{{ availability_message }}</p>{% endif %}
+  {% if availability_result %}
+  <ol class="availability-progress" aria-label="Verification progress">
+    {% for stage in availability_result %}
+    <li data-stage="{{ stage.key }}"><span aria-hidden="true">✓</span>{{ stage.label }}</li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+  {% if r.replacement_candidate_url %}
+  <p class="availability-candidate"><strong>Candidate:</strong> {{ r.replacement_candidate_url }}</p>
+  <p class="availability-result-note">The original link remains stored until you confirm this replacement.</p>
+  {% endif %}
+  {% if r.confirmed_url %}
+  <p class="availability-candidate"><strong>Current application link:</strong> {{ r.confirmed_url }}</p>
+  <form hx-post="/board/card/{{ r.posting_id }}/replacement/undo" hx-target="#drawer-body" hx-swap="innerHTML">
+    <input type="hidden" name="view" value="{{ view }}">
+    <input type="hidden" name="page" value="{{ page | default(1) }}">
+    <button class="btn btn-ghost btn-sm" type="submit" data-focus-after-swap="#availability-result-{{ r.posting_id | dom_id }}">Use original link again</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
 
 {% if payload and payload.state == 'ok' and payload.description %}
 <section class="drawer-section" aria-labelledby="role-overview-heading">
@@ -26,6 +102,7 @@
 </section>
 {% endif %}
 
+{% if r.board_treatment != 'archived' %}
 <section class="drawer-section" aria-labelledby="application-tracking-heading"
          x-data='{ status: {{ (r.status or "Untracked") | tojson }} }'>
   <h3 id="application-tracking-heading">Application tracking</h3>
@@ -104,6 +181,7 @@
     </div>
   </div>
 </section>
+{% endif %}
 
 {% if oob_board %}
 <div id="board-region" hx-swap-oob="innerHTML">

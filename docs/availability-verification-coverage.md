@@ -123,7 +123,7 @@ deliberately wrong policy. The default test suite recomputes this table's underl
 # Offline integrity, generated-doc, fake-component, and mutant checks (default-running)
 .venv/bin/python -m pytest tests/test_availability_corpus.py
 
-# Future behavior; clean xfails until an adapter is wired
+# Approved production contract; all 109 layer expectations must pass
 .venv/bin/python -m pytest -q -m availability_contract
 
 # Optional, read-only, informational network probes

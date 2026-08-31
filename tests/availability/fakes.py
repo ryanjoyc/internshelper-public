@@ -1,4 +1,4 @@
-"""Deterministic scripted collaborators for future availability implementations."""
+"""Deterministic scripted collaborators for the availability acceptance contract."""
 
 from __future__ import annotations
 
@@ -118,7 +118,7 @@ class FakeSourceEnumerator(_Script):
 
 
 class FakeInvestigator(_Script):
-    """Expose scripted findings plus semantic progress stages for UI-agnostic assertions."""
+    """Expose scripted findings plus progress derived from collaborator activity."""
 
     def __init__(
         self,
@@ -149,7 +149,44 @@ class Scenario:
 
 def build_scenario(case: dict[str, Any]) -> Scenario:
     events = [EvidenceEvent.from_mapping(event) for event in case["evidence_timeline"]]
-    stages = case["expected"]["investigation"]["stages"]
+    investigator_events = [event for event in events if event.channel == "investigator"]
+    stages: list[str] = []
+    if investigator_events:
+        stages = ["queued", "check_original"]
+        network_attempts = {
+            event.attempt for event in events if event.channel == "network"
+        }
+        source_events = [event for event in events if event.channel == "source"]
+        first_party_targets = {
+            "first_party_board",
+            "original_posting_id",
+            "replacement_candidate",
+        }
+        has_first_party = any(
+            event.target in first_party_targets
+            or event.target.startswith("first_party")
+            for event in source_events
+        )
+        has_non_first_party = any(
+            event.target not in first_party_targets
+            and not event.target.startswith("first_party")
+            for event in source_events
+        )
+        if len(network_attempts) >= 2:
+            stages.append("retry_original")
+        if has_first_party:
+            stages.append("enumerate_first_party")
+        if source_events and (
+            case["source"]["authority"] != "first_party_ats" or has_non_first_party
+        ):
+            stages.append("compare_sources")
+        finding = investigator_events[-1]
+        if finding.result == "replacement_found":
+            if not (case["source"]["authority"] == "community_list" and has_first_party):
+                stages.append("search_replacement")
+            stages.extend(("review_finding", "await_user_confirmation"))
+        else:
+            stages.append("complete")
     ledger = CallLedger(events)
     return Scenario(
         network=FakeNetwork(
@@ -159,7 +196,7 @@ def build_scenario(case: dict[str, Any]) -> Scenario:
             (event for event in events if event.channel == "source"), ledger
         ),
         investigator=FakeInvestigator(
-            (event for event in events if event.channel == "investigator"), stages, ledger
+            investigator_events, stages, ledger
         ),
         ledger=ledger,
     )
