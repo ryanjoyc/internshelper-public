@@ -8,8 +8,9 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
-from internshelper import db, store
+from internshelper import db, run as collection_run, store
 from internshelper.availability import (
     AvailabilityDecision,
     AvailabilityEvidence,
@@ -30,14 +31,17 @@ from internshelper.availability_checks import (
     evaluate_availability,
 )
 from internshelper.availability_store import (
-    ensure_pending,
     get_projection,
+    get_state,
+    load_current_records,
     persist_evaluation,
 )
 from internshelper.availability_service import (
     derive_investigation_stages,
     verify_posting,
 )
+from internshelper.config import SourceEntry
+from internshelper.connectors import FetchResult
 from internshelper.models import Posting
 
 from .fakes import EvidenceEvent, Scenario, build_scenario
@@ -361,6 +365,156 @@ class _ScenarioEvidenceProvider:
         return _scripted_acquired_observations(self.case, self.scenario)
 
 
+class _CollectionConnector:
+    def __init__(self, result: FetchResult, diagnostics: tuple[str, ...] = ()):
+        self.result = result
+        self.diagnostics = list(diagnostics)
+
+    def fetch(self) -> FetchResult:
+        return self.result
+
+
+class _CollectionChecker:
+    """Deterministic destination success for the collection contract."""
+
+    def check(self, url: str, **kwargs) -> tuple[NetworkObservation, ...]:
+        return (
+            NetworkObservation(
+                sequence=kwargs["sequence"],
+                observed_at=kwargs["observed_at"],
+                stage=kwargs["stage"],
+                target=kwargs["target"],
+                attempt=kwargs["attempt"],
+                status=200,
+                body="<h1>Software Engineering Intern</h1><button>Apply now</button>",
+                employer_hosted=kwargs["employer_hosted"],
+            ),
+        )
+
+
+def _exercise_collection_contract(
+    conn,
+    entry: SourceEntry,
+    posting: Posting,
+    *,
+    authority: SourceAuthority,
+) -> None:
+    """Drive positive, partial, and absence paths through production orchestration."""
+
+    absence_probe = Posting(
+        posting_id=f"{posting.posting_id}:absence-probe",
+        source_key=posting.source_key,
+        title="Platform Engineering Intern",
+        company=posting.company,
+        location=posting.location,
+        url="https://jobs.example.test/roles/absence-probe",
+    )
+    partial_positive = Posting(
+        posting_id=f"{posting.posting_id}:partial-positive",
+        source_key=posting.source_key,
+        title="Data Engineering Intern",
+        company=posting.company,
+        location=posting.location,
+        url="https://jobs.example.test/roles/partial-positive",
+    )
+    connectors = iter(
+        (
+            _CollectionConnector(
+                FetchResult((posting, absence_probe), complete=True)
+            ),
+            _CollectionConnector(
+                FetchResult((partial_positive,), complete=False),
+                diagnostics=("scripted malformed row was skipped",),
+            ),
+            _CollectionConnector(
+                FetchResult((partial_positive,), complete=False),
+                diagnostics=("scripted malformed row was skipped",),
+            ),
+            _CollectionConnector(
+                FetchResult((posting, partial_positive), complete=True)
+            ),
+            _CollectionConnector(
+                FetchResult((posting, partial_positive), complete=True)
+            ),
+        )
+    )
+    checker = _CollectionChecker()
+
+    def collect(offset: int) -> bool:
+        return collection_run.process_source(
+            conn,
+            entry,
+            {},
+            (_OBSERVATION_EPOCH + timedelta(hours=offset)).isoformat(),
+            payloads_dir=None,
+            availability_checker=checker,
+        )
+
+    with patch.object(
+        collection_run,
+        "build_connector",
+        side_effect=lambda _entry: next(connectors),
+    ):
+        assert collect(0) is True
+        assert collect(1) is False
+        assert collect(2) is False
+
+        state = get_state(conn, posting.posting_id)
+        if state is None or state["source_authority"] != authority.value:
+            raise AssertionError("collection did not persist the source's real authority")
+        for protected_id in (posting.posting_id, absence_probe.posting_id):
+            if conn.execute(
+                "SELECT is_active FROM postings WHERE posting_id = ?", (protected_id,)
+            ).fetchone()["is_active"] != 1:
+                raise AssertionError("partial collection triggered legacy close detection")
+            if any(
+                record.kind
+                in {EvidenceKind.FIRST_PARTY_ABSENT, EvidenceKind.COMMUNITY_REMOVED}
+                for record in load_current_records(conn, protected_id)
+            ):
+                raise AssertionError("partial collection advanced source absence evidence")
+        if not get_projection(conn, partial_positive.posting_id).visible:
+            raise AssertionError("partial collection discarded a valid positive posting")
+
+        assert collect(3) is True
+        if authority is SourceAuthority.FIRST_PARTY_ATS:
+            first_absences = [
+                record
+                for record in load_current_records(conn, absence_probe.posting_id)
+                if record.kind is EvidenceKind.FIRST_PARTY_ABSENT
+            ]
+            first_projection = get_projection(conn, absence_probe.posting_id)
+            if len(first_absences) != 1:
+                raise AssertionError("first complete omission did not record one absence")
+            if (
+                first_projection.decision.availability.value != "uncertain"
+                or not first_projection.visible
+            ):
+                raise AssertionError("one complete absence did not remain visible and uncertain")
+        assert collect(4) is True
+
+    expected_absence = {
+        SourceAuthority.FIRST_PARTY_ATS: EvidenceKind.FIRST_PARTY_ABSENT,
+        SourceAuthority.COMMUNITY_LIST: EvidenceKind.COMMUNITY_REMOVED,
+    }.get(authority)
+    if expected_absence is not None and not any(
+        record.kind is expected_absence
+        for record in load_current_records(conn, absence_probe.posting_id)
+    ):
+        raise AssertionError("complete collection did not advance source absence evidence")
+    if authority is SourceAuthority.FIRST_PARTY_ATS:
+        final_absences = [
+            record
+            for record in load_current_records(conn, absence_probe.posting_id)
+            if record.kind is EvidenceKind.FIRST_PARTY_ABSENT
+        ]
+        final_projection = get_projection(conn, absence_probe.posting_id)
+        if len(final_absences) != 2 or len({item.attempt for item in final_absences}) != 2:
+            raise AssertionError("second complete omission did not advance absence chronology")
+        if final_projection.decision.availability.value != "closed":
+            raise AssertionError("two complete first-party absences did not confirm closure")
+
+
 def _contract_source_key(case: dict[str, Any]) -> str:
     authority = SourceAuthority(case["source"]["authority"])
     if authority is SourceAuthority.COMMUNITY_LIST:
@@ -403,9 +557,12 @@ class ProductionAvailabilityAdapter:
         posting_id = f"availability-contract:{case['id']}"
         try:
             db.init_db(conn)
+            source_key = _contract_source_key(case)
+            source_type, token = source_key.split(":", 1)
+            entry = SourceEntry(type=source_type, token=token)
             posting = Posting(
                 posting_id=posting_id,
-                source_key=f"{case['source']['kind']}:contract",
+                source_key=source_key,
                 title="Software Engineering Intern",
                 company="Availability Contract Employer",
                 location="Example City",
@@ -413,7 +570,14 @@ class ProductionAvailabilityAdapter:
                 is_internship=True,
                 is_cs_relevant=True,
             )
-            store.upsert(conn, posting, now=_OBSERVATION_EPOCH.isoformat())
+            authority = SourceAuthority(case["source"]["authority"])
+            _exercise_collection_contract(
+                conn,
+                entry,
+                posting,
+                authority=authority,
+            )
+
             conn.execute(
                 "UPDATE postings SET rank_score = ? WHERE posting_id = ?",
                 (73.5, posting_id),
@@ -424,13 +588,6 @@ class ProductionAvailabilityAdapter:
             elif case["user_state"] == UserState.APPLIED.value:
                 store.set_application_status(conn, posting_id, "Applied")
 
-            authority = SourceAuthority(case["source"]["authority"])
-            ensure_pending(
-                conn,
-                posting_id,
-                authority,
-                now=_OBSERVATION_EPOCH.isoformat(),
-            )
             observations = _scripted_observations(case, scenario)
             evaluation = evaluate_availability(
                 source_authority=authority,

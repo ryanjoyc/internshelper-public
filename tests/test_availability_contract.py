@@ -7,6 +7,8 @@ from typing import Any
 
 import pytest
 
+from internshelper import run as collection_run
+
 from availability.adapter import (
     ContractNotImplemented,
     load_contract_adapter,
@@ -60,9 +62,21 @@ def test_temporary_database_collection_to_board(case, tmp_path, monkeypatch):
     adapter = load_contract_adapter()
     db_path = tmp_path / "availability-contract.db"
     monkeypatch.setenv("INTERNSHELPER_DB", str(db_path))
+    process_calls = []
+    real_process_source = collection_run.process_source
+
+    def tracked_process_source(*args, **kwargs):
+        process_calls.append((args, kwargs))
+        return real_process_source(*args, **kwargs)
+
+    monkeypatch.setattr(collection_run, "process_source", tracked_process_source)
     scenario = build_scenario(case)
     actual = _run_or_xfail(lambda: adapter.collect_to_board(case, scenario, db_path))
     assert db_path.is_file(), "board-layer adapters must exercise the supplied temporary database"
+    assert len(process_calls) >= 5, (
+        "board-layer adapters must exercise collection, repeated partial snapshots, "
+        "and complete source absences through process_source"
+    )
     scenario.assert_consumed()
     _assert_expected(
         actual,

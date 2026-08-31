@@ -131,6 +131,84 @@ def test_init_db_creates_all_tables(tmp_path):
     assert {"postings", "applications", "runs", "meta"} <= names
 
 
+def test_migration_adds_replacement_authority_columns_idempotently(tmp_path):
+    path = tmp_path / "legacy-availability.db"
+    raw = sqlite3.connect(path)
+    raw.execute(
+        """CREATE TABLE availability_state (
+            posting_id TEXT PRIMARY KEY,
+            source_authority TEXT NOT NULL,
+            status TEXT,
+            validation_completed INTEGER NOT NULL DEFAULT 0,
+            last_attempt INTEGER NOT NULL DEFAULT 0,
+            last_checked_at TEXT,
+            next_check_at TEXT,
+            pending_candidate_url TEXT,
+            confirmed_url TEXT,
+            replacement_confirmed_at TEXT,
+            investigation_outcome TEXT NOT NULL DEFAULT 'not_run',
+            investigation_stages TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL
+        )"""
+    )
+    raw.execute(
+        "INSERT INTO availability_state (posting_id, source_authority, confirmed_url, "
+        "updated_at) VALUES ('legacy:1', 'community_list', "
+        "'https://jobs.example.test/replacement', 't')"
+    )
+    raw.commit()
+    raw.close()
+
+    conn = db.connect(path)
+    db.init_db(conn)
+    db.init_db(conn)
+
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(availability_state)")}
+    assert {"pending_candidate_authority", "confirmed_url_authority"} <= columns
+    row = conn.execute(
+        "SELECT confirmed_url, pending_candidate_authority, confirmed_url_authority "
+        "FROM availability_state WHERE posting_id = 'legacy:1'"
+    ).fetchone()
+    assert row["confirmed_url"] == "https://jobs.example.test/replacement"
+    assert row["pending_candidate_authority"] is None
+    assert row["confirmed_url_authority"] is None
+
+
+def test_replacement_authority_migration_backfills_from_candidate_evidence(tmp_path):
+    conn = _conn(tmp_path)
+    conn.execute(
+        "INSERT INTO postings (posting_id, source_key, source_type, title, first_seen, "
+        "last_seen) VALUES ('legacy:1', 'greenhouse:original', 'greenhouse', "
+        "'Software Intern', 't', 't')"
+    )
+    conn.execute(
+        "INSERT INTO availability_state (posting_id, source_authority, confirmed_url, "
+        "updated_at) VALUES ('legacy:1', 'first_party_ats', "
+        "'https://lists.example.test/replacement', 't')"
+    )
+    conn.execute(
+        """INSERT INTO availability_evidence (
+            posting_id, record_key, sequence, observed_at, stage, channel, target,
+            attempt, signal, candidate_url, authority, trustworthy, is_current
+        ) VALUES (
+            'legacy:1', 'legacy-record', 1, 't', 'user_investigation', 'source',
+            'replacement_candidate', 1, 'replacement_candidate_present',
+            'https://lists.example.test/replacement', 'community_list', 0, 1
+        )"""
+    )
+    conn.commit()
+
+    db.init_db(conn)
+    db.init_db(conn)
+
+    state = conn.execute(
+        "SELECT source_authority, confirmed_url_authority FROM availability_state "
+        "WHERE posting_id = 'legacy:1'"
+    ).fetchone()
+    assert state["source_authority"] == "first_party_ats"
+    assert state["confirmed_url_authority"] == "community_list"
+
+
 def test_connection_uses_wal(tmp_path):
     conn = _conn(tmp_path)
     mode = conn.execute("PRAGMA journal_mode").fetchone()[0]

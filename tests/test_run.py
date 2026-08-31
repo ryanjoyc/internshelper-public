@@ -7,6 +7,7 @@ from internshelper import db, review, run, store
 from internshelper.availability_checks import CheckStage, NetworkObservation
 from internshelper.availability_store import evidence_history, get_projection, get_state
 from internshelper.config import Settings, SourceEntry
+from internshelper.connectors import FetchResult, build_connector
 from internshelper.models import Posting
 
 
@@ -25,14 +26,16 @@ def _conn(tmp_path):
 
 
 class _FakeConnector:
-    def __init__(self, posts=None, exc=None):
+    def __init__(self, posts=None, exc=None, *, complete=True):
         self._posts = posts or []
         self._exc = exc
+        self._complete = complete
+        self.diagnostics = []
 
     def fetch(self):
         if self._exc:
             raise self._exc
-        return self._posts
+        return FetchResult(tuple(self._posts), complete=self._complete)
 
 
 def _wire(monkeypatch, mapping):
@@ -378,6 +381,68 @@ def test_empty_ats_enumeration_without_completeness_proof_does_not_close(
         row["signal"] == "first_party_absent"
         for row in evidence_history(c, original.posting_id)
     )
+
+
+def test_workday_partial_parse_never_advances_absence_or_close_detection(
+    tmp_path, monkeypatch
+):
+    """A fetched-but-unparseable Workday row is not proof that the role disappeared."""
+
+    c = _conn(tmp_path)
+    entry = SourceEntry(
+        type="workday",
+        token="https://example.wd1.myworkdayjobs.com/Internships",
+        label="Example Co",
+    )
+    original_item = {
+        "title": "Software Engineering Intern",
+        "externalPath": "/job/Seattle/Software-Engineering-Intern_R-100",
+        "locationsText": "Seattle, WA",
+    }
+    other_item = {
+        "title": "Data Science Intern",
+        "externalPath": "/job/New-York/Data-Science-Intern_R-200",
+        "locationsText": "New York, NY",
+    }
+
+    def connector_for(items):
+        connector = build_connector(entry)
+        page = {"total": len(items), "jobPostings": items}
+        monkeypatch.setattr(connector, "_post_json", lambda _url, _body: page)
+        return connector
+
+    complete = connector_for([original_item])
+    original_id = complete.parse([{"jobPostings": [original_item]}])[0].posting_id
+    other_id = complete.parse([{"jobPostings": [other_item]}])[0].posting_id
+    _wire(monkeypatch, {entry.source_key: complete})
+    checker = _AvailabilityChecker([200, 200])
+    run.run_cycle(
+        c, _settings(), [entry], "2026-06-18T12:00:00+00:00", "pw",
+        tmp_path / "payloads", send_fn=_Send(), availability_checker=checker,
+    )
+
+    malformed_original = {"title": original_item["title"]}
+    for hour in (13, 14, 15):
+        _wire(
+            monkeypatch,
+            {entry.source_key: connector_for([malformed_original, other_item])},
+        )
+        run.run_cycle(
+            c, _settings(), [entry], f"2026-06-18T{hour}:00:00+00:00", "pw",
+            tmp_path / "payloads", send_fn=_Send(), availability_checker=checker,
+        )
+
+        projection = get_projection(c, original_id)
+        assert projection.decision.availability.value == "live"
+        assert projection.visible is True
+        assert c.execute(
+            "SELECT is_active FROM postings WHERE posting_id = ?", (original_id,)
+        ).fetchone()["is_active"] == 1
+        assert get_projection(c, other_id).visible is True
+        assert not any(
+            row["signal"] == "first_party_absent"
+            for row in evidence_history(c, original_id)
+        )
 
 
 def test_title_guard_drop_is_not_interpreted_as_first_party_absence(

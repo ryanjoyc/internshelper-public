@@ -7,7 +7,7 @@ postings in one response. Lever has no company field — the board is the compan
 from __future__ import annotations
 
 from internshelper.clock import to_iso
-from internshelper.connectors.base import Connector, register
+from internshelper.connectors.base import Connector, FetchResult, register
 from internshelper.models import Posting
 
 
@@ -18,8 +18,9 @@ class LeverConnector(Connector):
     def url(self) -> str:
         return f"https://api.lever.co/v0/postings/{self.entry.token}"
 
-    def fetch(self) -> list[Posting]:
-        return self.parse(self._get(self.url(), params={"mode": "json"}))
+    def fetch(self) -> FetchResult:
+        postings = self.parse(self._get(self.url(), params={"mode": "json"}))
+        return FetchResult(tuple(postings), complete=True)
 
     def parse(self, data) -> list[Posting]:
         postings = []

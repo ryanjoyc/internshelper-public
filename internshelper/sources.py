@@ -168,7 +168,7 @@ def fetch_test(entry: SourceEntry, limit: int = 5) -> tuple[int, list[str], list
     even alongside a nonzero count, so a partially-degenerate parse isn't silent either.
     """
     connector = build_connector(entry)
-    postings = connector.fetch()
+    postings = connector.fetch().postings
     return len(postings), [p.title for p in postings[:limit]], list(connector.diagnostics)
 
 
@@ -327,7 +327,7 @@ def _cmd_test(args) -> int:
         # so callers (the deep-scan-source skill) can enumerate links and map back to DB rows.
         try:
             connector = build_connector(entry)
-            postings = connector.fetch()
+            postings = connector.fetch().postings
         except Exception as e:
             print(json.dumps({"source_key": entry.source_key,
                               "error": f"{type(e).__name__}: {e}"}, indent=2))

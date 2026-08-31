@@ -10,9 +10,10 @@ Quirks learned from live captures, baked in here:
 - No company field in the payload (the board IS the company) and no description in the list
   payload; fetching per-job details would be N+1 requests on 1000-req tenants, so postings
   carry `description=""` like the markdown/github list connectors.
-- **A partial fetch must raise, never return.** `store.apply_close_detection` closes every
-  active posting absent from a successful return, so returning a partial page-set would
-  mass-close live postings. Empty-page-before-total, the MAX_POSTINGS cap, and 4xx all raise.
+- Incomplete pagination (empty-page-before-total, the MAX_POSTINGS cap, or 4xx) raises.
+  Missing/contradictory counts, overlapping pages, or skipped malformed rows return their valid
+  postings with `complete=False`, so collection can retain positive data without advancing
+  absence or close detection.
 - Known v1 limitation: the rare tenant that demands a browser session/CSRF cookie fails as
   unhealthy with a clear message (no cookie-jar fallback); `*.myworkdaysite.com` hosts are
   out of scope.
@@ -26,7 +27,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from internshelper.connectors.base import Connector, register
+from internshelper.connectors.base import Connector, FetchResult, register
 from internshelper.models import Posting
 
 PAGE_LIMIT = 20  # the CXS server cap per request
@@ -74,7 +75,7 @@ def parse_board_url(url: str) -> WorkdayBoard:
 class WorkdayConnector(Connector):
     type = "workday"
 
-    def fetch(self) -> list[Posting]:
+    def fetch(self) -> FetchResult:
         board = parse_board_url(self.entry.token)
         search = self.entry.search
         pages: list[dict] = []
@@ -94,8 +95,10 @@ class WorkdayConnector(Connector):
                         "tenant requires a browser session — source can't be collected"
                     ) from e
                 raise
-            if total is None:
-                total = int(page.get("total") or 0)  # ONLY the first page reports total
+            if not pages:
+                total = self._declared_count(page, "total")
+                # ONLY the first page reports total.
+            if total is not None:
                 if total > MAX_POSTINGS:
                     raise RuntimeError(
                         f"workday board {board.base_url} has {total} postings; refusing a "
@@ -103,7 +106,7 @@ class WorkdayConnector(Connector):
                         "(e.g. search: intern) to narrow it server-side"
                     )
             items = page.get("jobPostings") or []
-            if not items and got < total:
+            if not items and total is not None and got < total:
                 raise RuntimeError(
                     f"workday board {board.base_url} returned an empty page at offset {got} "
                     f"with {total - got} of {total} postings still expected — refusing a "
@@ -111,7 +114,7 @@ class WorkdayConnector(Connector):
                 )
             pages.append(page)
             got += len(items)
-            if got >= total or not items:
+            if total is None or got >= total or not items:
                 break
         postings = self.parse(pages)
         if search:
@@ -119,7 +122,17 @@ class WorkdayConnector(Connector):
                 f"server-side search {search!r} active — postings not matching it are "
                 "invisible to this source (close-detection applies within the search)"
             )
-        return postings
+        # Pagination can be complete while normalization is not. A skipped row still
+        # yields useful postings, but the result cannot prove any stored role absent.
+        return FetchResult(
+            tuple(postings),
+            complete=self._pagination_complete(
+                postings,
+                fetched=got,
+                expected=total,
+                count_field="total",
+            ),
+        )
 
     def parse(self, pages: list[dict]) -> list[Posting]:
         self.diagnostics = []  # fresh per parse, same contract as the markdown connector

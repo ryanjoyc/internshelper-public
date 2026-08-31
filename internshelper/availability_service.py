@@ -66,11 +66,21 @@ class VerificationResult:
     projection: AvailabilityProjection
 
 
+@dataclass(frozen=True)
+class _ReplacementCandidate:
+    """A candidate URL paired with the authority that actually supplied it."""
+
+    title: str
+    company: str
+    url: str
+    authority: SourceAuthority
+
+
 def _authority_for_source_key(source_key: str) -> SourceAuthority:
     source_type = source_key.split(":", 1)[0]
     if source_type in {"github", "markdown"}:
         return SourceAuthority.COMMUNITY_LIST
-    if source_type in {"greenhouse", "lever", "ashby", "workday"}:
+    if source_type in {"greenhouse", "lever", "ashby", "workday", "amazon"}:
         return SourceAuthority.FIRST_PARTY_ATS
     return SourceAuthority.UNKNOWN
 
@@ -83,7 +93,7 @@ def _tokens(value: str | None) -> set[str]:
     }
 
 
-def _candidate_score(original, candidate) -> float:
+def _candidate_score(original, candidate: _ReplacementCandidate) -> float:
     if not candidate.url or candidate.url == original["effective_url"]:
         return 0.0
     left = _tokens(original["title"])
@@ -98,7 +108,7 @@ def _candidate_score(original, candidate) -> float:
     return overlap
 
 
-def _best_candidate(original, candidates):
+def _best_candidate(original, candidates: list[_ReplacementCandidate]):
     scored = sorted(
         ((_candidate_score(original, item), item) for item in candidates),
         key=lambda pair: pair[0],
@@ -107,14 +117,15 @@ def _best_candidate(original, candidates):
     return scored[0][1] if scored and scored[0][0] >= 0.6 else None
 
 
-def _database_candidates(conn: sqlite3.Connection, original) -> list:
-    from internshelper.models import Posting
-
+def _database_candidates(
+    conn: sqlite3.Connection, original
+) -> list[_ReplacementCandidate]:
     if not _tokens(original["company"]):
         return []
     rows = conn.execute(
         """
-        SELECT p.*, COALESCE(av.confirmed_url, p.url) AS effective_url
+        SELECT p.*, av.confirmed_url, av.confirmed_url_authority,
+               COALESCE(av.confirmed_url, p.url) AS effective_url
         FROM postings p
         LEFT JOIN availability_state av ON av.posting_id = p.posting_id
         WHERE p.posting_id != ?
@@ -127,14 +138,17 @@ def _database_candidates(conn: sqlite3.Connection, original) -> list:
         (original["posting_id"], original["company"] or ""),
     ).fetchall()
     return [
-        Posting(
-            posting_id=row["posting_id"],
-            source_key=row["source_key"],
+        _ReplacementCandidate(
             title=row["title"],
             company=row["company"],
-            location=row["location"] or "",
             url=row["effective_url"],
-            description=row["description"] or "",
+            authority=(
+                SourceAuthority(
+                    row["confirmed_url_authority"] or SourceAuthority.UNKNOWN.value
+                )
+                if row["confirmed_url"]
+                else _authority_for_source_key(row["source_key"])
+            ),
         )
         for row in rows
     ]
@@ -164,7 +178,7 @@ class RuntimeEvidenceProvider:
         attempt: int,
     ) -> tuple[RawObservation, ...]:
         observations: list[RawObservation] = []
-        target = "confirmed_url" if original["confirmed_url"] else "original_url"
+        target = original["confirmed_url"] or "original_url"
         employer_hosted = authority is SourceAuthority.FIRST_PARTY_ATS
 
         def check_original(current_attempt: int) -> set[EvidenceKind]:
@@ -196,7 +210,7 @@ class RuntimeEvidenceProvider:
         entries = _load_sources(sources_path)
         if original["source_key"]:
             entries.sort(key=lambda item: item.source_key != original["source_key"])
-        source_posts: list = []
+        source_candidates: list[_ReplacementCandidate] = []
         if not entries:
             observations.append(
                 SourceObservation(
@@ -215,7 +229,9 @@ class RuntimeEvidenceProvider:
             entry_authority = _authority_for_source_key(entry.source_key)
             current_sequence = sequence + len(observations)
             try:
-                fetched = build_connector(entry).fetch()
+                connector = build_connector(entry)
+                result = connector.fetch()
+                fetched = result.postings
                 present = any(
                     item.posting_id == original["posting_id"]
                     or item.url in {original["url"], original["effective_url"]}
@@ -229,12 +245,28 @@ class RuntimeEvidenceProvider:
                         target=entry.source_key,
                         attempt=attempt,
                         authority=entry_authority,
-                        complete=bool(fetched),
-                        original_present=present if fetched else None,
-                        error=None if fetched else "empty enumeration lacks completeness proof",
+                        complete=result.complete,
+                        original_present=present if result.complete else None,
+                        error=(
+                            None
+                            if result.complete
+                            else "partial enumeration: "
+                            + (
+                                "; ".join(connector.diagnostics)
+                                or "connector could not prove completeness"
+                            )
+                        ),
                     )
                 )
-                source_posts.extend(fetched)
+                source_candidates.extend(
+                    _ReplacementCandidate(
+                        title=item.title,
+                        company=item.company,
+                        url=item.url,
+                        authority=entry_authority,
+                    )
+                    for item in fetched
+                )
             except Exception as exc:
                 observations.append(
                     SourceObservation(
@@ -250,7 +282,7 @@ class RuntimeEvidenceProvider:
                     )
                 )
 
-        candidate = _best_candidate(original, source_posts)
+        candidate = _best_candidate(original, source_candidates)
         if candidate is None:
             candidate = _best_candidate(original, _database_candidates(conn, original))
         if candidate is not None:
@@ -261,7 +293,7 @@ class RuntimeEvidenceProvider:
                     stage=CheckStage.USER_INVESTIGATION,
                     target="replacement_candidate",
                     attempt=attempt,
-                    authority=_authority_for_source_key(candidate.source_key),
+                    authority=candidate.authority,
                     complete=True,
                     original_present=True,
                     candidate_url=candidate.url,
@@ -346,6 +378,22 @@ def _without_previous_outcome(
     )
 
 
+def _records_for_target(
+    records: tuple[InterpretedObservation, ...], target: str
+) -> tuple[InterpretedObservation, ...]:
+    """Keep evidence from one checked URL and only the redirects it recorded."""
+
+    related_targets = {target}
+    selected: list[InterpretedObservation] = []
+    for record in records:
+        if record.target not in related_targets:
+            continue
+        selected.append(record)
+        if record.location:
+            related_targets.add(record.location)
+    return tuple(selected)
+
+
 def verify_posting(
     conn: sqlite3.Connection,
     posting_id: str,
@@ -359,7 +407,7 @@ def verify_posting(
 
     original = conn.execute(
         """
-        SELECT p.*, av.confirmed_url,
+        SELECT p.*, av.confirmed_url, av.confirmed_url_authority,
                COALESCE(av.confirmed_url, p.url) AS effective_url
         FROM postings p
         LEFT JOIN availability_state av ON av.posting_id = p.posting_id
@@ -369,14 +417,24 @@ def verify_posting(
     ).fetchone()
     if original is None:
         raise LookupError(f"unknown posting: {posting_id}")
-    authority = _authority_for_source_key(original["source_key"])
     if get_state(conn, posting_id) is None:
-        ensure_pending(conn, posting_id, authority, now=now)
+        ensure_pending(
+            conn,
+            posting_id,
+            _authority_for_source_key(original["source_key"]),
+            now=now,
+        )
 
     current = load_current_records(conn, posting_id)
     previous = _without_previous_outcome(current)
     state = get_state(conn, posting_id)
     assert state is not None
+    authority = SourceAuthority(state["source_authority"])
+    if state["confirmed_url"]:
+        authority = SourceAuthority(
+            state["confirmed_url_authority"] or SourceAuthority.UNKNOWN.value
+        )
+        previous = _records_for_target(previous, state["confirmed_url"])
     sequence = max((item.sequence for item in current), default=0) + 1
     attempt = int(state["last_attempt"] or 0) + 1
 
@@ -434,7 +492,7 @@ def verify_posting(
                 target=(
                     "replacement_candidate"
                     if candidate_url
-                    else "confirmed_url"
+                    else original["effective_url"]
                     if original["confirmed_url"]
                     else "original_url"
                 ),

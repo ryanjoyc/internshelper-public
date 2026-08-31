@@ -8,7 +8,7 @@ naturally closes a posting when it drops out of the list. Keyed on the listing's
 from __future__ import annotations
 
 from internshelper.clock import to_iso
-from internshelper.connectors.base import Connector, register
+from internshelper.connectors.base import Connector, FetchResult, register
 from internshelper.models import Posting
 
 
@@ -16,9 +16,10 @@ from internshelper.models import Posting
 class GithubListConnector(Connector):
     type = "github"
 
-    def fetch(self) -> list[Posting]:
+    def fetch(self) -> FetchResult:
         # token holds the raw listings.json URL.
-        return self.parse(self._get(self.entry.token))
+        postings = self.parse(self._get(self.entry.token))
+        return FetchResult(tuple(postings), complete=True)
 
     def parse(self, data) -> list[Posting]:
         postings = []

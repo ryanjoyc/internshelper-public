@@ -9,6 +9,7 @@ from internshelper.availability_checks import NetworkObservation
 from internshelper.availability_service import verify_posting
 from internshelper.availability_store import get_state
 from internshelper.config import Settings, SourceEntry
+from internshelper.connectors import FetchResult
 from internshelper.models import Posting
 
 
@@ -20,7 +21,7 @@ class _Connector:
         self.posting = posting
 
     def fetch(self):
-        return [self.posting]
+        return FetchResult((self.posting,), complete=True)
 
 
 class _Checker:

@@ -225,6 +225,8 @@ def test_confirmation_uses_pending_candidate_and_survives_later_upsert(tmp_path)
     assert after.decision.primary_action.value == "verify"
     assert state["pending_candidate_url"] is None
     assert state["confirmed_url"] == CANDIDATE_URL
+    assert state["source_authority"] == "first_party_ats"
+    assert state["confirmed_url_authority"] == "unknown"
     assert conn.execute(
         "SELECT url FROM postings WHERE posting_id = ?", (_posting().posting_id,)
     ).fetchone()[0] == ORIGINAL_URL
@@ -238,6 +240,8 @@ def test_confirmation_uses_pending_candidate_and_survives_later_upsert(tmp_path)
     assert restored.decision.primary_action.value == "confirm_replacement"
     assert restored_state["confirmed_url"] is None
     assert restored_state["pending_candidate_url"] == CANDIDATE_URL
+    assert restored_state["confirmed_url_authority"] is None
+    assert restored_state["pending_candidate_authority"] == "unknown"
 
 
 def test_unconfirmed_candidate_survives_a_later_uncertain_check(tmp_path):
@@ -343,3 +347,56 @@ def test_confirmed_candidate_stays_visible_and_uncertain_until_it_is_checked(tmp
     assert projection.effective_url == CANDIDATE_URL
     assert projection.decision.availability.value == "uncertain"
     assert projection.decision.primary_action.value == "verify"
+
+
+def test_confirmed_projection_ignores_unrelated_same_attempt_candidate_evidence(tmp_path):
+    conn = _conn(tmp_path)
+    replacement = _evaluation(
+        InvestigationObservation(
+            sequence=1,
+            observed_at=NOW,
+            stage=CheckStage.USER_INVESTIGATION,
+            target="replacement_candidate",
+            attempt=1,
+            finding=InvestigationFinding.REPLACEMENT_FOUND,
+            candidate_url=CANDIDATE_URL,
+        ),
+        stages=("queued", "review_finding", "await_user_confirmation"),
+    )
+    persist_evaluation(conn, _posting().posting_id, replacement, updated_at=NOW)
+    confirm_replacement(conn, _posting().posting_id, confirmed_at=NOW)
+    checked = _evaluation(
+        NetworkObservation(
+            sequence=2,
+            observed_at="2026-08-30T13:00:00+00:00",
+            stage=CheckStage.USER_INVESTIGATION,
+            target=CANDIDATE_URL,
+            attempt=2,
+            status=200,
+            body="<h1>Software Engineering Intern</h1><button>Apply now</button>",
+            employer_hosted=True,
+        ),
+        InvestigationObservation(
+            sequence=3,
+            observed_at="2026-08-30T13:00:00+00:00",
+            stage=CheckStage.USER_INVESTIGATION,
+            target="replacement_candidate",
+            attempt=2,
+            finding=InvestigationFinding.REPLACEMENT_FOUND,
+            candidate_url=CANDIDATE_URL,
+        ),
+        stages=("queued", "review_finding", "await_user_confirmation"),
+    )
+    assert checked.decision.primary_action.value == "confirm_replacement"
+
+    persist_evaluation(
+        conn,
+        _posting().posting_id,
+        checked,
+        updated_at="2026-08-30T13:00:00+00:00",
+    )
+
+    projection = get_projection(conn, _posting().posting_id)
+    assert projection.decision.availability.value == "live"
+    assert projection.decision.primary_action.value == "apply"
+    assert projection.decision.replacement_candidate_url is None

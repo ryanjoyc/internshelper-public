@@ -452,7 +452,9 @@ def inbox_with_status(conn: sqlite3.Connection) -> list[sqlite3.Row | dict]:
                av.validation_completed AS availability_validation_completed,
                av.last_checked_at AS availability_last_checked_at,
                av.confirmed_url AS availability_confirmed_url,
+               av.confirmed_url_authority AS availability_confirmed_url_authority,
                av.pending_candidate_url AS availability_pending_candidate_url,
+               av.pending_candidate_authority AS availability_pending_candidate_authority,
                av.investigation_stages AS availability_investigation_stages
         FROM postings p
         LEFT JOIN applications a ON a.posting_id = p.posting_id
@@ -486,7 +488,9 @@ def posting_with_status(
                av.validation_completed AS availability_validation_completed,
                av.last_checked_at AS availability_last_checked_at,
                av.confirmed_url AS availability_confirmed_url,
+               av.confirmed_url_authority AS availability_confirmed_url_authority,
                av.pending_candidate_url AS availability_pending_candidate_url,
+               av.pending_candidate_authority AS availability_pending_candidate_authority,
                av.investigation_stages AS availability_investigation_stages
         FROM postings p
         LEFT JOIN applications a ON a.posting_id = p.posting_id

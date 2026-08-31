@@ -57,7 +57,7 @@ def test_canonical_url_drops_query_fragment_and_trailing_slash():
     assert a == b == "https://example.com/Job/123"
 
 
-def test_malformed_rows_skipped_without_raising():
+def test_malformed_rows_are_skipped_with_partial_diagnostics():
     md = (
         "| Company | Role | Location | Apply |\n"
         "| --- | --- | --- | --- |\n"
@@ -65,8 +65,34 @@ def test_malformed_rows_skipped_without_raising():
         "| broken row no pipes\n"
         "|  |  |  |  |\n"
     )
-    posts = _conn(SNDSH).parse(md)
+    connector = _conn(SNDSH)
+    posts = connector.parse(md)
     assert [p.company for p in posts] == ["Good Co"]
+    assert len(connector.diagnostics) == 2
+    assert all("skipped malformed row" in item for item in connector.diagnostics)
+
+
+def test_fetch_marks_malformed_markdown_rows_partial(monkeypatch):
+    md = (
+        "| Company | Role | Apply |\n"
+        "| --- | --- | --- |\n"
+        "| Good Co | Engineer Intern | [apply](https://good.co/jobs/1) |\n"
+        "| Missing Role | | [apply](https://good.co/jobs/2) |\n"
+    )
+
+    class Response:
+        text = md
+
+        @staticmethod
+        def raise_for_status():
+            return None
+
+    monkeypatch.setattr(markdown_list.httpx, "get", lambda *args, **kwargs: Response())
+
+    result = _conn(SNDSH).fetch()
+
+    assert [posting.company for posting in result.postings] == ["Good Co"]
+    assert result.complete is False
 
 
 def test_parses_all_tables_not_just_the_first():

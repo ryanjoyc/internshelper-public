@@ -6,9 +6,9 @@ GET https://www.amazon.jobs/en/search.json?base_query=<q>&normalized_country_cod
 Amazon has no enumerable board: you SEARCH. The source token IS the query (e.g. "intern");
 scope is US-only (matches the source we ship). Quirks baked in:
 
-- Like the Workday connector, **a partial fetch must RAISE, never return** — a short list would
-  make `store.apply_close_detection` mass-close live postings. Empty-page-before-`hits`, the
-  MAX_POSTINGS cap, and 4xx all raise.
+- Like Workday, incomplete pagination (empty-page-before-`hits`, the MAX_POSTINGS cap, or 4xx)
+  raises. Missing/contradictory counts, overlapping pages, or skipped malformed rows return valid
+  postings with `complete=False`, so they cannot advance absence or close detection.
 - `hits` is read only from the first page (defensive — same discipline as Workday's `total`).
 - `posted_date` is a human string with a padded day ("July  7, 2026"); we collapse the
   whitespace and let `clock.to_iso` parse it (falls back to None if unparseable).
@@ -23,7 +23,7 @@ import re
 import httpx
 
 from internshelper import clock
-from internshelper.connectors.base import Connector, register
+from internshelper.connectors.base import Connector, FetchResult, register
 from internshelper.models import Posting
 
 SEARCH_URL = "https://www.amazon.jobs/en/search.json"
@@ -38,7 +38,7 @@ MAX_POSTINGS = 3000
 class AmazonConnector(Connector):
     type = "amazon"
 
-    def fetch(self) -> list[Posting]:
+    def fetch(self) -> FetchResult:
         query = self.entry.token
         pages: list[dict] = []
         got, total = 0, None
@@ -61,15 +61,17 @@ class AmazonConnector(Connector):
                         f"query {query!r} may be malformed — source can't be collected"
                     ) from e
                 raise
-            if total is None:
-                total = int(page.get("hits") or 0)  # trust the first page's count only
+            if not pages:
+                total = self._declared_count(page, "hits")
+                # Trust the first page's count only.
+            if total is not None:
                 if total > MAX_POSTINGS:
                     raise RuntimeError(
                         f"amazon.jobs query {query!r} matched {total} postings; refusing a "
                         f"{total // PAGE_LIMIT}-page crawl — narrow the query (the source token)"
                     )
             items = page.get("jobs") or []
-            if not items and got < total:
+            if not items and total is not None and got < total:
                 raise RuntimeError(
                     f"amazon.jobs returned an empty page at offset {got} with "
                     f"{total - got} of {total} postings still expected — refusing a partial "
@@ -77,9 +79,20 @@ class AmazonConnector(Connector):
                 )
             pages.append(page)
             got += len(items)
-            if got >= total or not items:
+            if total is None or got >= total or not items:
                 break
-        return self.parse(pages)
+        postings = self.parse(pages)
+        # A malformed row is positive data we can safely skip, but it makes the
+        # enumeration incomplete for absence/close detection.
+        return FetchResult(
+            tuple(postings),
+            complete=self._pagination_complete(
+                postings,
+                fetched=got,
+                expected=total,
+                count_field="hits",
+            ),
+        )
 
     def parse(self, pages: list[dict]) -> list[Posting]:
         self.diagnostics = []  # fresh per parse, same contract as the other connectors

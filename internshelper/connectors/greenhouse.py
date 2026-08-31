@@ -7,7 +7,7 @@ returns every job (with description content) in a single response — no paginat
 from __future__ import annotations
 
 from internshelper.clock import to_iso
-from internshelper.connectors.base import Connector, register
+from internshelper.connectors.base import Connector, FetchResult, register
 from internshelper.models import Posting
 
 
@@ -18,8 +18,9 @@ class GreenhouseConnector(Connector):
     def url(self) -> str:
         return f"https://boards-api.greenhouse.io/v1/boards/{self.entry.token}/jobs"
 
-    def fetch(self) -> list[Posting]:
-        return self.parse(self._get(self.url(), params={"content": "true"}))
+    def fetch(self) -> FetchResult:
+        postings = self.parse(self._get(self.url(), params={"content": "true"}))
+        return FetchResult(tuple(postings), complete=True)
 
     def parse(self, data) -> list[Posting]:
         postings = []

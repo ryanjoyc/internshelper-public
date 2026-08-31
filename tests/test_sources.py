@@ -11,6 +11,7 @@ import pytest
 
 from internshelper import config, sources
 from internshelper.config import SourceEntry
+from internshelper.connectors import FetchResult
 from internshelper.models import Posting
 
 
@@ -25,7 +26,7 @@ class _FakeConnector:
     def fetch(self):
         if self._exc:
             raise self._exc
-        return self._posts
+        return FetchResult(tuple(self._posts), complete=not self.diagnostics)
 
 
 def _post(pid, title):

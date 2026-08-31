@@ -56,6 +56,61 @@ def test_parse_handles_missing_date_and_records_skip_diagnostic():
     assert conn.diagnostics and "Broken row" in conn.diagnostics[0]
 
 
+def test_fetch_result_marks_a_malformed_skipped_record_partial(monkeypatch):
+    connector = _conn()
+    monkeypatch.setattr(connector, "_get", lambda _url, params=None: _PAGE)
+
+    result = connector.fetch()
+
+    assert result.complete is False
+    assert [posting.posting_id for posting in result.postings] == [
+        "amazon:10468083",
+        "amazon:10468069",
+    ]
+
+
+def test_fetch_result_marks_overlapping_pages_partial(monkeypatch):
+    item = {
+        "id_icims": "10468083",
+        "title": "Software Development Engineer Intern",
+        "job_path": "/en/jobs/10468083/software-development-engineer-intern",
+    }
+    pages = iter(
+        (
+            {"hits": 2, "jobs": [item]},
+            {"hits": 0, "jobs": [item]},
+        )
+    )
+    connector = _conn()
+    monkeypatch.setattr(connector, "_get", lambda _url, params=None: next(pages))
+
+    result = connector.fetch()
+
+    assert result.complete is False
+    assert len({posting.posting_id for posting in result.postings}) == 1
+    assert any("duplicate" in diagnostic for diagnostic in connector.diagnostics)
+
+
+def test_fetch_result_without_first_page_hits_is_partial(monkeypatch):
+    item = {
+        "id_icims": "10468083",
+        "title": "Software Development Engineer Intern",
+        "job_path": "/en/jobs/10468083/software-development-engineer-intern",
+    }
+    connector = _conn()
+    monkeypatch.setattr(
+        connector,
+        "_get",
+        lambda _url, params=None: {"jobs": [item]},
+    )
+
+    result = connector.fetch()
+
+    assert result.complete is False
+    assert len(result.postings) == 1
+    assert any("hits" in diagnostic for diagnostic in connector.diagnostics)
+
+
 def test_detect_source_maps_amazon_search_to_query_token():
     e = detect_source("https://www.amazon.jobs/en/search?base_query=intern")
     assert e.type == "amazon" and e.token == "intern"

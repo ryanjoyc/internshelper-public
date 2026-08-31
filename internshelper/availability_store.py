@@ -95,6 +95,21 @@ def _record_key(record: InterpretedObservation) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _candidate_authority(
+    records: tuple[InterpretedObservation, ...], candidate_url: str | None
+) -> str | None:
+    if candidate_url is None:
+        return None
+    return next(
+        (
+            record.authority.value
+            for record in reversed(records)
+            if record.candidate_url == candidate_url and record.authority is not None
+        ),
+        None,
+    )
+
+
 def persist_evaluation(
     conn: sqlite3.Connection,
     posting_id: str,
@@ -112,6 +127,9 @@ def persist_evaluation(
     existing = get_state(conn, posting_id)
     confirmed_url = existing["confirmed_url"] if existing else None
     existing_candidate = existing["pending_candidate_url"] if existing else None
+    existing_candidate_authority = (
+        existing["pending_candidate_authority"] if existing else None
+    )
     candidate = evaluation.decision.replacement_candidate_url
     retained_candidate = bool(
         candidate is None
@@ -120,10 +138,17 @@ def persist_evaluation(
     )
     if candidate is not None:
         pending_candidate = None if candidate == confirmed_url else candidate
+        pending_candidate_authority = (
+            None
+            if pending_candidate is None
+            else _candidate_authority(evaluation.records, candidate)
+        )
     elif retained_candidate:
         pending_candidate = existing_candidate
+        pending_candidate_authority = existing_candidate_authority
     else:
         pending_candidate = None
+        pending_candidate_authority = None
     records = evaluation.records
     last_checked_at = records[-1].observed_at
     last_attempt = max(record.attempt for record in records)
@@ -144,17 +169,17 @@ def persist_evaluation(
             INSERT INTO availability_state (
                 posting_id, source_authority, status, validation_completed,
                 last_attempt, last_checked_at, next_check_at,
-                pending_candidate_url, investigation_outcome,
+                pending_candidate_url, pending_candidate_authority, investigation_outcome,
                 investigation_stages, updated_at
-            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(posting_id) DO UPDATE SET
-                source_authority = excluded.source_authority,
                 status = excluded.status,
                 validation_completed = 1,
                 last_attempt = excluded.last_attempt,
                 last_checked_at = excluded.last_checked_at,
                 next_check_at = excluded.next_check_at,
                 pending_candidate_url = excluded.pending_candidate_url,
+                pending_candidate_authority = excluded.pending_candidate_authority,
                 investigation_outcome = excluded.investigation_outcome,
                 investigation_stages = excluded.investigation_stages,
                 updated_at = excluded.updated_at
@@ -167,6 +192,7 @@ def persist_evaluation(
                 last_checked_at,
                 next_check_at,
                 pending_candidate,
+                pending_candidate_authority,
                 investigation_outcome,
                 stages,
                 updated_at,
@@ -429,6 +455,20 @@ def _current_records(
     return grouped
 
 
+def _rows_for_target(rows: list[sqlite3.Row], target: str) -> list[sqlite3.Row]:
+    """Select one logical check, following only its recorded redirect chain."""
+
+    related_targets = {target}
+    selected: list[sqlite3.Row] = []
+    for row in rows:
+        if row["target"] not in related_targets:
+            continue
+        selected.append(row)
+        if row["location"]:
+            related_targets.add(row["location"])
+    return selected
+
+
 def _decision_from_rows(
     state,
     rows: list[sqlite3.Row],
@@ -445,16 +485,10 @@ def _decision_from_rows(
     confirmed = state_value("confirmed_url")
     pending = state_value("pending_candidate_url")
     if confirmed and not pending:
-        confirmed_attempts = {
-            (row["stage"], row["attempt"])
-            for row in rows
-            if row["target"] == "confirmed_url"
-        }
         policy_rows = [
             row
-            for row in rows
+            for row in _rows_for_target(rows, confirmed)
             if row["kind"] is not None
-            and (row["stage"], row["attempt"]) in confirmed_attempts
         ]
     else:
         policy_rows = [row for row in rows if row["kind"] is not None]
@@ -483,8 +517,14 @@ def _decision_from_rows(
     stages = tuple(json.loads(state_value("investigation_stages") or "[]"))
     if confirmed and not pending:
         stages = ()
+    authority = state_value("source_authority")
+    if confirmed and not pending:
+        authority = (
+            state_value("confirmed_url_authority")
+            or SourceAuthority.UNKNOWN.value
+        )
     evidence = AvailabilityEvidence(
-        source_authority=SourceAuthority(state_value("source_authority")),
+        source_authority=SourceAuthority(authority),
         user_state=user_state,
         observations=observations,
         investigation_stages=stages,
@@ -596,6 +636,22 @@ def project_board_rows(
     return projected
 
 
+def _candidate_authority_from_history(
+    conn: sqlite3.Connection, posting_id: str, candidate_url: str
+) -> str | None:
+    row = conn.execute(
+        """
+        SELECT authority
+        FROM availability_evidence
+        WHERE posting_id = ? AND candidate_url = ? AND authority IS NOT NULL
+        ORDER BY is_current DESC, id DESC
+        LIMIT 1
+        """,
+        (posting_id, candidate_url),
+    ).fetchone()
+    return row["authority"] if row else None
+
+
 def confirm_replacement(
     conn: sqlite3.Connection, posting_id: str, *, confirmed_at: str
 ) -> str:
@@ -609,14 +665,25 @@ def confirm_replacement(
         if state["confirmed_url"]:
             return state["confirmed_url"]
         raise ValueError("posting has no pending replacement candidate")
+    authority = state["pending_candidate_authority"] or _candidate_authority_from_history(
+        conn, posting_id, candidate
+    )
     cur = conn.execute(
         """
         UPDATE availability_state
-        SET confirmed_url = ?, replacement_confirmed_at = ?,
-            pending_candidate_url = NULL, updated_at = ?
+        SET confirmed_url = ?, confirmed_url_authority = ?,
+            replacement_confirmed_at = ?, pending_candidate_url = NULL,
+            pending_candidate_authority = NULL, updated_at = ?
         WHERE posting_id = ? AND pending_candidate_url = ?
         """,
-        (candidate, confirmed_at, confirmed_at, posting_id, candidate),
+        (
+            candidate,
+            authority or SourceAuthority.UNKNOWN.value,
+            confirmed_at,
+            confirmed_at,
+            posting_id,
+            candidate,
+        ),
     )
     if cur.rowcount != 1:
         conn.rollback()
@@ -634,7 +701,11 @@ def undo_replacement_confirmation(
         """
         UPDATE availability_state
         SET pending_candidate_url = COALESCE(pending_candidate_url, confirmed_url),
-            confirmed_url = NULL,
+            pending_candidate_authority = CASE
+                WHEN pending_candidate_url IS NULL THEN confirmed_url_authority
+                ELSE pending_candidate_authority
+            END,
+            confirmed_url = NULL, confirmed_url_authority = NULL,
             replacement_confirmed_at = NULL, updated_at = ?
         WHERE posting_id = ? AND confirmed_url IS NOT NULL
         """,

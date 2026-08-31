@@ -41,7 +41,8 @@ collect (run.py) → store (store.py / db.py) → deduplicate (dedup.py)
     → browse by company; dismiss / flag / drag-to-Applied (review.py + applications table)
 ```
 
-Each collect cycle: scrape every source → save each new posting's raw payload to
+Each collect cycle: scrape every source → retain valid positive rows while only complete source
+enumerations advance absence/close evidence → save each new posting's raw payload to
 `data/payloads/{id}.json` → store it in a hidden pending state → validate its destination →
 collapse strong cross-source URL duplicates and reconcile their evidence → retrain + rescore +
 apply the company-group map → email the Top-target digest for rows never digested before
@@ -60,7 +61,7 @@ Discovery suggestions carry reason/evidence and require user approval.
 
 | Module | Responsibility |
 |--------|----------------|
-| `run` | Scheduled collector: fetch all sources, atomically hide new rows until destination validation finishes, record source absences/retries, reconcile availability across strong URL duplicates, compute hint flags, retrain+rescore+regroup, and email the exactly-once Top-target digest. One invocation = one cycle. |
+| `run` | Scheduled collector: fetch all sources, atomically hide new rows until destination validation finishes, store safe positives from partial results without advancing absence/close evidence, reconcile availability across strong URL duplicates, compute hint flags, retrain+rescore+regroup, and email the exactly-once Top-target digest. One invocation = one cycle. |
 | `review` | Inbox-actions CLI + the Board's data layer: `list_inbox` (company-group filter), `dismiss`/`undo_dismiss` (the no_match plumbing, reused), legacy `pin_tier`/`unpin` compatibility helpers, `flag`/`unflag`/`list_flagged` (suspect-data parking, no training label), duplicate inspection/override helpers, guard-leak + closed-inbox hygiene (undoable batches), `payload_summary`, `refresh_ranking`. Driven by the `review-internships` + `deep-scan-source` + `investigate-flags` skills and the board routes. |
 | `ranking` | Learned fit hint over title/JD tokens + source prior + recency. No company prior. Scores persist but do not determine Board groups or visibility. |
 | `tiers` | Compatibility bridge that applies the authoritative company-group map to posting `tier` values. Rank and candidate flags are deliberately ignored. |
@@ -80,11 +81,11 @@ Discovery suggestions carry reason/evidence and require user approval.
 | `availability` | Pure evidence-to-policy reducer: normalized evidence → live/uncertain/closed status, Board treatment, action priority, investigation/replacement semantics, and an explicit no-ranking-effect invariant. |
 | `availability_checks` | Typed external-observation boundary and deterministic network/source/investigator interpretation; preserves chronology and adds trustworthy conflicts before calling the pure reducer. |
 | `availability_runtime` | Bounded HTTP destination checker with manual redirect history, transport normalization, cross-host trust removal, and private/local destination blocking. |
-| `availability_store` | Availability state/evidence persistence, retry windows, strong-duplicate evidence reconciliation, Board visibility/action projection, and reversible replacement confirmation without rewriting `postings.url`. |
+| `availability_store` | Availability state/evidence persistence, retry windows, strong-duplicate evidence reconciliation, Board visibility/action projection, and reversible replacement confirmation with URL-specific evidence and persisted destination authority, without rewriting `postings.url`. |
 | `availability_investigation` | Framework-independent investigation stages and final-report validation. |
 | `availability_service` | User-triggered Verify orchestration: retry original, enumerate configured sources, compare candidates, persist the finding, and return semantic progress. |
 | `store` | Posting/application persistence, source-health/quiet detection, run logging, and availability-aware Board queries. |
-| `db` | SQLite schema (including availability state/evidence), connections, meta key/value store, and runs-history pruning. |
+| `db` | SQLite schema (including availability state/evidence and additive replacement-authority migration), connections, meta key/value store, and runs-history pruning. |
 | `config` | Load + validate `sources.yaml` and `settings.toml`; collects errors without halting on a single bad entry. |
 | `models` | The normalized `Posting` dataclass shared across connectors / classify / store; carries scraped + classified fields + the raw payload. |
 | `classify` | Keyword matcher (whole-word, case-insensitive) over title + HTML-stripped description → the three flag booleans. |
@@ -101,19 +102,21 @@ Discovery suggestions carry reason/evidence and require user approval.
 
 ## Connectors (`internshelper/connectors/`)
 
-Each parses one source type into `Posting`s. They self-register via the `base` registry, so adding
-a type = adding a connector that registers itself + a `sourceurl` detection rule.
+Each returns a `FetchResult` containing normalized `Posting`s and an explicit completeness claim.
+Valid rows from a partial result remain usable, but collection advances absence/close evidence
+only for complete enumerations. Connectors self-register via the `base` registry, so adding a
+type = adding a connector that registers itself + a `sourceurl` detection rule.
 
 | Connector | Source |
 |-----------|--------|
 | `greenhouse` | Greenhouse public board API (`/v1/boards/{token}/jobs?content=true`). |
 | `lever` | Lever public postings API (`/v0/postings/{token}`). |
 | `ashby` | Ashby public board API (`/posting-api/job-board/{org}`); keeps `isListed=true` only. |
-| `amazon` | Amazon Jobs search API (`/en/search.json`), paginated by result offset. |
+| `amazon` | Amazon Jobs search API (`/en/search.json`), paginated by result offset; proves first-page count, exact normalized count, and unique stable IDs before declaring completeness. |
 | `github_list` | Structured JSON internship lists (e.g. SimplifyJobs `listings.json`), active+visible rows. |
-| `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns, handles `↳` continuation rows + `🔒` closed markers. Per-source `columns:` override; the sentinel `columns: company=@heading` (opt-in) parses firm-per-section lists (`## Firm` heading + `\|Role\|Links\|` tables, e.g. the NUFT quant list). |
-| `workday` | Workday CXS board API (`POST …/wday/cxs/{tenant}/{site}/jobs`, paginated by offset; banks/card networks). A partial fetch **raises** (never returns partial — close-detection would falsely close live postings); refuses boards >2000 postings unless the per-source `search:` key (server-side CXS searchText, warned loudly) narrows them. `posted_at=None` on purpose: `postedOn` is relative prose and `startDate` is the posting date. |
-| `base` | Base `Connector` class, shared HTTP helpers (httpx `_get`/`_post_json`, timeouts, headers), and the type→connector registry. |
+| `markdown_list` | Hand-maintained Markdown internship tables; auto-detects columns, handles `↳` continuation rows + `🔒` closed markers, and marks malformed-row parses partial. Per-source `columns:` override; the sentinel `columns: company=@heading` (opt-in) parses firm-per-section lists (`## Firm` heading + `\|Role\|Links\|` tables, e.g. the NUFT quant list). |
+| `workday` | Workday CXS board API (`POST …/wday/cxs/{tenant}/{site}/jobs`, paginated by offset; banks/card networks). Incomplete pagination raises; malformed, overlapping, or count-invalid results retain valid rows but are marked partial. Refuses boards >2000 postings unless the per-source `search:` key (server-side CXS searchText, warned loudly) narrows them. `posted_at=None` on purpose: `postedOn` is relative prose and `startDate` is the posting date. |
+| `base` | Base `Connector`/`FetchResult` contracts, shared HTTP and pagination-completeness helpers, and the type→connector registry. |
 
 ## The CLIs
 

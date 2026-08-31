@@ -56,7 +56,9 @@ CREATE TABLE IF NOT EXISTS availability_state (
     last_checked_at            TEXT,
     next_check_at              TEXT,
     pending_candidate_url      TEXT,
+    pending_candidate_authority TEXT,
     confirmed_url              TEXT,
+    confirmed_url_authority    TEXT,
     replacement_confirmed_at   TEXT,
     investigation_outcome      TEXT NOT NULL DEFAULT 'not_run',
     investigation_stages       TEXT NOT NULL DEFAULT '[]',
@@ -174,6 +176,13 @@ _RUNS_COLUMNS = [
     ("dropped", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
+# Availability replacement authority was added after the original availability schema.
+# Both columns are nullable so legacy candidates remain usable with conservative unknown trust.
+_AVAILABILITY_STATE_COLUMNS = [
+    ("pending_candidate_authority", "TEXT"),
+    ("confirmed_url_authority", "TEXT"),
+]
+
 
 def init_db(conn: sqlite3.Connection) -> None:
     """Create all tables if they do not exist, then apply additive migrations (idempotent)."""
@@ -184,6 +193,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     _migrate_columns(conn, "postings", _POSTINGS_V5_COLUMNS)
     _migrate_columns(conn, "postings", _POSTINGS_V6_COLUMNS)
     _migrate_columns(conn, "runs", _RUNS_COLUMNS)
+    _migrate_columns(conn, "availability_state", _AVAILABILITY_STATE_COLUMNS)
+    _backfill_replacement_authority(conn)
     conn.commit()
     _migrate_to_inbox(conn)
 
@@ -218,6 +229,30 @@ def _migrate_columns(
     for name, decl in columns:
         if name not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+
+def _backfill_replacement_authority(conn: sqlite3.Connection) -> None:
+    """Recover authority for legacy replacement rows when their evidence retained it."""
+
+    for url_column, authority_column in (
+        ("pending_candidate_url", "pending_candidate_authority"),
+        ("confirmed_url", "confirmed_url_authority"),
+    ):
+        conn.execute(
+            f"""
+            UPDATE availability_state
+            SET {authority_column} = (
+                SELECT evidence.authority
+                FROM availability_evidence AS evidence
+                WHERE evidence.posting_id = availability_state.posting_id
+                  AND evidence.candidate_url = availability_state.{url_column}
+                  AND evidence.authority IS NOT NULL
+                ORDER BY evidence.is_current DESC, evidence.id DESC
+                LIMIT 1
+            )
+            WHERE {url_column} IS NOT NULL AND {authority_column} IS NULL
+            """
+        )
 
 
 def get_meta(conn: sqlite3.Connection, key: str) -> str | None:

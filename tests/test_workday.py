@@ -132,12 +132,55 @@ def _fetching(monkeypatch, pages, entry=None):
 
 def test_fetch_paginates_until_first_page_total(monkeypatch):
     c, calls = _fetching(monkeypatch, _pages())
-    posts = c.fetch()
+    posts = c.fetch().postings
     assert len(posts) == 24
     assert [b["offset"] for _, b in calls] == [0, 20]
     assert all(b["limit"] == 20 for _, b in calls)
     assert all(b["searchText"] == "" for _, b in calls)
     assert all(u.endswith("/wday/cxs/blueorigin/BlueOrigin/jobs") for u, _ in calls)
+
+
+def test_fetch_result_marks_a_malformed_skipped_record_partial(monkeypatch):
+    connector, _calls = _fetching(monkeypatch, _pages())
+
+    result = connector.fetch()
+
+    assert result.complete is False
+    assert len(result.postings) == 24
+
+
+def test_fetch_result_marks_overlapping_pages_partial(monkeypatch):
+    items = [
+        {
+            "title": f"Engineering Intern {index}",
+            "externalPath": f"/job/City/Engineering-Intern-{index}_R-{index}",
+        }
+        for index in range(20)
+    ]
+    pages = [
+        {"total": 21, "jobPostings": items},
+        {"total": 0, "jobPostings": [items[0]]},
+    ]
+    connector, _calls = _fetching(monkeypatch, pages)
+
+    result = connector.fetch()
+
+    assert result.complete is False
+    assert len({posting.posting_id for posting in result.postings}) == 20
+    assert any("duplicate" in diagnostic for diagnostic in connector.diagnostics)
+
+
+def test_fetch_result_without_first_page_total_is_partial(monkeypatch):
+    connector, _calls = _fetching(
+        monkeypatch,
+        [{"jobPostings": [{"title": "Intern", "externalPath": "/job/Intern_R-1"}]}],
+    )
+
+    result = connector.fetch()
+
+    assert result.complete is False
+    assert len(result.postings) == 1
+    assert any("total" in diagnostic for diagnostic in connector.diagnostics)
 
 
 def test_fetch_passes_search_and_emits_visibility_diagnostic(monkeypatch):

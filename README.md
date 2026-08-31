@@ -294,7 +294,9 @@ curates sources + views the dashboard can set `COLLECT=0` and `EMAIL=0`. Other p
 
 The default offline suite also validates the approved availability corpus, its frozen fixtures,
 generated [case catalog](docs/availability-verification-catalog.md), coverage matrix, and mutant
-scorecard. The separate acceptance contract exercises all 109 approved layer expectations:
+scorecard. The separate acceptance contract exercises all 109 approved layer expectations; its
+Board layer drives deterministic complete, partial, and absence snapshots through the production
+collection orchestration and temporary SQLite databases:
 
 ```bash
 .venv/bin/python -m pytest -q -m availability_contract  # 109 production-contract cases

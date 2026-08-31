@@ -6,6 +6,7 @@ empty/degenerate fetches, and a hard stop (no confirm) on fetch errors.
 """
 
 from internshelper import config, sniffer, sources
+from internshelper.connectors import FetchResult
 from internshelper.models import Posting
 
 
@@ -17,7 +18,7 @@ class _FakeConnector:
     def fetch(self):
         if self._exc:
             raise self._exc
-        return self._posts
+        return FetchResult(tuple(self._posts), complete=not self.diagnostics)
 
 
 def _wire(monkeypatch, posts=None, exc=None, warnings=None):

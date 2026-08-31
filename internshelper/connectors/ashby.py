@@ -8,7 +8,7 @@ response. Only `isListed` jobs are publicly posted, so unlisted ones are skipped
 from __future__ import annotations
 
 from internshelper.clock import to_iso
-from internshelper.connectors.base import Connector, register
+from internshelper.connectors.base import Connector, FetchResult, register
 from internshelper.models import Posting
 
 
@@ -19,8 +19,9 @@ class AshbyConnector(Connector):
     def url(self) -> str:
         return f"https://api.ashbyhq.com/posting-api/job-board/{self.entry.token}"
 
-    def fetch(self) -> list[Posting]:
-        return self.parse(self._get(self.url()))
+    def fetch(self) -> FetchResult:
+        postings = self.parse(self._get(self.url()))
+        return FetchResult(tuple(postings), complete=True)
 
     def parse(self, data) -> list[Posting]:
         postings = []

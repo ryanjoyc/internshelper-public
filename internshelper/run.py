@@ -54,14 +54,15 @@ class AvailabilityChecker(Protocol):
 
 
 _COMMUNITY_SOURCE_TYPES = {"github", "markdown"}
+_FIRST_PARTY_SOURCE_TYPES = {"greenhouse", "lever", "ashby", "workday", "amazon"}
 
 
 def _source_authority(entry: SourceEntry) -> SourceAuthority:
-    return (
-        SourceAuthority.COMMUNITY_LIST
-        if entry.type in _COMMUNITY_SOURCE_TYPES
-        else SourceAuthority.FIRST_PARTY_ATS
-    )
+    if entry.type in _COMMUNITY_SOURCE_TYPES:
+        return SourceAuthority.COMMUNITY_LIST
+    if entry.type in _FIRST_PARTY_SOURCE_TYPES:
+        return SourceAuthority.FIRST_PARTY_ATS
+    return SourceAuthority.UNKNOWN
 
 
 def _one_hour_after(now: str) -> str:
@@ -299,18 +300,22 @@ def process_source(
     payloads_dir: str | Path | None,
     availability_checker: AvailabilityChecker | None = None,
 ) -> bool:
-    """Fetch + classify(hint) + store one source. Returns True on success.
+    """Fetch + classify(hint) + store one source. Returns True for a complete enumeration.
 
-    On any error (including a timeout) records runs(ok=false) and closes nothing.
+    Errors and partial enumerations record runs(ok=false) and close nothing; valid postings from
+    a partial result are still stored and destination-checked.
     """
     try:
-        postings = build_connector(entry).fetch()
+        connector = build_connector(entry)
+        result = connector.fetch()
     except Exception as e:
         store.record_run(
             conn, entry.source_key, ok=False, count=0,
             error=f"{type(e).__name__}: {e}", now=now,
         )
         return False
+    postings = list(result.postings)
+    enumeration_complete = result.complete
 
     # Coarse per-source flood guard (the "Arby's" filter): drop titles the source opted out of.
     fetched = len(postings)
@@ -354,9 +359,20 @@ def process_source(
                 checker=availability_checker,
                 is_new=is_new,
             )
-    store.record_run(conn, entry.source_key, ok=True, count=len(postings), error=None,
-                     now=now, dropped=dropped)
-    if availability_checker is not None:
+    partial_error = None
+    if not enumeration_complete:
+        detail = "; ".join(connector.diagnostics) or "connector could not prove completeness"
+        partial_error = f"partial enumeration: {detail}"
+    store.record_run(
+        conn,
+        entry.source_key,
+        ok=enumeration_complete,
+        count=len(postings),
+        error=partial_error,
+        now=now,
+        dropped=dropped,
+    )
+    if availability_checker is not None and enumeration_complete:
         _record_source_absences(
             conn,
             entry,
@@ -364,8 +380,14 @@ def process_source(
             now=now,
             checker=availability_checker,
         )
-    store.apply_close_detection(conn, entry.source_key, seen, ok=True, count=len(postings))
-    return True
+    store.apply_close_detection(
+        conn,
+        entry.source_key,
+        seen,
+        ok=enumeration_complete,
+        count=len(postings),
+    )
+    return enumeration_complete
 
 
 def run_cycle(

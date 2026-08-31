@@ -17,7 +17,7 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 
 from internshelper.clock import to_iso
-from internshelper.connectors.base import HEADERS, TIMEOUT, Connector, register
+from internshelper.connectors.base import HEADERS, TIMEOUT, Connector, FetchResult, register
 from internshelper.models import Posting
 from internshelper.text import strip_html
 
@@ -120,10 +120,11 @@ def _map_columns(header_cells: list[str], override: dict[str, str]) -> dict[str,
 class MarkdownListConnector(Connector):
     type = "markdown"
 
-    def fetch(self) -> list[Posting]:
+    def fetch(self) -> FetchResult:
         resp = httpx.get(self.entry.token, timeout=TIMEOUT, headers=HEADERS, follow_redirects=True)
         resp.raise_for_status()
-        return self.parse(resp.text, now=datetime.now(timezone.utc))
+        postings = self.parse(resp.text, now=datetime.now(timezone.utc))
+        return FetchResult(tuple(postings), complete=not self.diagnostics)
 
     def parse(self, text: str, now: datetime | None = None) -> list[Posting]:
         """Parse EVERY table in the document (these lists are split into category sections),
@@ -174,7 +175,11 @@ class MarkdownListConnector(Connector):
                 continue  # separator row, or a filled/closed role
             cells = _cells(line)
             if len(cells) <= need:
-                continue  # malformed / short row
+                self._warn(
+                    f"table at line {header_i + 1}: skipped malformed row at line {k} "
+                    f"(expected at least {need + 1} columns, found {len(cells)})"
+                )
+                continue
 
             if heading_mode:
                 company = table_company
@@ -188,6 +193,10 @@ class MarkdownListConnector(Connector):
 
             title = _clean(cells[idx["title"]])
             if not title:
+                self._warn(
+                    f"table at line {header_i + 1}: skipped malformed row at line {k} "
+                    "(empty title)"
+                )
                 continue
             location = _clean(cells[idx["location"]]) if "location" in idx else ""
             url = _extract_url(cells[idx["url"]]) if "url" in idx else ""

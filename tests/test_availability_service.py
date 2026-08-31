@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from internshelper import db, store
 from internshelper.availability import SourceAuthority, UserState
 from internshelper.availability_checks import (
@@ -12,9 +14,13 @@ from internshelper.availability_checks import (
 )
 from internshelper.availability_service import verify_posting
 from internshelper.availability_store import (
+    confirm_replacement,
+    ensure_pending,
     evidence_history,
+    get_projection,
     get_state,
     persist_evaluation,
+    undo_replacement_confirmation,
 )
 from internshelper.models import Posting
 
@@ -48,7 +54,13 @@ class _Checker:
         )
 
 
-def _setup(tmp_path, *, candidate=False, source_key="greenhouse:example"):
+def _setup(
+    tmp_path,
+    *,
+    candidate=False,
+    source_key="greenhouse:example",
+    candidate_source_key="greenhouse:other",
+):
     conn = db.connect(tmp_path / "service.db")
     db.init_db(conn)
     original = Posting(
@@ -64,7 +76,7 @@ def _setup(tmp_path, *, candidate=False, source_key="greenhouse:example"):
             conn,
             Posting(
                 posting_id="greenhouse:candidate",
-                source_key="greenhouse:other",
+                source_key=candidate_source_key,
                 title="Software Engineering Internship",
                 company="Example Co",
                 url="https://jobs.example.test/replacement",
@@ -127,6 +139,206 @@ def test_database_replacement_is_offered_without_changing_original_url(tmp_path)
     assert conn.execute(
         "SELECT url FROM postings WHERE posting_id = ?", (original.posting_id,)
     ).fetchone()[0] == original.url
+
+
+def test_confirmed_first_party_replacement_verifies_live_without_reconfirmation(tmp_path):
+    conn, original, sources = _setup(tmp_path, candidate=True)
+    verify_posting(
+        conn,
+        original.posting_id,
+        sources_path=str(sources),
+        now=NOW,
+        checker=_Checker([404, 404]),
+    )
+    confirm_replacement(conn, original.posting_id, confirmed_at=NOW)
+    checker = _Checker([200])
+
+    result = verify_posting(
+        conn,
+        original.posting_id,
+        sources_path=str(sources),
+        now="2026-08-30T13:00:00+00:00",
+        checker=checker,
+    )
+
+    decision = result.projection.decision
+    state = get_state(conn, original.posting_id)
+    assert checker.calls[0][0] == "https://jobs.example.test/replacement"
+    assert checker.calls[0][1]["target"] == "https://jobs.example.test/replacement"
+    assert checker.calls[0][1]["employer_hosted"] is True
+    assert decision.availability.value == "live"
+    assert decision.primary_action.value == "apply"
+    assert decision.replacement_candidate_url is None
+    assert state["pending_candidate_url"] is None
+    assert state["confirmed_url_authority"] == "first_party_ats"
+    assert conn.execute(
+        "SELECT url FROM postings WHERE posting_id = ?", (original.posting_id,)
+    ).fetchone()[0] == original.url
+
+
+@pytest.mark.parametrize(
+    ("candidate_source_key", "expected_hosted", "expected_status", "expected_visible"),
+    [
+        ("greenhouse:replacement", True, "closed", False),
+        (
+            "markdown:https://lists.example.test/README.md",
+            False,
+            "uncertain",
+            True,
+        ),
+    ],
+)
+def test_confirmed_replacement_closure_text_uses_replacement_authority(
+    tmp_path,
+    candidate_source_key,
+    expected_hosted,
+    expected_status,
+    expected_visible,
+):
+    conn, original, sources = _setup(
+        tmp_path,
+        candidate=True,
+        candidate_source_key=candidate_source_key,
+    )
+    verify_posting(
+        conn,
+        original.posting_id,
+        sources_path=str(sources),
+        now=NOW,
+        checker=_Checker([404, 404]),
+    )
+    confirm_replacement(conn, original.posting_id, confirmed_at=NOW)
+
+    class ClosureChecker:
+        def __init__(self):
+            self.calls = []
+
+        def check(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return (
+                NetworkObservation(
+                    sequence=kwargs["sequence"],
+                    observed_at=kwargs["observed_at"],
+                    stage=kwargs["stage"],
+                    target=kwargs["target"],
+                    attempt=kwargs["attempt"],
+                    status=200,
+                    body="This job is no longer accepting applications",
+                    employer_hosted=kwargs["employer_hosted"],
+                ),
+            )
+
+    checker = ClosureChecker()
+    result = verify_posting(
+        conn,
+        original.posting_id,
+        sources_path=str(sources),
+        now="2026-08-30T13:00:00+00:00",
+        checker=checker,
+    )
+
+    decision = result.projection.decision
+    state = get_state(conn, original.posting_id)
+    assert all(call[1]["employer_hosted"] is expected_hosted for call in checker.calls)
+    assert decision.availability.value == expected_status
+    assert result.projection.visible is expected_visible
+    assert decision.primary_action.value != "confirm_replacement"
+    assert decision.replacement_candidate_url is None
+    assert state["confirmed_url_authority"] == (
+        "first_party_ats" if expected_hosted else "community_list"
+    )
+    assert state["source_authority"] == "first_party_ats"
+
+
+def test_database_candidate_uses_its_effective_url_authority(tmp_path):
+    conn, original, sources = _setup(tmp_path, candidate=True)
+    candidate_id = "greenhouse:candidate"
+    community_url = "https://lists.example.test/roles/replacement"
+    ensure_pending(
+        conn,
+        candidate_id,
+        SourceAuthority.FIRST_PARTY_ATS,
+        now=NOW,
+    )
+    conn.execute(
+        """
+        UPDATE availability_state
+        SET pending_candidate_url = ?, pending_candidate_authority = ?
+        WHERE posting_id = ?
+        """,
+        (community_url, SourceAuthority.COMMUNITY_LIST.value, candidate_id),
+    )
+    conn.commit()
+    confirm_replacement(conn, candidate_id, confirmed_at=NOW)
+
+    verify_posting(
+        conn,
+        original.posting_id,
+        sources_path=str(sources),
+        now=NOW,
+        checker=_Checker([404, 404]),
+    )
+
+    state = get_state(conn, original.posting_id)
+    assert state["pending_candidate_url"] == community_url
+    assert state["pending_candidate_authority"] == "community_list"
+
+
+def test_new_confirmed_url_does_not_reuse_previous_replacement_evidence(tmp_path):
+    conn, original, sources = _setup(tmp_path, candidate=True)
+    first_url = "https://jobs.example.test/replacement"
+    second_url = "https://jobs.example.test/replacement-b"
+    verify_posting(
+        conn,
+        original.posting_id,
+        sources_path=str(sources),
+        now=NOW,
+        checker=_Checker([404, 404]),
+    )
+    assert confirm_replacement(conn, original.posting_id, confirmed_at=NOW) == first_url
+    verify_posting(
+        conn,
+        original.posting_id,
+        sources_path=str(sources),
+        now="2026-08-30T13:00:00+00:00",
+        checker=_Checker([200]),
+    )
+
+    undo_replacement_confirmation(
+        conn,
+        original.posting_id,
+        updated_at="2026-08-30T14:00:00+00:00",
+    )
+    conn.execute(
+        "UPDATE postings SET is_active = 0 WHERE posting_id = 'greenhouse:candidate'"
+    )
+    store.upsert(
+        conn,
+        Posting(
+            posting_id="greenhouse:candidate-b",
+            source_key="greenhouse:other",
+            title="Software Engineering Internship",
+            company="Example Co",
+            url=second_url,
+        ),
+        now="2026-08-30T14:00:00+00:00",
+    )
+    verify_posting(
+        conn,
+        original.posting_id,
+        sources_path=str(sources),
+        now="2026-08-30T14:00:00+00:00",
+        checker=_Checker([404, 404]),
+    )
+    assert confirm_replacement(
+        conn,
+        original.posting_id,
+        confirmed_at="2026-08-30T14:01:00+00:00",
+    ) == second_url
+
+    projection = get_projection(conn, original.posting_id)
+    assert projection.effective_url == second_url
+    assert projection.decision.availability.value == "uncertain"
 
 
 def test_verify_preserves_persisted_sequence_and_attempt_identity(tmp_path):

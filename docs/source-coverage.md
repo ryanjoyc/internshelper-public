@@ -1,6 +1,6 @@
 # Source coverage and connector boundaries
 
-_Last updated: 2026-08-25 · implementation reference, not a live freshness report_
+_Last updated: 2026-08-31 · implementation reference, not a live freshness report_
 
 For the configured source list, use:
 
@@ -33,14 +33,15 @@ This is a point-in-time configuration summary. The file and `sources list` CLI a
 | Greenhouse | Public board API by token; full descriptions | Company boards are the tracking unit; Greenhouse itself is not an aggregator. |
 | Lever | Public postings API by token | Tracks public board postings only. |
 | Ashby | Public job-board API by organization | Keeps public `isListed` postings. |
-| Workday CXS | `*.myworkdayjobs.com` board URL with offset pagination | Large tenants should use server-side `search`; partial pagination raises so close detection cannot consume incomplete data. |
-| Amazon Jobs | US search API by query, paginated | The query is broad; use `title_must_match` to keep the collected slice intentional. |
+| Workday CXS | `*.myworkdayjobs.com` board URL with offset pagination | Large tenants should use server-side `search`; incomplete pagination raises, while malformed/overlapping results retain valid rows but cannot drive absence or close detection. |
+| Amazon Jobs | US search API by query, paginated | The query is broad; use `title_must_match` to keep the collected slice intentional. Counts, normalized rows, and stable IDs must prove a complete enumeration. |
 | GitHub structured list | Simplify-style `listings.json` | Schema-specific, not arbitrary repository JSON. |
 | Markdown list | GitHub-flavored pipe tables | Auto-detects common columns; supports overrides and `company: '@heading'` for firm-per-section lists. |
 
-Every connector normalizes into `Posting`. Per-source title guards run after fetching and their
-dropped counts are recorded. Successful, non-empty source runs drive close detection; failed or
-partial fetches do not.
+Every connector returns normalized `Posting`s in a `FetchResult` with an explicit completeness
+claim. Per-source title guards run after fetching and their dropped counts are recorded. Valid
+rows from partial results are stored and destination-checked, but only complete, non-empty
+enumerations drive source-absence or close detection.
 
 ## Adding coverage
 
@@ -75,6 +76,8 @@ A new connector is not complete until it has:
 - Stable posting IDs and canonical apply URLs.
 - Field assertions for company, title, location, description, and posting date where available.
 - A safe failure mode: incomplete results must not trigger false closures.
+- Partial-result coverage proving valid new rows are retained while omitted rows accumulate no
+  absence evidence.
 - URL detection and, when useful, careers-page sniffing.
 - `sources add/test/list/remove` coverage and an entry in the `internshelper-guide` skill.
 
