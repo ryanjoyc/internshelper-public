@@ -2,7 +2,7 @@
 <!--
   launchd template for the hourly internsHELPer run.
 
-  This is a TEMPLATE. Replace __REPO_DIR__ and write the realized copy to
+  This is a TEMPLATE. Replace __REPO_DIR__ / __LOG_DIR__ and write the realized copy to
   ~/Library/LaunchAgents/com.internshelper.run.plist (gitignored; per-machine absolute path).
   Secrets are NOT in here anymore — internshelper.run loads the gitignored `.env` at startup.
   `python -m internshelper.setup` realizes + loads this for you. See README.md "Schedule".
@@ -14,6 +14,9 @@
 
     <key>ProgramArguments</key>
     <array>
+        <!-- launchd cannot directly posix_spawn an executable below a protected Documents
+             checkout. Start from the system shim; env then execs the project venv normally. -->
+        <string>/usr/bin/env</string>
         <string>__REPO_DIR__/.venv/bin/python</string>
         <string>-m</string>
         <string>internshelper.run</string>
@@ -32,8 +35,8 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>__REPO_DIR__/data/run.out.log</string>
+    <string>__LOG_DIR__/run.out.log</string>
     <key>StandardErrorPath</key>
-    <string>__REPO_DIR__/data/run.err.log</string>
+    <string>__LOG_DIR__/run.err.log</string>
 </dict>
 </plist>

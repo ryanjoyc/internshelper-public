@@ -25,6 +25,12 @@ _LABEL = "com.internshelper.run"
 _IGNORE_MATCHES = {".env", "/.env", "*.env"}
 
 
+def launchd_log_dir(home: str | Path | None = None) -> Path:
+    """Per-user launchd logs, outside macOS-protected Documents checkouts."""
+    root = Path(home) if home is not None else Path.home()
+    return root / "Library" / "Logs" / "internshelper"
+
+
 def ensure_gitignore_has_env(gitignore_path: str | Path) -> bool:
     """True iff `.env` is ignored by the given .gitignore. Pure check (no write)."""
     p = Path(gitignore_path)
@@ -73,8 +79,13 @@ def scaffold_env(path: str | Path, sender: str = "", recipient: str = "", passwo
 
 
 def realize_plist(template: str | Path, dest: str | Path, repo_dir: str | Path) -> None:
-    """Substitute __REPO_DIR__ in the launchd template and write the realized plist."""
-    text = Path(template).read_text(encoding="utf-8").replace("__REPO_DIR__", str(repo_dir))
+    """Substitute per-machine paths in the launchd template and write the plist."""
+    text = (
+        Path(template)
+        .read_text(encoding="utf-8")
+        .replace("__REPO_DIR__", str(repo_dir))
+        .replace("__LOG_DIR__", str(launchd_log_dir()))
+    )
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(text, encoding="utf-8")
@@ -83,6 +94,7 @@ def realize_plist(template: str | Path, dest: str | Path, repo_dir: str | Path) 
 def _install_schedule(repo_dir: Path) -> None:
     template = repo_dir / "scripts" / "com.internshelper.run.plist.template"
     dest = Path.home() / "Library" / "LaunchAgents" / f"{_LABEL}.plist"
+    launchd_log_dir().mkdir(parents=True, exist_ok=True)
     realize_plist(template, dest, repo_dir)
     print(f"wrote launchd plist: {dest}")
     uid = os.getuid()

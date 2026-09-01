@@ -6,6 +6,7 @@ plaintext password, no leftover placeholders). The interactive prompts and launc
 are exercised manually.
 """
 
+import plistlib
 from pathlib import Path
 
 from internshelper import setup
@@ -95,6 +96,35 @@ def test_real_plist_template_has_no_password():
     assert "__SMTP_APP_PASSWORD__" not in text
     assert "INTERNSHELPER_SMTP_PASSWORD" not in text
     assert "__REPO_DIR__" in text  # repo dir still templated
+
+
+def test_real_plist_launches_the_venv_through_an_unprotected_system_shim(tmp_path):
+    realized = tmp_path / "com.internshelper.run.plist"
+    setup.realize_plist(
+        REPO / "scripts" / "com.internshelper.run.plist.template",
+        realized,
+        "/Users/test/Documents/internsHELPer",
+    )
+
+    arguments = plistlib.loads(realized.read_bytes())["ProgramArguments"]
+    assert arguments[:2] == [
+        "/usr/bin/env",
+        "/Users/test/Documents/internsHELPer/.venv/bin/python",
+    ]
+
+
+def test_real_plist_writes_logs_outside_the_protected_checkout(tmp_path):
+    realized = tmp_path / "com.internshelper.run.plist"
+    setup.realize_plist(
+        REPO / "scripts" / "com.internshelper.run.plist.template",
+        realized,
+        "/Users/test/Documents/internsHELPer",
+    )
+
+    plist = plistlib.loads(realized.read_bytes())
+    log_dir = Path.home() / "Library" / "Logs" / "internshelper"
+    assert plist["StandardOutPath"] == str(log_dir / "run.out.log")
+    assert plist["StandardErrorPath"] == str(log_dir / "run.err.log")
 
 
 def test_main_no_input_email_off_skips_creds(tmp_path, monkeypatch):

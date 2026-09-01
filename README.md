@@ -232,8 +232,9 @@ Notes:
 ## 7. Schedule the collector (launchd)
 
 `bash scripts/bootstrap.sh` already offers to do this. To (re)install it yourself, let the setup
-helper realize + load the plist (it only templates `__REPO_DIR__` now — the password lives in
-`.env`, not the plist):
+helper realize + load the plist (it only templates per-machine paths — the password lives in
+`.env`, not the plist). The realized job starts through `/usr/bin/env` so launchd can use a venv
+inside a macOS-protected Documents checkout:
 
 ```bash
 .venv/bin/python -m internshelper.setup --no-input   # honors INTERNSHELPER_FEATURE_SCHEDULE
@@ -243,7 +244,9 @@ Or do it by hand (no secret placeholder anymore):
 
 ```bash
 REPO_DIR="$(pwd)"
-sed "s#__REPO_DIR__#${REPO_DIR}#g" \
+LOG_DIR="$HOME/Library/Logs/internshelper"
+mkdir -p "$LOG_DIR"
+sed -e "s#__REPO_DIR__#${REPO_DIR}#g" -e "s#__LOG_DIR__#${LOG_DIR}#g" \
     scripts/com.internshelper.run.plist.template \
     > ~/Library/LaunchAgents/com.internshelper.run.plist
 
