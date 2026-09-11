@@ -12,9 +12,9 @@ fit*, not every function signature. If you make a structural change, refresh thi
 
 ## What internsHELPer is
 
-A local, $0 tool that **collects** internship / new-grad postings from boards listed in
-`config/sources.yaml`, keeps a de-duplicated archive (raw payloads saved to disk), and **emails
-a Top-target digest** when new postings arrive from explicitly prioritized companies. There is
+A local-first app that **collects** internship / new-grad postings from boards listed in
+`config/sources.yaml`, keeps a de-duplicated archive (raw payloads saved to disk), and presents it
+through a browser dashboard or locally built macOS Dock app. There is
 **no human approval gate**: broadly collected postings land on the Board's Inbox after the
 destination safety check, organized into Top targets, Known companies, Worth discovering, and
 neutral Unclassified sections. Each company is
@@ -28,8 +28,8 @@ Board (company-grouped Inbox + the Applied → Interviewing → Offer → Reject
 lanes hide to thin strips — with table + dismissed + flagged + duplicate lenses), Postings
 (searchable archive), Companies (browsing groups/discovery approvals plus board resolution),
 Sources (add/remove wizard), Health — in the browser, or as a Dock-launchable native macOS app
-(`InternsHELPer.app`). The hourly cron is a dumb free collector; company groups organize —
-accurate, no API key, $0 ongoing.
+(`InternsHELPer.app`). Manual collection is the default. Email digests and hourly launchd
+scheduling are optional and disabled by default.
 
 ## Architecture & data flow
 
@@ -45,9 +45,9 @@ Each collect cycle: scrape every source → retain valid positive rows while onl
 enumerations advance absence/close evidence → save each new posting's raw payload to
 `data/payloads/{id}.json` → store it in a hidden pending state → validate its destination →
 collapse strong cross-source URL duplicates and reconcile their evidence → retrain + rescore +
-apply the company-group map → email the Top-target digest for rows never digested before
-(`notified_at` watermark, exactly-once per posting). Availability is a safety gate, not a human
-approval gate; ambiguous results remain visible with conservative actions.
+apply the company-group map → optionally email the Top-target digest for rows never digested before
+when email is enabled (`notified_at` watermark, exactly-once per posting). Availability is a safety
+gate, not a human approval gate; ambiguous results remain visible with conservative actions.
 
 Keyword flags (`is_internship` / `is_newgrad` / `is_cs_relevant`) are computed at collect time
 as **cold-start hints only**. The Board orders each company's roles newest-first. Learned
@@ -61,7 +61,7 @@ Discovery suggestions carry reason/evidence and require user approval.
 
 | Module | Responsibility |
 |--------|----------------|
-| `run` | Scheduled collector: fetch all sources, atomically hide new rows until destination validation finishes, store safe positives from partial results without advancing absence/close evidence, reconcile availability across strong URL duplicates, compute hint flags, retrain+rescore+regroup, and email the exactly-once Top-target digest. One invocation = one cycle. |
+| `run` | Collector: fetch all sources, atomically hide new rows until destination validation finishes, store safe positives from partial results without advancing absence/close evidence, reconcile availability across strong URL duplicates, compute hint flags, retrain+rescore+regroup, and optionally email the exactly-once Top-target digest. One invocation = one cycle. |
 | `review` | Inbox-actions CLI + the Board's data layer: `list_inbox` (company-group filter), `dismiss`/`undo_dismiss` (the no_match plumbing, reused), legacy `pin_tier`/`unpin` compatibility helpers, `flag`/`unflag`/`list_flagged` (suspect-data parking, no training label), duplicate inspection/override helpers, guard-leak + closed-inbox hygiene (undoable batches), `payload_summary`, `refresh_ranking`. Driven by the `review-internships` + `deep-scan-source` + `investigate-flags` skills and the board routes. |
 | `ranking` | Learned fit hint over title/JD tokens + source prior + recency. No company prior. Scores persist but do not determine Board groups or visibility. |
 | `tiers` | Compatibility bridge that applies the authoritative company-group map to posting `tier` values. Rank and candidate flags are deliberately ignored. |
@@ -69,7 +69,7 @@ Discovery suggestions carry reason/evidence and require user approval.
 | `companies` | Separate board-resolution index (`config/companies.yaml`): add/list companies, record board proposals, approve (→ `sources.yaml`) / reject / link / mark no-board. It does not classify Board priority. |
 | `dedup` | Cross-source duplicate handling: automatically collapse strong canonical-URL matches, surface same-company/title lookalikes for review, and preserve reversible keep/merge overrides. |
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
-| `setup` | Bootstrap: seed missing private config from tracked examples, securely scaffold per-machine `.env` (secrets + feature toggles), realize the macOS launchd plist through `/usr/bin/env`, route scheduler logs to `~/Library/Logs/internshelper`, and install the Dock app. Idempotent. |
+| `setup` | Bootstrap: seed missing private config from tracked examples, securely scaffold per-machine `.env` (secrets + feature toggles), offer the Dock app on macOS, and realize/load launchd only after explicit opt-in. Scheduler logs go to `~/Library/Logs/internshelper`. Idempotent. |
 | `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). `create_app()` in `__init__.py` initializes schema and legacy tiers at startup; global middleware rejects non-loopback Host headers and requires same-origin provenance for unsafe methods. `deps.py` owns per-request DB connections. `routes/` contains Board (including Verify/replacement actions), Postings, Health including `/healthz`, Sources, and Companies; `templates/` holds Jinja + HTMX partials; `static/` holds CSS, JavaScript, vendored htmx/Alpine/Sortable, and Geist fonts. Routes stay thin; data and availability decisions live in domain/store modules. |
 | `app` | Dock-app runtime launcher: start the web server headless on port 8510 (under a pipe-watchdog that reaps it if the launcher dies), probe `/healthz`, show it in a native pywebview window, stop it on quit. Pidfile (`data/app.pid`) decides attach vs own for a pre-existing server; caps `data/app.log` at launch. |
 | `appbundle` | Build `InternsHELPer.app` into `build/` (Info.plist, launcher script execing `app`, `.icns` from `assets/icon-1024.png` via sips/iconutil); `--install` copies it to `~/Applications`. macOS-only. |
@@ -131,8 +131,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - **`ranking`** — `retrain` (rescore all inbox rows) · `show` (stored model summary) · `explain <posting_id>` (score + per-feature contributions) · `labels` (the unified training set, JSON) · `eval [--holdout 0.25] [--k 10,25,50]` (time-ordered backtest over all label signals)
 - **`companies`** — `add <name>` · `list [--json]` · `propose <name> --url ... [--count N] [--evidence ...]` · `approve <name>` · `reject <name>` · `resolve-write <name> <source_key>` · `mark-no-board <name>` (legacy `set-tier` is retained but ignored by Board grouping)
 - **`companygroups`** — `list` · `set <name> top_target|known` · `clear <name>` · `propose <name> discovery --reason ... --evidence ...` · `approve <name>` · `reject <name>` (Discovery cannot bypass proposal approval; mutating commands immediately synchronize stored posting groups)
-- **`run`** — no subcommands; one invocation runs one collection cycle (scheduled hourly by launchd).
-- **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars.
+- **`run`** — no subcommands; one invocation runs one collection cycle. Optional launchd setup can schedule it hourly.
+- **`setup`** — no subcommands; interactive, or `--no-input` to read `INTERNSHELPER_*` env vars. Email and scheduling default off; unattended Dock installation also defaults off.
 - **`web`** — `[--port 8510]`; serves the web UI on 127.0.0.1. Needs the `web` extra.
 - **`app`** — no subcommands; what the Dock app runs (spawns `web` + native window). Needs the `app` extra (pywebview).
 - **`appbundle`** — `[--install] [--repo-dir ...] [--target-dir ...]`; rebuild/reinstall the Dock app (e.g. after moving the repo).
@@ -178,7 +178,9 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 
 ```bash
 # Setup (manual)
-python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev,web]"
+python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e ".[dev,app]"  # macOS
+# Use .[dev,web] for a browser-only or non-macOS installation.
 .venv/bin/python -m internshelper.setup
 # Or one-shot, per-machine config:
 bash scripts/bootstrap.sh
@@ -206,8 +208,8 @@ bash scripts/verify-codex-cloud.sh                     # Cloud pstack/graph/offl
   rule rather than wiring it in elsewhere.
 - Availability expectations live in `tests/availability/corpus.yaml`; regenerate its catalog and
   coverage report with `.venv/bin/python tests/availability/generate.py` after changing the YAML.
-- **launchd doesn't fire while the Mac is asleep**; overnight postings land on the first cycle
-  after wake (`RunAtLoad=true`).
+- Optional **launchd doesn't fire while the Mac is asleep**; overnight postings land on the first
+  cycle after wake (`RunAtLoad=true`).
 - The curation *judgment* (dismiss/flag/apply, made in-app or by the agent) is the deliberate
   human-in-the-loop step; the mechanics it drives are unit-tested — the `review` CLI, and the
   web UI via FastAPI `TestClient` (`tests/test_web*.py`; fixtures in `tests/conftest.py`). The

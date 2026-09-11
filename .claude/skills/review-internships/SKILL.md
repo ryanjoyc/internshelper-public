@@ -49,6 +49,6 @@ role himself than have it hidden.
    you dismissed and why. Do not claim the shortlist changed company priority.
 
 ## Notes
-- This is free — it runs in the current Claude Code session, no API key.
+- This runs in the current Claude Code session and needs no separate internsHELPer API key.
 - Actions are stored in SQLite (`data/internshelper.db`) and are individually
   undoable in the app; safe to stop and resume — re-running only sees the current inbox.

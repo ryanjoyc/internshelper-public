@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "internshelper"
 version = "0.1.0"
-description = "Scrape internship/new-grad postings, archive them, and email new matches hourly."
+description = "Local-first internship collector and review dashboard for the browser and macOS Dock."
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27",
@@ -14,7 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # The web UI: FastAPI + Jinja2 server-rendered pages. HTMX/Alpine/Sortable are vendored
-# static files (no Node, no build step). Kept out of core so the cron collector stays lean.
+# static files (no Node, no build step). Kept out of core so the collector install stays lean.
 web = ["fastapi>=0.115,<1", "uvicorn>=0.30", "jinja2>=3.1", "python-multipart>=0.0.20"]
 # The Dock app wraps the web UI in a native WKWebView window. Separate extra because
 # pywebview pulls the heavy pyobjc framework wheels (~100MB) on macOS.
@@ -28,7 +28,7 @@ ui = ["internshelper[dev,web]", "pytest-playwright>=0.7"]
 include = ["internshelper*"]
 
 [tool.setuptools.package-data]
-internshelper = ["web/templates/**/*.html", "web/static/**/*"]
+internshelper = ["assets/*", "web/templates/**/*.html", "web/static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

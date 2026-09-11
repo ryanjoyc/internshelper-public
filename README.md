@@ -1,11 +1,11 @@
 # internsHELPer
 
-A local, $0 tool that **collects** internship / new-grad postings from the boards you list,
-keeps a de-duplicated archive (full raw payloads saved to disk), and groups the live Board by
-company priority: Top targets, Known companies, Worth discovering, and neutral Unclassified.
-Each company is one expandable card containing all broadly collected roles. A local web dashboard
-(FastAPI + HTMX, no build step) also tracks applications, the full archive, source health, and
-evidence-backed discovery proposals.
+A local-first internship collection and review app. It **collects** internship and new-grad
+postings from the boards you choose, keeps a de-duplicated archive on your machine, and groups the
+live Board by company priority: Top targets, Known companies, Worth discovering, and neutral
+Unclassified. On macOS, the primary experience is a locally built Dock app; the same dashboard can
+also run in a browser. It tracks applications, the full archive, source health, and evidence-backed
+discovery proposals without a hosted service or frontend build step.
 
 New postings also carry a separate availability state. The collector validates destinations
 before first display, keeps ambiguous failures visible with safer actions, archives only
@@ -13,14 +13,15 @@ confirmed-closed ordinary roles, and preserves saved or applied roles as visible
 Availability never trains or changes the ranker.
 
 **Why this shape:** keyword matching alone is too noisy to decide what a person should see. The
-collector therefore stays broad and free; company groups are explicit user choices, rank score is
+collector therefore stays broad and local; company groups are explicit user choices, rank score is
 only a hint, and an agent can audit saved payloads or research lesser-known companies on demand.
 
 - **Sources:** Greenhouse, Lever, Ashby, Workday, Amazon Jobs, and community GitHub listings.
   You maintain the list in `config/sources.yaml`.
 - **Keyword flags** (`is_internship`/`is_newgrad`/`is_cs_relevant`) are computed at collect time as
   **hints only**; they never choose a company group or hide a posting.
-- **Runs locally**, scheduled hourly by macOS `launchd`.
+- **Runs locally** in a browser or a native macOS window installed in the Dock.
+- **Automation is opt-in:** manual collection works without email or a background schedule.
 
 ## Documentation
 
@@ -34,29 +35,38 @@ Agents should start with `AGENTS.md` (or `CLAUDE.md`) and the repository-local
 
 ## Quick start (clone-and-go)
 
-On a fresh clone, one command sets everything up — creates the venv, installs deps, and
-scaffolds this machine's config:
+On a fresh clone, one command creates the virtual environment, installs the dashboard dependencies
+and, on macOS, the Dock-app dependencies, then scaffolds this machine's configuration:
 
 ```bash
 git clone https://github.com/ryanjoyc/internshelper-public.git internshelper && cd internshelper
 bash scripts/bootstrap.sh
 ```
 
-It creates private working copies of the example configuration, then asks what this machine should
-do: email notifications, availability checks, the hourly schedule (macOS launchd), and the
-dashboard. The generated `.env` and mutable files under `config/` are ignored by Git. Bootstrap is
-idempotent: it reuses the virtual environment and never overwrites existing configuration. Use
-`bash scripts/bootstrap.sh --no-input` to use defaults and values already exported as
-`INTERNSHELPER_*` environment variables.
+It creates private working copies of the example configuration, then asks about availability
+checks, the dashboard, and installation of `InternsHELPer.app` in `~/Applications`. Optional email
+digests and hourly launchd scheduling are offered but default to off. The generated `.env` and
+mutable files under `config/` are ignored by Git. Bootstrap is idempotent: it reuses the virtual
+environment and never overwrites existing configuration.
+
+`bash scripts/bootstrap.sh --no-input` uses safe defaults and exported `INTERNSHELPER_*` values.
+It leaves email, scheduling, and Dock installation off unless you explicitly enable them; on macOS,
+set `INTERNSHELPER_FEATURE_APP=1` when you want an unattended bootstrap to install the Dock app.
 
 The ignore rules reduce accidental commits; they do not replace checking `git status` before each
 commit. Never commit a populated `.env`, application database, raw payload, or personal profile.
 
-Then add a board and you're live:
+Add a board, run the first collection, and open the app:
 
 ```bash
 .venv/bin/python -m internshelper.sources add https://boards.greenhouse.io/stripe
+.venv/bin/python -m internshelper.run
+open "$HOME/Applications/InternsHELPer.app"   # macOS, if installed during setup
 ```
+
+For the browser interface, run `.venv/bin/python -m internshelper.web` and open
+<http://127.0.0.1:8510>. Without optional scheduling, rerun `internshelper.run` whenever you want to
+refresh the local archive.
 
 The rest of this README is the manual/advanced reference behind that one command.
 
@@ -67,9 +77,12 @@ Requires Python ≥ 3.11.
 ```bash
 cd internshelper
 python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev,web]"
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e ".[dev,app]"  # macOS: dashboard + Dock app
 .venv/bin/python -m internshelper.setup
 ```
+
+On Linux or for a browser-only installation, use `.[dev,web]` instead of `.[dev,app]`.
 
 The setup helper creates `.env` with owner-only permissions and seeds missing private config files
 from their tracked examples. Edit `config/profile.md` before using the agent-assisted review
@@ -128,31 +141,9 @@ server-side `search`), `amazon` (`query`), `github` (structured `listings.json` 
 continuation rows + `🔒` closed markers handled). Prefer focused ATS
 boards / curated Markdown lists over the 16k-entry Simplify JSON list (which would flood the queue).
 
-## 3. Configure email (Gmail)
+## 3. Run the collector
 
-Your email + password are **per-machine secrets**, so they live in the gitignored `.env`, not
-in a committed file (`bash scripts/bootstrap.sh` writes them for you). `config/settings.toml`
-keeps only the neutral `[smtp] host`/`port`; `INTERNSHELPER_SMTP_SENDER` / `…_RECIPIENT` in
-`.env` override the placeholder sender/recipient there. For Gmail:
-1. Enable **2-Step Verification**.
-2. Create an **App Password**: <https://myaccount.google.com/apppasswords>.
-3. Put that 16-char value in `.env` as `INTERNSHELPER_SMTP_PASSWORD`.
-
-```dotenv
-# .env (gitignored, per-machine)
-INTERNSHELPER_SMTP_SENDER=you@gmail.com
-INTERNSHELPER_SMTP_RECIPIENT=you@gmail.com
-INTERNSHELPER_SMTP_PASSWORD=your-16-char-app-password
-```
-
-Don't want email at all? Set `INTERNSHELPER_FEATURE_EMAIL=0` (see [§8](#8-env--feature-toggles))
-and skip the creds — the Board remains fully usable.
-
-When email is enabled, each newly collected Top-target posting is included once in the digest.
-
-## 4. Run the collector
-
-With creds in `.env`, the collector loads them itself — no inline env var needed:
+The collector loads local configuration itself, so no inline environment variables are needed:
 
 ```bash
 .venv/bin/python -m internshelper.run
@@ -160,15 +151,16 @@ With creds in `.env`, the collector loads them itself — no inline env var need
 
 Each run: scrape → apply each source's coarse title guard → save raw payloads under
 `data/payloads/` → upsert the local archive → validate new destinations → collapse strong URL
-duplicates and reconcile their availability evidence → refresh ranking hints and company groups
-→ send the exactly-once Top-target digest. Community-list rows remain hidden until their
-destination check finishes. Data lives in `data/internshelper.db` (gitignored).
+duplicates and reconcile their availability evidence → refresh ranking hints and company groups.
+When optional email is enabled, it then sends an exactly-once Top-target digest. Community-list
+rows remain hidden until their destination check finishes. Data lives in
+`data/internshelper.db` (gitignored).
 
 Set `INTERNSHELPER_FEATURE_COLLECT=0` to disable a machine's collector,
 `INTERNSHELPER_FEATURE_AVAILABILITY=0` to retain legacy collection without destination checks, or
-`INTERNSHELPER_FEATURE_EMAIL=0` to collect without emailing.
+`INTERNSHELPER_FEATURE_EMAIL=1` to add email digests.
 
-## 5. Audit postings with the agent (optional)
+## 4. Audit postings with the agent (optional)
 
 First customize `config/profile.md`. To inspect saved payloads for obvious junk without narrowing
 the Board prematurely, run:
@@ -178,8 +170,8 @@ the Board prematurely, run:
 ```
 
 The agent reads the current Inbox payloads and dismisses only confirmed junk. It does not choose
-company groups or filter out uncertain roles. It's free — it runs in the current coding-agent
-session, with no API key or per-posting charge.
+company groups or filter out uncertain roles. It runs in the current coding-agent session, so the
+app needs no separate AI API key or per-posting service.
 
 Manual CLI (what the skill drives) if you want it without the skill:
 
@@ -190,14 +182,39 @@ Manual CLI (what the skill drives) if you want it without the skill:
 .venv/bin/python -m internshelper.review list-flagged
 ```
 
-## 6. Dashboard
+## 5. Dock app and dashboard
+
+### Dock app (macOS)
+
+The macOS setup flow offers to install the dashboard as `~/Applications/InternsHELPer.app`. To
+build or reinstall it directly:
+
+```bash
+.venv/bin/python -m internshelper.appbundle --install
+open "$HOME/Applications/InternsHELPer.app"
+```
+
+The app has its own Dock icon and native window. Opening it starts the local web server headlessly
+on port 8510; quitting the window stops the server. The bundle is a small launcher over the current
+checkout and needs the `app` extra (`pip install -e ".[app]"`, macOS only).
+
+Notes:
+
+- If a previous window crashed and left its server running, the next launch re-attaches to it and
+  cleans it up on quit. A server you started by hand on port 8510 is attached to but never killed.
+- The repo path is baked into the bundle at build time. If you move the repo, run `--install` again.
+- The bundle is unsigned. A local build runs normally; a copy received through AirDrop or a zip may
+  need `xattr -dr com.apple.quarantine InternsHELPer.app`.
+- Server logs land in the gitignored `data/app.log` if the window comes up blank.
+
+### Browser interface
 
 ```bash
 .venv/bin/python -m internshelper.web        # serves http://127.0.0.1:8510
 ```
 
-A local web app (FastAPI + Jinja + HTMX/Alpine, all vendored — no Node, no build step),
-system-aware dark/light theme, served on 127.0.0.1 only:
+The dashboard uses FastAPI, Jinja, and vendored HTMX/Alpine with no Node build step. It binds only
+to `127.0.0.1` and includes:
 
 - **Board** — every broadly collected posting, organized into Top targets, Known companies,
   Worth discovering, and neutral Unclassified. Each company is one expandable card containing
@@ -207,104 +224,85 @@ system-aware dark/light theme, served on 127.0.0.1 only:
   replacement links for explicit confirmation. **Verify and find application** reports semantic
   progress without changing the stored URL until you confirm a replacement.
 - **Companies** — manage the separate browsing-group index and approve evidence-backed
-  "Worth discovering" proposals; career-board resolution remains an independent workflow.
-- **Postings** — the full archive with search and state filters; no-match verdicts are
-  archived (dimmed, reachable), never deleted.
-- **Sources** — add a board with a live fetch-test wizard (sniffer fallback for careers
-  pages, "Add anyway" gate on empty fetches), remove with confirm. Source-action HTTP requests
-  must come from the same loopback browser origin; use the `sources` CLI for automation.
-- **Health** — per-source status cards: last run, count vs baseline, quiet/error flags.
+  Worth discovering proposals; career-board resolution remains an independent workflow.
+- **Postings** — search the full archive and filter by state. No-match verdicts are archived and
+  remain reachable.
+- **Sources** — add a board through a live fetch-test wizard or remove one with confirmation.
+  Source-action HTTP requests must come from the same loopback browser origin; use the `sources`
+  CLI for automation.
+- **Health** — inspect each source's latest run, count against baseline, and quiet/error signals.
 
-### Dock app (macOS)
+## 6. Optional automation
 
-Run the dashboard like a real app — its own Dock icon, a native window, no browser:
+Email digests and background scheduling are disabled by default and are not required to collect or
+browse postings. Their configuration and failure behavior have automated coverage, but SMTP and
+launchd depend on the machine where they run. Test each one locally before relying on unattended
+delivery.
 
-```bash
-.venv/bin/python -m internshelper.appbundle --install
+### Email digests (SMTP)
+
+When email is enabled, each newly collected Top-target posting is included once in the digest. The
+sender, recipient, and password are per-machine secrets stored only in the gitignored `.env`.
+`config/settings.toml` contains the neutral SMTP host and port.
+
+For Gmail, enable 2-Step Verification, create an
+[App Password](https://myaccount.google.com/apppasswords), then set:
+
+```dotenv
+INTERNSHELPER_FEATURE_EMAIL=1
+INTERNSHELPER_SMTP_SENDER=you@gmail.com
+INTERNSHELPER_SMTP_RECIPIENT=you@gmail.com
+INTERNSHELPER_SMTP_PASSWORD=your-16-char-app-password
 ```
 
-That builds `InternsHELPer.app` (into the gitignored `build/`) and copies it to
-`~/Applications`; drag it onto the Dock from there. Clicking it starts the web server
-headless on port 8510 and opens a native window; quitting the window stops the server.
-`bash scripts/bootstrap.sh` offers to do all of this (toggle: `INTERNSHELPER_FEATURE_APP`).
-Needs the `app` extra (`pip install -e ".[app]"` — pywebview + the pyobjc frameworks, macOS only).
+The collector uses STARTTLS with certificate verification before sending credentials. Other SMTP
+providers may require different host and port values in `config/settings.toml`.
 
-Notes:
+### Hourly collection (launchd)
 
-- If a previous window crashed and left its server running, the next launch re-attaches to it
-  (and still cleans it up on quit). A server *you* started by hand on 8510 is attached to but
-  never killed.
-- The repo path is baked into the bundle at build time — if you move the repo, re-run
-  `--install` (same as the launchd plist).
-- The bundle is unsigned. Built locally it runs without prompts; if you ever copy it to another
-  Mac via AirDrop/zip, clear quarantine first: `xattr -dr com.apple.quarantine InternsHELPer.app`.
-- Server logs land in `data/app.log` if the window comes up blank.
-
-## 7. Schedule the collector (launchd)
-
-`bash scripts/bootstrap.sh` already offers to do this. To (re)install it yourself, let the setup
-helper realize + load the plist (it only templates per-machine paths — the password lives in
-`.env`, not the plist). The realized job starts through `/usr/bin/env` so launchd can use a venv
-inside a macOS-protected Documents checkout:
-
-The non-interactive helper reads values exported in the current shell and leaves scheduling off
-when the variable is absent:
+On macOS, explicitly opt in to realize and load the per-machine launchd job:
 
 ```bash
 INTERNSHELPER_FEATURE_SCHEDULE=1 .venv/bin/python -m internshelper.setup --no-input
 ```
 
-Or do it by hand (no secret placeholder anymore):
+The generated plist contains the checkout and log paths but no SMTP credentials. Logs go to
+`~/Library/Logs/internshelper`. The job runs hourly and once when loaded; because launchd does not
+run while the Mac sleeps, missed work starts after wake. To stop it:
 
 ```bash
-REPO_DIR="$(pwd)"
-LOG_DIR="$HOME/Library/Logs/internshelper"
-mkdir -p "$LOG_DIR"
-sed -e "s#__REPO_DIR__#${REPO_DIR}#g" -e "s#__LOG_DIR__#${LOG_DIR}#g" \
-    scripts/com.internshelper.run.plist.template \
-    > ~/Library/LaunchAgents/com.internshelper.run.plist
-
-launchctl load ~/Library/LaunchAgents/com.internshelper.run.plist
-launchctl kickstart -k gui/$(id -u)/com.internshelper.run   # fire one cycle now
+launchctl bootout "gui/$(id -u)/com.internshelper.run"
 ```
 
-> `launchd` does not fire while the Mac is asleep; overnight postings are collected on the first
-> cycle after wake (`RunAtLoad=true`). The collector is unattended; refresh the Board when convenient.
-
-To stop: `launchctl unload ~/Library/LaunchAgents/com.internshelper.run.plist`.
-
-**Linux (cron/systemd).** No launchd, but the collector resolves its config + data paths off the
-repo root, so it doesn't matter what working directory the scheduler uses — just call the venv
-Python with an absolute path:
+On Linux, use cron or systemd to invoke the project interpreter. The collector resolves config and
+data paths from the repo, so the scheduler does not need a working directory:
 
 ```cron
-0 * * * * /path/to/internsHELPer/.venv/bin/python -m internshelper.run
+0 * * * * /path/to/internshelper/.venv/bin/python -m internshelper.run
 ```
 
-(For systemd, a `*.service` running that command on an hourly `*.timer` works the same way.)
+## 7. `.env` and feature toggles
 
-## 8. .env & feature toggles
-
-The gitignored, per-machine `.env` (written by bootstrap) holds your secrets and which parts run.
-A real exported environment variable always overrides the file.
+The gitignored, per-machine `.env` holds secrets and feature choices. Exported environment
+variables override the file. These are the safe unattended defaults:
 
 ```dotenv
-INTERNSHELPER_SMTP_SENDER=you@gmail.com
-INTERNSHELPER_SMTP_RECIPIENT=you@gmail.com
-INTERNSHELPER_SMTP_PASSWORD=your-16-char-app-password
-INTERNSHELPER_FEATURE_COLLECT=1     # run the hourly collector on this machine
-INTERNSHELPER_FEATURE_EMAIL=1       # send Top-target digests (needs the SMTP creds above)
-INTERNSHELPER_FEATURE_AVAILABILITY=1 # validate new links and enable availability actions
-INTERNSHELPER_FEATURE_SCHEDULE=1    # install the launchd schedule (macOS)
-INTERNSHELPER_FEATURE_DASHBOARD=1   # use the web dashboard
-INTERNSHELPER_FEATURE_APP=1         # install the Dock app (macOS; needs DASHBOARD)
+INTERNSHELPER_SMTP_SENDER=
+INTERNSHELPER_SMTP_RECIPIENT=
+INTERNSHELPER_SMTP_PASSWORD=
+INTERNSHELPER_FEATURE_COLLECT=1
+INTERNSHELPER_FEATURE_EMAIL=0
+INTERNSHELPER_FEATURE_AVAILABILITY=1
+INTERNSHELPER_FEATURE_SCHEDULE=0
+INTERNSHELPER_FEATURE_DASHBOARD=1
+INTERNSHELPER_FEATURE_APP=0
 ```
 
-Set any `INTERNSHELPER_FEATURE_*` value to `0` to turn that part off. For example, a machine used
-only to curate sources and view the dashboard can set `COLLECT=0` and `EMAIL=0`. You can also move
-mutable files outside the checkout with `INTERNSHELPER_DB`, `INTERNSHELPER_SOURCES`,
-`INTERNSHELPER_SETTINGS`, `INTERNSHELPER_COMPANIES`, and `INTERNSHELPER_COMPANY_GROUPS`. See
-`.env.example` for the full template.
+Interactive setup on macOS offers the Dock app by default while leaving email and scheduling off.
+Unattended setup also leaves app installation off unless `INTERNSHELPER_FEATURE_APP=1` is exported.
+You can move mutable files outside the checkout with `INTERNSHELPER_DB`,
+`INTERNSHELPER_SOURCES`, `INTERNSHELPER_SETTINGS`, `INTERNSHELPER_COMPANIES`, and
+`INTERNSHELPER_COMPANY_GROUPS`. See `.env.example` for the full template.
 
 ## Tests
 

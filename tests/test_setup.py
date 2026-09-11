@@ -1,9 +1,8 @@
 """Unit tests for the bootstrap helper (internshelper.setup).
 
-Covers the pure, safe-to-test pieces: the gitignore guard (never write secrets to a tracked
-.env), .env rendering + scaffold (write-once, never clobber), and plist realization (no
-plaintext password, no leftover placeholders). The interactive prompts and launchctl calls
-are exercised manually.
+Covers the gitignore guard (never write secrets to a tracked .env), private config scaffolding,
+interactive and unattended defaults, and plist realization. Real launchctl operations are left to
+machine-level acceptance checks.
 """
 
 import plistlib
@@ -55,6 +54,28 @@ def test_prompt_uses_getpass_for_password(monkeypatch):
     assert sender == "s@x" and recipient == "r@x"
     assert schedule is False and dashboard is False
     assert app is False  # dashboard off short-circuits the Dock-app question
+
+
+def test_prompt_defaults_optional_automation_off_and_dock_app_on_for_macos(monkeypatch):
+    monkeypatch.setattr(setup.sys, "platform", "darwin")
+    answers = iter(["", "", "", "", ""])
+    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+
+    email, availability, schedule, dashboard, app, sender, recipient, password = setup._prompt()
+
+    assert email is False
+    assert schedule is False
+    assert availability is True
+    assert dashboard is True
+    assert app is True
+    assert (sender, recipient, password) == ("", "", "")
+
+
+def test_render_env_defaults_optional_automation_off():
+    out = setup.render_env()
+
+    assert "INTERNSHELPER_FEATURE_EMAIL=0" in out
+    assert "INTERNSHELPER_FEATURE_SCHEDULE=0" in out
 
 
 def test_prompt_asks_dock_app_only_with_dashboard(monkeypatch):
@@ -150,6 +171,26 @@ def test_realize_plist_substitutes_repo_dir(tmp_path):
     assert "__" not in out
 
 
+def test_realize_plist_escapes_special_characters_in_paths(tmp_path, monkeypatch):
+    tmpl = tmp_path / "tmpl.plist"
+    tmpl.write_text(
+        "<?xml version=\"1.0\"?><plist><dict>"
+        "<key>WorkingDirectory</key><string>__REPO_DIR__</string>"
+        "<key>StandardOutPath</key><string>__LOG_DIR__/run.log</string>"
+        "</dict></plist>"
+    )
+    dest = tmp_path / "out.plist"
+    repo_dir = tmp_path / "repo & <local>"
+    log_dir = tmp_path / "logs & output"
+    monkeypatch.setattr(setup, "launchd_log_dir", lambda: log_dir)
+
+    setup.realize_plist(tmpl, dest, repo_dir)
+
+    plist = plistlib.loads(dest.read_bytes())
+    assert plist["WorkingDirectory"] == str(repo_dir)
+    assert plist["StandardOutPath"] == str(log_dir / "run.log")
+
+
 def test_real_plist_template_has_no_password():
     text = (REPO / "scripts" / "com.internshelper.run.plist.template").read_text()
     assert "__SMTP_APP_PASSWORD__" not in text
@@ -186,6 +227,34 @@ def test_real_plist_writes_logs_outside_the_protected_checkout(tmp_path):
     assert plist["StandardErrorPath"] == str(log_dir / "run.err.log")
 
 
+def test_install_schedule_stops_when_launchctl_bootstrap_fails(tmp_path, monkeypatch, capsys):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "com.internshelper.run.plist.template").write_text(
+        "<?xml version=\"1.0\"?><plist><dict>"
+        "<key>WorkingDirectory</key><string>__REPO_DIR__</string>"
+        "</dict></plist>"
+    )
+    monkeypatch.setattr(setup.Path, "home", lambda: tmp_path)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return setup.subprocess.CompletedProcess(
+            args,
+            1 if "bootstrap" in args else 0,
+            stderr=b"launchctl rejected the job",
+        )
+
+    monkeypatch.setattr(setup.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="launchctl bootstrap failed"):
+        setup._install_schedule(tmp_path)
+
+    assert not any("kickstart" in args for args in calls)
+    assert "schedule loaded" not in capsys.readouterr().out
+
+
 def test_main_no_input_email_off_skips_creds(tmp_path, monkeypatch):
     (tmp_path / ".gitignore").write_text(".env\n")
     _write_config_examples(tmp_path)
@@ -219,6 +288,23 @@ def test_main_no_input_email_on_writes_creds(tmp_path, monkeypatch):
     assert "INTERNSHELPER_SMTP_RECIPIENT=you@x.com" in env
     assert "INTERNSHELPER_SMTP_PASSWORD=secret-pw" in env
     assert "INTERNSHELPER_FEATURE_EMAIL=1" in env
+
+
+def test_main_no_input_honors_explicit_schedule_opt_in(tmp_path, monkeypatch):
+    (tmp_path / ".gitignore").write_text(".env\n")
+    _write_config_examples(tmp_path)
+    monkeypatch.setenv("INTERNSHELPER_FEATURE_EMAIL", "0")
+    monkeypatch.setenv("INTERNSHELPER_FEATURE_SCHEDULE", "1")
+    monkeypatch.setenv("INTERNSHELPER_FEATURE_APP", "0")
+    monkeypatch.setattr(setup.sys, "platform", "darwin")
+    installed = []
+    monkeypatch.setattr(setup, "_install_schedule", lambda repo: installed.append(repo))
+
+    rc = setup.main(["--no-input", "--repo-dir", str(tmp_path)])
+
+    assert rc == 0
+    assert installed == [tmp_path.resolve()]
+    assert "INTERNSHELPER_FEATURE_SCHEDULE=1" in (tmp_path / ".env").read_text()
 
 
 def test_main_no_input_uses_safe_defaults_for_external_side_effects(tmp_path, monkeypatch):

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 import plistlib
+import shlex
 import shutil
 import subprocess
 import sys
@@ -27,16 +28,16 @@ BUNDLE_NAME = "InternsHELPer.app"
 EXECUTABLE_NAME = "internshelper"
 ICON_PNG = _REPO_ROOT / "internshelper" / "assets" / "icon-1024.png"
 
-_LAUNCHER_TEMPLATE = """\
-#!/bin/bash
-cd "__REPO_DIR__" || exit 1
-exec "__REPO_DIR__/.venv/bin/python" -m internshelper.app
-"""
-
-
 def render_launcher(repo_dir: str | Path) -> str:
-    """Substitute __REPO_DIR__ in the launcher script (same convention as realize_plist)."""
-    return _LAUNCHER_TEMPLATE.replace("__REPO_DIR__", str(repo_dir))
+    """Render a launcher whose baked-in paths are safe shell arguments."""
+    repo_dir = Path(repo_dir)
+    quoted_repo = shlex.quote(str(repo_dir))
+    quoted_python = shlex.quote(str(repo_dir / ".venv" / "bin" / "python"))
+    return (
+        "#!/bin/bash\n"
+        f"cd {quoted_repo} || exit 1\n"
+        f"exec {quoted_python} -m internshelper.app\n"
+    )
 
 
 def render_info_plist() -> bytes:

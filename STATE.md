@@ -9,9 +9,13 @@ _Last updated: 2026-09-11 · maintained by the project-state skills · keep this
 - **Configuration boundary:** `.env`, the role profile, source selection, company index, company
   groups, SQLite data, payloads, logs, and exports are private per-user state. Tracked
   `*.example.*` files define the public starting point.
-- **Release verification:** the offline, availability-contract, browser, clean-install, license,
-  file-inventory, and full-history secret/privacy checks passed. An actual native WKWebView launch
-  remains a documented verification gap.
+- **Default experience:** manual collection, availability checks, the dashboard, and the macOS Dock
+  app are the primary path. Email digests and launchd scheduling remain available by explicit
+  opt-in and default to off.
+- **Release verification:** the offline, availability-contract, browser, clean-install, packaging,
+  dependency, license, file-inventory, and full-history secret/privacy checks pass. An isolated
+  native app launch served the Board; direct window inspection remains unavailable without macOS
+  accessibility permission.
 - **Packaging:** the macOS Dock app remains a local launcher over a checkout and virtual environment;
   standalone distribution is future work.
 

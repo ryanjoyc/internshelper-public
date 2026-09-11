@@ -1,6 +1,6 @@
 # internsHELPer roadmap
 
-_Last updated: 2026-09-10 · forward-looking product direction, not a release log_
+_Last updated: 2026-09-11 · forward-looking product direction, not a release log_
 
 For current runtime and Git status, read `STATE.md`. For the implementation map, use the
 `internshelper-guide` skill. Completed designs and implementation plans live in Git history rather
@@ -10,6 +10,9 @@ than the active docs tree.
 
 internsHELPer is a local-first internship aggregator that collects broadly, organizes by company,
 and tracks applications without silently hiding opportunities.
+
+On macOS, the main interface is a locally built Dock app over the same dashboard available in a
+browser. Collection can run manually; email delivery and background scheduling are optional.
 
 The core promise is:
 
@@ -41,8 +44,8 @@ The core promise is:
   lanes, archive/search, dismissed and flagged views, and reversible duplicate review.
 - Independent company systems: `companies.yaml` resolves companies to boards;
   `company-groups.yaml` controls Board priority and evidence-backed discovery proposals.
-- A Top-target email digest with an exactly-once `notified_at` watermark.
-- A relocation-safe macOS Dock bundle that launches the local web app from the current checkout.
+- A locally built macOS Dock bundle that launches the web app from its configured checkout.
+- An optional Top-target email digest with an exactly-once `notified_at` watermark.
 - Evidence-based posting availability: pre-display destination validation, conservative retries,
   saved/applied closed-history visibility, explicit replacement confirmation, and a user-triggered
   investigation flow that cannot affect ranking.
@@ -96,8 +99,9 @@ it as a distributable standalone application until this phase is complete.
 
 ## Operational boundaries
 
-Scheduling, SMTP configuration, and native app installation are per-machine operations. Keep them
-out of unrelated product changes, and verify each one on the machine where it will run.
+Scheduling and SMTP are opt-in, disabled by default, and verified on the machine where they will
+run. Native app installation is also per-machine. Keep these operations out of unrelated product
+changes.
 
 ## Deferred decisions
 

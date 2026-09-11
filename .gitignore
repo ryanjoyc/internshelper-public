@@ -27,7 +27,9 @@ exports/
 *.db
 *.db-*
 *.sqlite
+*.sqlite-*
 *.sqlite3
+*.sqlite3-*
 *.log
 *.csv
 *.tsv

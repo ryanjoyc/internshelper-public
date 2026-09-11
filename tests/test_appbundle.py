@@ -7,16 +7,32 @@ and the Dock itself are exercised manually.
 
 import os
 import plistlib
+import subprocess
+import tomllib
+from pathlib import Path
 
 from internshelper import appbundle
 
 
+REPO = Path(__file__).resolve().parents[1]
+
+
 def test_render_launcher_substitutes_repo_dir():
     out = appbundle.render_launcher("/repo/here")
-    assert 'cd "/repo/here" || exit 1' in out
-    assert '"/repo/here/.venv/bin/python" -m internshelper.app' in out
+    assert "cd /repo/here || exit 1" in out
+    assert "/repo/here/.venv/bin/python -m internshelper.app" in out
     assert "__" not in out
     assert out.startswith("#!/bin/bash")
+
+
+def test_render_launcher_does_not_expand_shell_syntax_in_repo_path(tmp_path):
+    marker = tmp_path / "expanded"
+    repo_dir = tmp_path / f"repo $(touch {marker}) & quote'"
+    launcher = appbundle.render_launcher(repo_dir)
+
+    subprocess.run(["/bin/bash", "-c", launcher], check=False, capture_output=True)
+
+    assert not marker.exists()
 
 
 def test_render_info_plist_parses_and_matches_executable():
@@ -35,6 +51,14 @@ def test_iconset_entries_mapping():
     assert entries["icon_16x16@2x.png"] == 32
     assert entries["icon_512x512.png"] == 512
     assert entries["icon_512x512@2x.png"] == 1024
+
+
+def test_wheel_package_data_includes_dock_icon_sources():
+    package_data = tomllib.loads((REPO / "pyproject.toml").read_text())["tool"]["setuptools"][
+        "package-data"
+    ]["internshelper"]
+
+    assert "assets/*" in package_data
 
 
 def test_build_bundle_structure(tmp_path):

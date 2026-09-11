@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 from internshelper.dotenv import feature_enabled
 
@@ -46,7 +47,7 @@ def ensure_gitignore_has_env(gitignore_path: str | Path) -> bool:
 
 
 def render_env(sender: str = "", recipient: str = "", password: str = "", *,
-               collect: bool = True, email: bool = True, schedule: bool = True,
+               collect: bool = True, email: bool = False, schedule: bool = False,
                dashboard: bool = True, app: bool = True,
                availability: bool = True) -> str:
     """Render the per-machine `.env` (secrets + feature toggles)."""
@@ -109,7 +110,7 @@ def scaffold_user_configs(repo_dir: str | Path) -> tuple[Path, ...]:
 
 
 def scaffold_env(path: str | Path, sender: str = "", recipient: str = "", password: str = "", *,
-                 collect: bool = True, email: bool = True, schedule: bool = True,
+                 collect: bool = True, email: bool = False, schedule: bool = False,
                  dashboard: bool = True, app: bool = True,
                  availability: bool = True) -> bool:
     """Write `.env` only if absent (never clobber existing secrets). Returns whether written."""
@@ -135,8 +136,8 @@ def realize_plist(template: str | Path, dest: str | Path, repo_dir: str | Path) 
     text = (
         Path(template)
         .read_text(encoding="utf-8")
-        .replace("__REPO_DIR__", str(repo_dir))
-        .replace("__LOG_DIR__", str(launchd_log_dir()))
+        .replace("__REPO_DIR__", xml_escape(str(repo_dir)))
+        .replace("__LOG_DIR__", xml_escape(str(launchd_log_dir())))
     )
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -151,8 +152,22 @@ def _install_schedule(repo_dir: Path) -> None:
     print(f"wrote launchd plist: {dest}")
     uid = os.getuid()
     subprocess.run(["launchctl", "bootout", f"gui/{uid}/{_LABEL}"], capture_output=True)
-    subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(dest)], capture_output=True)
-    subprocess.run(["launchctl", "kickstart", "-k", f"gui/{uid}/{_LABEL}"], capture_output=True)
+    bootstrap = subprocess.run(
+        ["launchctl", "bootstrap", f"gui/{uid}", str(dest)], capture_output=True
+    )
+    if bootstrap.returncode:
+        raise RuntimeError(
+            f"launchctl bootstrap failed with exit code {bootstrap.returncode}; "
+            f"plist remains at {dest}"
+        )
+    kickstart = subprocess.run(
+        ["launchctl", "kickstart", "-k", f"gui/{uid}/{_LABEL}"], capture_output=True
+    )
+    if kickstart.returncode:
+        raise RuntimeError(
+            f"launchctl kickstart failed with exit code {kickstart.returncode}; "
+            "the schedule is loaded but its first run did not start"
+        )
     print("launchd schedule loaded (hourly + on wake).")
 
 
@@ -167,14 +182,14 @@ def _prompt() -> tuple[bool, bool, bool, bool, bool, str, str, str]:
         ans = input(f"{q} [{'Y/n' if default else 'y/N'}] ").strip().lower()
         return default if not ans else ans in ("y", "yes")
 
-    email = ask("Enable email nudges?", True)
+    email = ask("Enable optional email digests?", False)
     sender = recipient = password = ""
     if email:
         sender = input("  SMTP sender email: ").strip()
         recipient = input("  SMTP recipient email: ").strip()
         password = getpass.getpass("  SMTP app password (input hidden): ").strip()
     availability = ask("Check application availability during collection?", True)
-    schedule = ask("Schedule the hourly collector via launchd (macOS)?", sys.platform == "darwin")
+    schedule = ask("Enable optional hourly collection via launchd (macOS)?", False)
     dashboard = ask("Use the web dashboard?", True)
     app = dashboard and ask("Install the Dock app (InternsHELPer.app → ~/Applications)?",
                             sys.platform == "darwin")

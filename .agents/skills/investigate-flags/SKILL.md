@@ -127,7 +127,7 @@ POSTING_ID | working|gone|bad_link|blocked | <working URL or "-"> | high|med|low
 
 ## Notes
 
-- **This is free** — it runs in the current Codex session (subagents, no API key).
+- This runs in the current Codex session and needs no separate internsHELPer API key.
 - Division of labor: `/review-internships` judges *fit* from payloads; `/deep-scan-source`
   verifies a *term* across one whole source; **this** clears the *flagged* queue by verifying
   the postings' existence and our data quality — per-posting, deepest of the three.
