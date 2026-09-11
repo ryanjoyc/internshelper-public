@@ -75,7 +75,9 @@ def test_source_mutation_rejects_missing_browser_provenance(client, sources_file
     sources_file.write_text("sources:\n  - type: greenhouse\n    token: stripe\n")
 
     response = client.post(
-        "/sources/remove", data={"source_key": "greenhouse:stripe"}
+        "/sources/remove",
+        data={"source_key": "greenhouse:stripe"},
+        headers={"origin": "", "sec-fetch-site": ""},
     )
 
     assert response.status_code == 403

@@ -43,8 +43,11 @@ class HttpDestinationChecker:
     client: httpx.Client | None = None
     resolver: Callable[[str], Iterable[str]] = _resolve_host
     max_redirects: int = 10
+    max_body_bytes: int = 1_000_000
 
     def __post_init__(self) -> None:
+        if self.max_body_bytes < 1:
+            raise ValueError("max_body_bytes must be positive")
         if self.client is None:
             self.client = httpx.Client(
                 timeout=TIMEOUT,
@@ -116,7 +119,20 @@ class HttpDestinationChecker:
                 return tuple(observations)
             trusted_host = employer_hosted and current_host == original_host
             try:
-                response = self.client.get(current_url, follow_redirects=False)
+                with self.client.stream("GET", current_url, follow_redirects=False) as response:
+                    status_code = response.status_code
+                    request_url = str(response.request.url)
+                    raw_location = response.headers.get("location")
+                    location = (
+                        str(response.request.url.join(raw_location))
+                        if raw_location
+                        else None
+                    )
+                    body = (
+                        ""
+                        if 300 <= status_code <= 399 and location is not None
+                        else self._bounded_text(response)
+                    )
             except httpx.TimeoutException:
                 failure = NetworkFailure.TIMEOUT
             except httpx.ConnectError as exc:
@@ -147,27 +163,21 @@ class HttpDestinationChecker:
                 )
                 return tuple(observations)
 
-            raw_location = response.headers.get("location")
-            location = (
-                str(response.request.url.join(raw_location))
-                if raw_location
-                else None
-            )
             observations.append(
                 NetworkObservation(
                     sequence=sequence + len(observations),
                     observed_at=observed_at,
                     stage=stage,
-                    target=target if len(observations) == 0 else str(response.request.url),
+                    target=target if len(observations) == 0 else request_url,
                     attempt=attempt,
-                    status=response.status_code,
-                    body=response.text,
+                    status=status_code,
+                    body=body,
                     location=location,
                     employer_hosted=trusted_host,
-                    checker_only=response.status_code == 403,
+                    checker_only=status_code == 403,
                 )
             )
-            if not 300 <= response.status_code <= 399 or location is None:
+            if not 300 <= status_code <= 399 or location is None:
                 return tuple(observations)
             redirects += 1
             if redirects > self.max_redirects:
@@ -184,6 +194,25 @@ class HttpDestinationChecker:
                 )
                 return tuple(observations)
             current_url = location
+
+    def _bounded_text(self, response: httpx.Response) -> str:
+        """Read at most the bytes needed by availability interpretation, then close."""
+
+        remaining = self.max_body_bytes
+        chunks: list[bytes] = []
+        for chunk in response.iter_bytes(chunk_size=min(65_536, remaining)):
+            if not chunk:
+                continue
+            chunks.append(chunk[:remaining])
+            remaining -= min(len(chunk), remaining)
+            if remaining == 0:
+                break
+        raw = b"".join(chunks)
+        encoding = response.encoding or "utf-8"
+        try:
+            return raw.decode(encoding, errors="replace")
+        except LookupError:
+            return raw.decode("utf-8", errors="replace")
 
     def _validated_host(self, url: str) -> str:
         parsed = urlparse(url)

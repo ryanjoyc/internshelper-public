@@ -107,7 +107,11 @@ def test_temporary_collection_verify_and_confirm_path(tmp_path, monkeypatch):
 
     from internshelper.web import create_app
 
-    with TestClient(create_app()) as client:
+    with TestClient(
+        create_app(),
+        base_url="http://127.0.0.1:8510",
+        headers={"origin": "http://127.0.0.1:8510", "sec-fetch-site": "same-origin"},
+    ) as client:
         board = client.get("/board")
         assert original.posting_id in board.text
         drawer = client.get(f"/board/card/{original.posting_id}")

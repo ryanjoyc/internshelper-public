@@ -1,0 +1,41 @@
+# internsHELPer source list. Copy to config/sources.yaml, then add boards with the Sources page or
+# `.venv/bin/python -m internshelper.sources add <board-url>`.
+#
+# Supported identifiers:
+#   greenhouse -> token   (the board slug in boards.greenhouse.io/<token>)
+#   lever      -> token   (the company slug in jobs.lever.co/<token>)
+#   ashby      -> org     (the organization slug in jobs.ashbyhq.com/<org>)
+#   github     -> url     (a raw structured listings.json URL)
+#   markdown   -> url     (a raw README.md URL containing a job table)
+#   workday    -> url     (https://<tenant>.wd<N>.myworkdayjobs.com/<Site>)
+#   amazon     -> query   (an amazon.jobs search query)
+#
+# `title_must_match` is an optional case-insensitive whole-word/phrase guard. Workday also supports
+# a server-side `search` value; unlike title_must_match, that search hides nonmatching rows before
+# the connector receives them.
+
+sources: []
+
+# Examples (add selected entries below `sources:` and remove the leading `#` characters):
+#   - type: greenhouse
+#     token: stripe
+#     label: Stripe
+#     title_must_match: [intern, internship, new grad, university, graduate]
+#
+#   - type: lever
+#     token: leverdemo
+#     label: Lever demo board
+#
+#   - type: ashby
+#     org: ramp
+#     label: Ramp
+#
+#   - type: workday
+#     url: https://example.wd1.myworkdayjobs.com/External
+#     label: Example Workday board
+#     search: intern
+#     title_must_match: [intern, internship, new grad, university, graduate]
+#
+#   - type: markdown
+#     url: https://raw.githubusercontent.com/example/example-internships/main/README.md
+#     label: Example community list

@@ -1,0 +1,10 @@
+Third-party files distributed with the internsHELPer web UI:
+
+- htmx 2.0.8 — Zero-Clause BSD — licenses/HTMX-0BSD.txt
+- Alpine.js 3.15.1 — MIT — licenses/Alpine-MIT.txt
+- Alpine Collapse 3.15.1 — MIT — licenses/Alpine-MIT.txt
+- SortableJS 1.15.6 — MIT — licenses/Sortable-MIT.txt
+- Geist font files (original vendored version was not recorded) — SIL Open Font
+  License 1.1 — licenses/Geist-OFL-1.1.txt
+
+Repository-level provenance and notices are in THIRD_PARTY_NOTICES.md.

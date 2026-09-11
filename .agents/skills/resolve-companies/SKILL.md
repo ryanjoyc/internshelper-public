@@ -1,14 +1,15 @@
 ---
 name: resolve-companies
-description: Research each PENDING company in the internsHELPer approved-companies index and turn it into a board PROPOSAL for the user's approval. Use when the user runs /resolve-companies, says "resolve my companies", "find boards for my company list", "run the company resolver", or right after adding companies with `companies add`. Finds each company's real careers board on any supported ATS (Greenhouse/Lever/Ashby/Workday), fetch-tests it, and records it via `companies propose` — it NEVER approves; Approval A belongs to the user on the web Companies page.
+description: Research each PENDING company in the internsHELPer approved-companies index and turn it into a board PROPOSAL for the user's approval. Use when the user runs /resolve-companies, says "resolve my companies", "find boards for my company list", "run the company resolver", or right after adding companies with `companies add`. Finds each company's real careers board on any supported ATS (Greenhouse/Lever/Ashby/Workday), fetch-tests it, and records it via `companies propose` — it never approves; Approval A belongs to the user on the web Companies page.
 ---
 
 # Resolve pending companies into board proposals
 
-The approved-companies index (`config/companies.yaml`) is the user's master list. This skill does
+The approved-companies index (`config/companies.yaml`, or `INTERNSHELPER_COMPANIES`) is the user's
+private master list. This skill does
 the fallible research step — company name → its real careers board — and parks each finding as
-a **proposal** for the user's yes/no (Approval A). Scanning stays deterministic; nothing is scanned
-until the user approves.
+a **proposal** for the user's yes/no decision (Approval A). Scanning stays deterministic; nothing
+is scanned until the user approves.
 
 Run everything from the repo root with the project venv: `.venv/bin/python`.
 

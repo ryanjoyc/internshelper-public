@@ -5,14 +5,14 @@ This file is generated from `tests/availability/corpus.yaml`. Edit the YAML and 
 
 - Corpus schema: `1`
 - Policy version: `availability-policy-v1`
-- Approval: `approved` by the user on `2026-08-30`
+- Approval: `approved` by project maintainer on `2026-08-30`
 - Cases: `34`
 - Scope: approved behavior contract; implementation progress is reported by the contract suite
 
 ## How to read a case
 
-The timeline states what was observed and in what order. The expected result is the Board
-contract the user is approving. A replacement candidate never changes the stored URL unless the
+The timeline states what was observed and in what order. The expected result is the approved
+Board contract. A replacement candidate never changes the stored URL unless the
 case explicitly says confirmation occurred.
 
 ## Cases

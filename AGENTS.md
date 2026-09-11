@@ -35,7 +35,7 @@ before editing.
 
 When `INTERNSHELPER_CLOUD=1`, treat the checkout as engineering-only:
 
-- Use temporary databases and frozen fixtures. Never create `.env`, upload or open the user's real
+- Use temporary databases and frozen fixtures. Never create `.env`, upload or open a user's real
   `data/`, or configure SMTP credentials.
 - Do not run collection, email, scheduling, source/config mutation, user-state mutation,
   `live_canary`, Dock-app, or launchd commands.

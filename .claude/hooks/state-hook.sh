@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # project-state bundle — gated Stop-hook nudge.
 #
-# Fires when Claude finishes responding. Stays SILENT unless the git tree is dirty or the branch
-# has unpushed commits — so it never nags on a clean repo and never drives over-tracking. When there
-# IS loose work, it emits one short reminder to run the session-state-check skill before wrapping up.
+# Fires when an agent finishes responding. Stays SILENT unless the git tree is dirty or the branch
+# has unpushed commits, then emits one short reminder to run the session-state-check skill before
+# wrapping up.
 #
 # Non-blocking by design (always exits 0): it informs, it never forces the model to continue.
 
-cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
+hook_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 0
+repo_dir="$(cd "$hook_dir/../.." && pwd)" || exit 0
+cd "$repo_dir" 2>/dev/null || exit 0
 
 # Not a git repo → nothing to nag about.
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0

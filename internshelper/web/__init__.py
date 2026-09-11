@@ -10,7 +10,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from internshelper import config, db
@@ -33,10 +34,11 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         conn = db.connect(db_path)  # schema + migrations once at startup, not per request
         db.init_db(conn)
+        tiers.repair_stale_inbox_tiers(conn, app.state.company_groups_path)
         conn.close()
         yield
 
-    from internshelper import companies as companies_mod, companygroups
+    from internshelper import companies as companies_mod, companygroups, tiers
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db_path = db_path
@@ -51,7 +53,24 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def security_headers(request, call_next):
-        response = await call_next(request)
+        from internshelper.web.deps import (
+            SAFE_HTTP_METHODS,
+            require_local_browser_request,
+            require_loopback_host,
+        )
+
+        try:
+            require_loopback_host(request)
+            if request.method.upper() not in SAFE_HTTP_METHODS:
+                require_local_browser_request(request)
+        except HTTPException as exc:
+            response = JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=exc.headers,
+            )
+        else:
+            response = await call_next(request)
         response.headers.setdefault("Content-Security-Policy", _CSP)
         response.headers.setdefault("X-Frame-Options", "DENY")
         return response

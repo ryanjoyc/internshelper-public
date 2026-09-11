@@ -19,10 +19,11 @@ kept in Git history, not beside active guidance.
 | [`codex-cloud.md`](codex-cloud.md) | Reproduce the pstack engineering and test environment in Codex Cloud without real data or operations. |
 | [`source-coverage.md`](source-coverage.md) | Supported connectors, configured footprint, known boundaries, and connector acceptance criteria. |
 | [`ui-design-system.md`](ui-design-system.md) | Approved interface principles, tokens, component contracts, responsive behavior, and verification criteria. |
-| [`availability-verification-catalog.md`](availability-verification-catalog.md) | Generated, the user-readable acceptance cases for the implemented availability system. |
+| [`availability-verification-catalog.md`](availability-verification-catalog.md) | Generated, human-readable acceptance cases for the implemented availability system. |
 | [`availability-verification-coverage.md`](availability-verification-coverage.md) | Generated dimension coverage, locked expectations, mutant scorecard, and acceptance commands. |
 | [`availability-current-baseline.md`](availability-current-baseline.md) | Pre-implementation pass/mismatch/unsupported results for all approved availability cases. |
-| [`../config/profile.md`](../config/profile.md) | the user's broad role-fit guidance for agent-assisted posting audits. |
+| [`../config/profile.example.md`](../config/profile.example.md) | Safe template for the private role-fit profile used by agent-assisted posting audits. |
+| [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) | Vendored components, versions, provenance, and license locations. |
 
 ## Documentation rules
 
@@ -40,4 +41,6 @@ kept in Git history, not beside active guidance.
   `.venv/bin/python tests/availability/current_baseline.py --write`. At its recorded production-code
   revision, replay it offline with `--check` or `pytest -m availability_baseline`; never edit either
   generated artifact directly.
+- Public examples use `*.example.*` names. The populated `.env`, profile, source list, company
+  index, and company-group map are private mutable files and must stay untracked.
 - Do not record live scan counts or timestamps here. Use the Health page and SQLite run history.

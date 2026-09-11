@@ -5,7 +5,8 @@ description: Add a job board to internsHELPer from messy input. Use when the use
 
 # Add a source to internsHELPer
 
-The collector scrapes the boards listed in `config/sources.yaml`. Your job: turn whatever the
+The collector scrapes the boards listed in the private `config/sources.yaml` (or the path selected
+by `INTERNSHELPER_SOURCES`). Your job: turn whatever the
 user gives you — a clean board URL, a company name, a careers page, a single job link, or a
 GitHub list — into a **clean board URL** the deterministic CLI understands, then let the CLI
 do the validating + writing. The CLI is the source of truth; you only do the research the CLI
@@ -60,8 +61,9 @@ Run everything from the repo root with the project venv: `.venv/bin/python`.
    exits non-zero (bad URL / fetch error), explain what it said and try again; don't hand-edit
    `config/sources.yaml` to route around a failing fetch.
 
-5. **Remind to sync.** `config/sources.yaml` is git-committed and shared — tell the user to
-   `git commit && git push` so their other machines / other users pick the new board up on pull.
+5. **Keep the selection private.** `config/sources.yaml` is ignored by Git. If the user wants the
+   same sources on another machine, recommend a private backup or an explicit path via
+   `INTERNSHELPER_SOURCES`. Never add the populated file to a public commit.
 
 ## Notes
 - Prefer the CLI over editing YAML directly: it validates, fetch-tests, and keeps the file's

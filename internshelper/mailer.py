@@ -8,6 +8,7 @@ A single helper that delivers an HTML email via SMTP+STARTTLS. The review nudge
 from __future__ import annotations
 
 import smtplib
+import ssl
 from email.message import EmailMessage
 
 from internshelper.config import Settings
@@ -22,6 +23,6 @@ def send(settings: Settings, subject: str, html: str, password: str) -> None:
     msg.set_content("This message is best viewed as HTML.")
     msg.add_alternative(html, subtype="html")
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-        server.starttls()
+        server.starttls(context=ssl.create_default_context())
         server.login(settings.smtp_sender, password)
         server.send_message(msg)

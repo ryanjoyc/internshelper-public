@@ -7,6 +7,8 @@ Bistro). No application rows, no rank scores (cold start).
 
 import sqlite3
 
+from fastapi.testclient import TestClient
+
 from internshelper import db, review, store
 from internshelper.models import Posting
 
@@ -46,14 +48,19 @@ def test_board_groups_inbox_by_company(client):
 
 
 def test_company_group_ignores_rank_and_candidate_flags(client, seeded_db):
-    client.get("/board")  # triggers the self-heal retier
     assert _posting(seeded_db, "greenhouse:1")["tier"] == "top_target"
     assert _posting(seeded_db, "greenhouse:plain")["tier"] == "unclassified"
 
 
-def test_configured_company_lands_in_top_targets(client, seeded_db):
+def test_startup_repairs_stale_tiers(
+    seeded_db, sources_file, companies_file, company_groups_file
+):
     _exec(seeded_db, "UPDATE postings SET rank_score = 0.8, tier = NULL")
-    r = client.get("/board")
+    from internshelper.web import create_app
+
+    with TestClient(create_app(), base_url="http://127.0.0.1:8510") as client:
+        r = client.get("/board")
+
     assert _posting(seeded_db, "greenhouse:1")["tier"] == "top_target"
     assert _posting(seeded_db, "greenhouse:plain")["tier"] == "unclassified"
     assert "Software Engineer Intern" in r.text

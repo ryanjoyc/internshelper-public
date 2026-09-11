@@ -42,7 +42,8 @@ Those workflows keep their approval and mutation boundaries. Engineering mode do
 
 This is a local, single-user application. Do not make the user review every implementation detail.
 The engineering agent owns the code-level audit, affected-callers review, regression tests, and
-runtime proof. the user owns the product experience and decisions whose meaning depends on his intent.
+runtime proof. The user owns the product experience and decisions whose meaning depends on their
+intent.
 
 Always surface for the user's review:
 
@@ -67,8 +68,9 @@ For a substantial handoff, lead with a compact review packet:
 7. suggested commit boundaries, separating unrelated user-owned work.
 
 When acceptance clicks could affect real data or config, prefer offering a review instance backed
-by copied database/config files. Do not substitute agent test results for the user's experience review,
-and do not send implementation details back to him unless they help evaluate one of the risks above.
+by copied database/config files. Do not substitute agent test results for the user's experience
+review, and do not send implementation details back to them unless the details help evaluate one
+of the risks above.
 
 ## Finish
 

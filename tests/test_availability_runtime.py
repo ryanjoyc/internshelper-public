@@ -176,3 +176,34 @@ def test_http_checker_revalidates_and_blocks_private_redirect_target():
     assert observations[0].status == 302
     assert observations[1].failure is NetworkFailure.UNSAFE_DESTINATION
     assert calls == ["jobs.example.test"]
+
+
+def test_http_checker_stops_reading_after_bounded_response_body():
+    class _LargeBody(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b"apply now"
+            yield b"x" * 100
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, stream=_LargeBody(), request=request)
+        )
+    )
+    checker = HttpDestinationChecker(
+        client=client,
+        resolver=_public_resolver,
+        max_body_bytes=12,
+    )
+
+    observation = checker.check(
+        "https://jobs.example.test/original",
+        sequence=1,
+        attempt=1,
+        stage=CheckStage.INITIAL_VALIDATION,
+        observed_at="2026-08-30T12:00:00+00:00",
+        employer_hosted=True,
+    )[0]
+
+    assert observation.status == 200
+    assert observation.body == "apply nowxxx"
+    assert len(observation.body.encode("utf-8")) <= 12

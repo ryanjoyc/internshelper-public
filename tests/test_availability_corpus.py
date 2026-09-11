@@ -31,7 +31,7 @@ def test_approved_policy_version_is_recorded():
     corpus = load_corpus()
     assert corpus["approval"] == {
         "status": "approved",
-        "approved_by": "the user",
+        "approved_by": "project maintainer",
         "approved_on": "2026-08-30",
     }
 
@@ -77,6 +77,16 @@ def test_generated_review_documents_are_current():
         assert path.read_text(encoding="utf-8") == expected, (
             f"{path.name} is stale; run .venv/bin/python tests/availability/generate.py"
         )
+
+
+def test_generated_coverage_links_match_catalog_heading_anchors():
+    corpus = load_corpus()
+    catalog = CATALOG_PATH.read_text(encoding="utf-8")
+    coverage = COVERAGE_PATH.read_text(encoding="utf-8")
+    for case in corpus["cases"]:
+        case_id = case["id"]
+        assert f"### `{case_id}`" in catalog
+        assert f"(availability-verification-catalog.md#{case_id})" in coverage
 
 
 def test_coverage_matrix_is_derived_from_case_semantics():

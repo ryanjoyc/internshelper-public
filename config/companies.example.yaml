@@ -1,0 +1,10 @@
+# internsHELPer approved-company index.
+# Copy to config/companies.yaml. The CLI and Companies page then manage the real file.
+# States: pending | resolved (board -> source_key in sources.yaml) | no-board.
+
+companies: []
+
+# Example pending entry:
+# companies:
+#   - name: Example Company
+#     status: pending

@@ -5,16 +5,61 @@ __pycache__/
 build/
 dist/
 .pytest_cache/
+.coverage
+htmlcov/
 
 # Virtualenv
 .venv/
 venv/
 
-# App data (SQLite archive lives here)
-data/
-
-# Secrets — the realized launchd plist holds the SMTP password in plaintext.
-# Only the committed *.plist.template is tracked.
-*.plist
+# Per-user internsHELPer configuration. Commit the adjacent *.example.* templates only.
 .env
+.env*
+!.env.example
+config/profile.md
+config/sources.yaml
+config/companies.yaml
+config/company-groups.yaml
+
+# App data and exports
+data/
+exports/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.log
+*.csv
+*.tsv
+*.xlsx
+*.jsonl
+!tests/fixtures/**/*.csv
+!tests/fixtures/**/*.tsv
+!tests/fixtures/**/*.jsonl
+
+# Secrets and machine-specific credentials
+*.plist
+!*.plist.template
 secrets*
+.credentials*
+credentials*.json
+service-account*.json
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# Local backups, editors, and operating-system metadata
+*.bak
+*.backup
+*.orig
+*.swp
+*.swo
+*~
+.DS_Store
+.Rhistory
+.idea/
+.vscode/
+.claude/settings.local.json

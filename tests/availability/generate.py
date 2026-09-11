@@ -1,4 +1,4 @@
-"""Render the user-readable availability catalog and coverage reports from corpus.yaml."""
+"""Render human-readable availability catalog and coverage reports from corpus.yaml."""
 
 from __future__ import annotations
 
@@ -53,10 +53,7 @@ def _display(value: Any) -> str:
 
 
 def _case_link(case_id: str) -> str:
-    return (
-        f"[`{case_id}`](availability-verification-catalog.md#"
-        f"{case_id.replace('_', '-')})"
-    )
+    return f"[`{case_id}`](availability-verification-catalog.md#{case_id})"
 
 
 def render_catalog(corpus: dict[str, Any]) -> str:
@@ -75,8 +72,8 @@ def render_catalog(corpus: dict[str, Any]) -> str:
         "",
         "## How to read a case",
         "",
-        "The timeline states what was observed and in what order. The expected result is the Board",
-        "contract the user is approving. A replacement candidate never changes the stored URL unless the",
+        "The timeline states what was observed and in what order. The expected result is the approved",
+        "Board contract. A replacement candidate never changes the stored URL unless the",
         "case explicitly says confirmation occurred.",
         "",
         "## Cases",

@@ -1,0 +1,12 @@
+# internsHELPer company browsing groups.
+# Copy to config/company-groups.yaml. The CLI and Companies page then manage the real file.
+# Groups: top_target | known | discovery. Missing companies are unclassified.
+
+companies: []
+
+# Example user-selected group:
+# companies:
+#   - name: Example Company
+#     group: known
+#     aliases:
+#       - Example Company, Inc.

@@ -12,7 +12,7 @@ before first display, keeps ambiguous failures visible with safer actions, archi
 confirmed-closed ordinary roles, and preserves saved or applied roles as visible closed history.
 Availability never trains or changes the ranker.
 
-**Why this shape:** keyword matching alone is too noisy to decide what the user should see. The hourly
+**Why this shape:** keyword matching alone is too noisy to decide what a person should see. The
 collector therefore stays broad and free; company groups are explicit user choices, rank score is
 only a hint, and an agent can audit saved payloads or research lesser-known companies on demand.
 
@@ -38,16 +38,19 @@ On a fresh clone, one command sets everything up — creates the venv, installs 
 scaffolds this machine's config:
 
 ```bash
-git clone <repo-url> && cd internsHELPer
+git clone https://github.com/ryanjoyc/internshelper-public.git internshelper && cd internshelper
 bash scripts/bootstrap.sh
 ```
 
-It prompts for what *this* machine should do — email nudges (and your SMTP creds), availability
-checks, the hourly schedule (macOS launchd), and the dashboard — then writes a **gitignored `.env`**
-with your answers.
-Secrets never leave the machine via git. It's **idempotent**: re-running reuses the venv and
-never overwrites an existing `.env`. Use `bash scripts/bootstrap.sh --no-input` to accept
-defaults (reads any `INTERNSHELPER_*` you've already exported).
+It creates private working copies of the example configuration, then asks what this machine should
+do: email notifications, availability checks, the hourly schedule (macOS launchd), and the
+dashboard. The generated `.env` and mutable files under `config/` are ignored by Git. Bootstrap is
+idempotent: it reuses the virtual environment and never overwrites existing configuration. Use
+`bash scripts/bootstrap.sh --no-input` to use defaults and values already exported as
+`INTERNSHELPER_*` environment variables.
+
+The ignore rules reduce accidental commits; they do not replace checking `git status` before each
+commit. Never commit a populated `.env`, application database, raw payload, or personal profile.
 
 Then add a board and you're live:
 
@@ -62,10 +65,16 @@ The rest of this README is the manual/advanced reference behind that one command
 Requires Python ≥ 3.11.
 
 ```bash
-cd internsHELPer
+cd internshelper
 python3 -m venv .venv
 .venv/bin/python -m pip install -e ".[dev,web]"
+.venv/bin/python -m internshelper.setup
 ```
+
+The setup helper creates `.env` with owner-only permissions and seeds missing private config files
+from their tracked examples. Edit `config/profile.md` before using the agent-assisted review
+skills. The other generated config files start empty and are populated through the CLIs or web
+dashboard.
 
 ## 2. Configure sources
 
@@ -87,8 +96,9 @@ Accepted URLs: `boards.greenhouse.io/<token>`, `jobs.lever.co/<token>`,
 job link** instead of a clean board URL, open the repo in Claude Code and run **`/add-source`**
 — the agent researches it, resolves it to a board, and calls the CLI for you.
 
-`config/sources.yaml` is **git-committed and shared** — `git commit && git push` after adding,
-and your other machines (or other users) `git pull` to get the same list.
+`config/sources.yaml` is per-user and ignored by Git. Back it up privately if you want to share the
+same source list across your own machines. Keep reusable examples in
+`config/sources.example.yaml` free of personal selections.
 
 **The manual way.** Edit `config/sources.yaml` directly — one entry per source (many may share
 a type):
@@ -160,7 +170,8 @@ Set `INTERNSHELPER_FEATURE_COLLECT=0` to disable a machine's collector,
 
 ## 5. Audit postings with the agent (optional)
 
-To inspect saved payloads for obvious junk without narrowing the Board prematurely, run:
+First customize `config/profile.md`. To inspect saved payloads for obvious junk without narrowing
+the Board prematurely, run:
 
 ```
 /review-internships
@@ -236,8 +247,11 @@ helper realize + load the plist (it only templates per-machine paths — the pas
 `.env`, not the plist). The realized job starts through `/usr/bin/env` so launchd can use a venv
 inside a macOS-protected Documents checkout:
 
+The non-interactive helper reads values exported in the current shell and leaves scheduling off
+when the variable is absent:
+
 ```bash
-.venv/bin/python -m internshelper.setup --no-input   # honors INTERNSHELPER_FEATURE_SCHEDULE
+INTERNSHELPER_FEATURE_SCHEDULE=1 .venv/bin/python -m internshelper.setup --no-input
 ```
 
 Or do it by hand (no secret placeholder anymore):
@@ -286,9 +300,11 @@ INTERNSHELPER_FEATURE_DASHBOARD=1   # use the web dashboard
 INTERNSHELPER_FEATURE_APP=1         # install the Dock app (macOS; needs DASHBOARD)
 ```
 
-Set any `INTERNSHELPER_FEATURE_*` to `0` to turn that part off — e.g. a second machine that only
-curates sources + views the dashboard can set `COLLECT=0` and `EMAIL=0`. Other paths
-(`INTERNSHELPER_DB`, `INTERNSHELPER_SOURCES`, `INTERNSHELPER_SETTINGS`) are read here too.
+Set any `INTERNSHELPER_FEATURE_*` value to `0` to turn that part off. For example, a machine used
+only to curate sources and view the dashboard can set `COLLECT=0` and `EMAIL=0`. You can also move
+mutable files outside the checkout with `INTERNSHELPER_DB`, `INTERNSHELPER_SOURCES`,
+`INTERNSHELPER_SETTINGS`, `INTERNSHELPER_COMPANIES`, and `INTERNSHELPER_COMPANY_GROUPS`. See
+`.env.example` for the full template.
 
 ## Tests
 
@@ -324,3 +340,12 @@ and schema migrations) is unit-tested. The portability layer is covered too: URL
 loader + feature toggles (`test_dotenv`), and the bootstrap/`.env`-scaffold/plist guard
 (`test_setup`). Agent research and fit judgment remain deliberate human-in-the-loop steps; the
 deterministic CLIs and web mutations they drive are tested.
+
+## License and third-party software
+
+No license has been selected for the original internsHELPer source code. Making this repository
+public does not grant permission to copy, modify, or redistribute that project-authored code. Add a
+project license before inviting reuse or contributions.
+
+The vendored browser libraries, fonts, and repository-local pstack adaptation remain under their
+own licenses. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and the license files it links.

@@ -720,6 +720,9 @@ def test_main_end_to_end_collects_surfaces_config_error_and_honors_email_flag(tm
 
 def test_digest_send_failure_leaves_rows_unstamped_for_retry(tmp_path, monkeypatch):
     monkeypatch.setenv("INTERNSHELPER_COMPANIES", str(tmp_path / "companies.yaml"))
+    groups_file = tmp_path / "company-groups.yaml"
+    groups_file.write_text("companies:\n  - name: Google\n    group: top_target\n")
+    monkeypatch.setenv("INTERNSHELPER_COMPANY_GROUPS", str(groups_file))
     c = _conn(tmp_path)
     e = SourceEntry(type="greenhouse", token="google")
     posts = [_raw(f"greenhouse:{i}", e.source_key, company="Google") for i in range(3)]

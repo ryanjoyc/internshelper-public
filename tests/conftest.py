@@ -76,6 +76,10 @@ def client(seeded_db, sources_file, companies_file, company_groups_file):
 
     # Match the fixed loopback production origin; source-route security deliberately rejects
     # TestClient's synthetic ``testserver`` host.
-    with TestClient(create_app(), base_url="http://127.0.0.1:8510") as c:
+    with TestClient(
+        create_app(),
+        base_url="http://127.0.0.1:8510",
+        headers={"origin": "http://127.0.0.1:8510", "sec-fetch-site": "same-origin"},
+    ) as c:
         # The context manager runs the lifespan (init_db).
         yield c

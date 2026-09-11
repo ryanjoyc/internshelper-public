@@ -1,7 +1,7 @@
 # Set up Codex Cloud
 
 Use Codex Cloud as an engineering and test workspace for internsHELPer. Keep collection, source
-research, email, the real SQLite database, and macOS app operations on the user's Mac.
+research, email, the user's SQLite database, and native app operations on the user's own machine.
 
 Cloud tasks use temporary SQLite files created by pytest. Do not upload `data/`, `.env`, raw
 payloads, or SMTP credentials.
@@ -11,8 +11,8 @@ payloads, or SMTP credentials.
 Push the branch you want Cloud to use. A Cloud task can only see commits available through GitHub.
 Use one writer per branch: finish or checkpoint a Cloud task before editing the same branch locally.
 
-The repository includes the pstack skills under `.agents/skills`, so Cloud does not depend on
-the user's personal Codex plugin cache. `scripts/setup-codex-cloud.sh` installs the remaining tools and
+The repository includes the pstack skills under `.agents/skills`, so Cloud does not depend on a
+personal Codex plugin cache. `scripts/setup-codex-cloud.sh` installs the remaining tools and
 rebuilds the ignored code-review graph for the selected branch.
 
 On the Mac, Codex may list both `engineering-mode` and `pstack-codex:engineering-mode`. They are the
@@ -20,7 +20,7 @@ same pinned bundle from two discovery locations. Cloud uses the repository-scope
 
 ## Create the environment
 
-1. Open Codex settings and connect the GitHub repository `OWNER/internsHELPer`.
+1. Open Codex settings and connect your fork or clone of the GitHub repository.
 2. Create an environment named `internshelper-engineering`.
 3. Pin Python to `3.13`.
 4. Add the environment variable `INTERNSHELPER_CLOUD=1`.
@@ -55,7 +55,7 @@ selected branch. The setup installs the `ui` test extra, Chromium, and `code-rev
 
 ## Verify a fresh Cloud checkout
 
-Select `codex/package-uncommitted-arc` and start a no-change task with this prompt:
+Select the branch you want to verify and start a no-change task with this prompt:
 
 ```text
 Use $internshelper-engineering and $engineering-mode. Make no code or data changes.
@@ -89,5 +89,5 @@ Do not run these in the engineering Cloud environment:
 - `live_canary` or live posting investigations;
 - email, `.env` scaffolding, launchd installation, Dock app packaging, or native macOS checks.
 
-Run macOS acceptance and any deliberate operation against the user's real database on the Mac after
-reviewing the Cloud diff.
+Run macOS acceptance and any deliberate operation against the user's real database on the local
+Mac after reviewing the Cloud diff.

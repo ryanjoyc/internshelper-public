@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from internshelper import companygroups
+from internshelper import companygroups, store
 
 TIERS = companygroups.ALL_GROUPS
 TIER_LABELS = companygroups.GROUP_LABELS
@@ -53,3 +53,17 @@ def retier_inbox(conn: sqlite3.Connection, tier_map) -> int:
     conn.executemany("UPDATE postings SET tier = ? WHERE posting_id = ?", updates)
     conn.commit()
     return len(updates)
+
+
+def repair_stale_inbox_tiers(conn: sqlite3.Connection, groups_path=None) -> int:
+    """Repair legacy tier values once during application startup."""
+
+    marks = ",".join("?" for _ in TIERS)
+    stale = conn.execute(
+        f"SELECT 1 FROM postings WHERE (tier IS NULL OR tier NOT IN ({marks})) "
+        f"AND {store.INBOX_SQL} LIMIT 1",
+        TIERS,
+    ).fetchone()
+    if not stale:
+        return 0
+    return retier_inbox(conn, load_tier_map(groups_path))

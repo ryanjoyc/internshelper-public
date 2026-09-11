@@ -69,8 +69,8 @@ Discovery suggestions carry reason/evidence and require user approval.
 | `companies` | Separate board-resolution index (`config/companies.yaml`): add/list companies, record board proposals, approve (→ `sources.yaml`) / reject / link / mark no-board. It does not classify Board priority. |
 | `dedup` | Cross-source duplicate handling: automatically collapse strong canonical-URL matches, surface same-company/title lookalikes for review, and preserve reversible keep/merge overrides. |
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
-| `setup` | Bootstrap: scaffold per-machine `.env` (secrets + feature toggles), realize the macOS launchd plist through `/usr/bin/env`, route scheduler logs to `~/Library/Logs/internshelper`, and install the Dock app. Idempotent. |
-| `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). A package, not a single file — `create_app()` factory in `__init__.py`, per-request DB connections in `deps.py`, routes/ (board — including Verify/replacement actions — postings, health incl. `/healthz`, sources, companies), templates/ (Jinja + HTMX partials), static/ (app.css design tokens, app.js, vendored htmx/alpine/sortable, Geist fonts). Routes stay thin; data and availability decisions live in domain/store modules. |
+| `setup` | Bootstrap: seed missing private config from tracked examples, securely scaffold per-machine `.env` (secrets + feature toggles), realize the macOS launchd plist through `/usr/bin/env`, route scheduler logs to `~/Library/Logs/internshelper`, and install the Dock app. Idempotent. |
+| `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). `create_app()` in `__init__.py` initializes schema and legacy tiers at startup; global middleware rejects non-loopback Host headers and requires same-origin provenance for unsafe methods. `deps.py` owns per-request DB connections. `routes/` contains Board (including Verify/replacement actions), Postings, Health including `/healthz`, Sources, and Companies; `templates/` holds Jinja + HTMX partials; `static/` holds CSS, JavaScript, vendored htmx/Alpine/Sortable, and Geist fonts. Routes stay thin; data and availability decisions live in domain/store modules. |
 | `app` | Dock-app runtime launcher: start the web server headless on port 8510 (under a pipe-watchdog that reaps it if the launcher dies), probe `/healthz`, show it in a native pywebview window, stop it on quit. Pidfile (`data/app.pid`) decides attach vs own for a pre-existing server; caps `data/app.log` at launch. |
 | `appbundle` | Build `InternsHELPer.app` into `build/` (Info.plist, launcher script execing `app`, `.icns` from `assets/icon-1024.png` via sips/iconutil); `--install` copies it to `~/Applications`. macOS-only. |
 
@@ -139,19 +139,23 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 
 ## Config & data
 
-- `config/sources.yaml` — the board list. **Git-committed and shared**; prefer the `sources` CLI
-  over hand-editing it.
-- `config/companies.yaml` — the approved-companies index (**machine-managed** — regenerated on
-  every write; edit via the `companies` CLI or the web Companies page, never by hand).
-- `config/company-groups.yaml` — the independent Board browsing groups (**machine-managed**);
-  use the `companygroups` CLI or Companies/Board controls. Missing companies are unclassified.
-- `config/profile.md` — the user's role-fit profile. The `deep-scan-source` / `review-internships`
-  agents judge every posting's JD against it (generous, JD-over-title).
+- `config/sources.yaml` — the private, gitignored board list. Prefer the `sources` CLI over
+  hand-editing it. The public starting point is `config/sources.example.yaml`.
+- `config/companies.yaml` — the private, gitignored approved-companies index (**machine-managed** —
+  regenerated on every write; edit via the `companies` CLI or web Companies page, never by hand).
+  The public starting point is `config/companies.example.yaml`.
+- `config/company-groups.yaml` — the private, gitignored Board browsing groups (**machine-managed**);
+  use the `companygroups` CLI or Companies/Board controls. Missing companies are unclassified. The
+  public starting point is `config/company-groups.example.yaml`.
+- `config/profile.md` — the private, gitignored role-fit profile. The `deep-scan-source` and
+  `review-internships` agents judge each posting's JD against it (generous, JD-over-title). Start
+  with `config/profile.example.md`; agent workflows also honor `INTERNSHELPER_PROFILE`.
 - `config/settings.toml` — neutral, committed settings (e.g. `[smtp] host`/`port`,
   classification keywords/filters).
 - `.env` — **gitignored, per-machine**: SMTP secrets + `INTERNSHELPER_FEATURE_*` toggles
-  (`COLLECT`/`EMAIL`/`AVAILABILITY`/`SCHEDULE`/`DASHBOARD`/`APP`) and path overrides (`INTERNSHELPER_DB`/
-  `_SOURCES`/`_SETTINGS`). A real exported env var always overrides the file.
+  (`COLLECT`/`EMAIL`/`AVAILABILITY`/`SCHEDULE`/`DASHBOARD`/`APP`) and path overrides
+  (`INTERNSHELPER_DB`, `_SOURCES`, `_SETTINGS`, `_COMPANIES`, `_COMPANY_GROUPS`). Copyable values
+  are documented in `.env.example`; a real exported environment variable always wins.
 - `data/` — **gitignored**: `data/internshelper.db` (SQLite) and `data/payloads/{id}.json` (raw
   payloads). Paths resolve off the repo root, so the scheduler's working directory doesn't matter.
 
@@ -167,6 +171,7 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
   boundaries, and verification.
 - `docs/availability-verification-{catalog,coverage}.md` — generated availability acceptance
   cases, coverage, locked expectations, and contract-suite commands.
+- `THIRD_PARTY_NOTICES.md` — vendored component versions, provenance, and license locations.
 - Completed or superseded plans are intentionally absent from the active tree; use Git history.
 
 ## Run & test
@@ -174,6 +179,7 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 ```bash
 # Setup (manual)
 python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev,web]"
+.venv/bin/python -m internshelper.setup
 # Or one-shot, per-machine config:
 bash scripts/bootstrap.sh
 

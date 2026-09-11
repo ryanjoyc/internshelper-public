@@ -1,4 +1,4 @@
-"""The approved-companies index: the user's master list of companies to track.
+"""The approved-companies index: the user's private list of companies to track.
 
 `config/companies.yaml` holds intent + resolution state; the actual scan config for a
 resolved company's board lives in `config/sources.yaml` (`board` is a pointer — a

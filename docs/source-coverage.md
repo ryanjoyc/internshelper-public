@@ -1,6 +1,6 @@
 # Source coverage and connector boundaries
 
-_Last updated: 2026-08-31 · implementation reference, not a live freshness report_
+_Last updated: 2026-09-10 · implementation reference, not a live freshness report_
 
 For the configured source list, use:
 
@@ -11,20 +11,12 @@ For the configured source list, use:
 For operational freshness, inspect the Health page or `data/internshelper.db`; counts and last-run
 timestamps do not belong in this document.
 
-## Current configured footprint
+## Configured footprint
 
-`config/sources.yaml` currently validates with 22 entries:
-
-| Type | Configured sources |
-|---|---:|
-| Greenhouse | 9 |
-| Workday | 5 |
-| Markdown lists | 4 |
-| Ashby | 2 |
-| Lever | 1 |
-| Amazon Jobs | 1 |
-
-This is a point-in-time configuration summary. The file and `sources list` CLI are authoritative.
+The public template at `config/sources.example.yaml` starts empty and documents each supported
+source shape. Bootstrap copies it to the ignored `config/sources.yaml`; the Sources page and
+`sources` CLI manage that private list. Run `sources list` for the current machine's authoritative
+footprint.
 
 ## Supported connectors
 
@@ -56,6 +48,28 @@ Prefer the narrowest reliable first-party board:
 
 Company priority is separate from source coverage. Adding a board does not make its company a Top
 target or Worth discovering; those decisions live in `config/company-groups.yaml`.
+
+## Outbound-request security boundary
+
+Treat every configured source and manually submitted careers-page URL as trusted input. The
+availability checker rejects non-HTTP(S) targets, credentials in URLs, addresses that currently
+resolve to private or loopback networks, and redirects to those destinations. It revalidates each
+redirect and stores at most 1 MB of a non-redirect response body.
+
+Two narrower risks remain:
+
+- DNS is checked before HTTPX opens the connection, then resolved again by the transport. A hostile
+  DNS server could change its answer between those operations and reach an internal address.
+- The careers-page sniffer and raw-list connectors currently follow redirects in their HTTP client
+  and fully buffer responses. They do not apply the availability checker's private-address,
+  per-redirect, or response-size policy.
+
+The loopback web app rejects foreign Host headers and cross-origin mutations, so an unrelated web
+page cannot directly submit one of these URLs. Exploitation still requires a configured or pasted
+hostile source, or a trusted upstream/DNS service turning hostile. This does not block publishing a
+local single-user tool, but deployments should accept sources only from trusted public job boards.
+A future shared outbound transport should pin the validated address while preserving the original
+TLS hostname, revalidate every redirect, and enforce streaming byte limits for all connectors.
 
 ## Known unsupported or deliberately constrained sources
 

@@ -1,8 +1,10 @@
 """The Top-target digest email: rendering + SMTP-cred validation."""
 
+import ssl
+
 import pytest
 
-from internshelper import notify
+from internshelper import mailer, notify
 from internshelper.config import Settings
 
 
@@ -53,3 +55,39 @@ def test_send_digest_missing_recipient_raises():
     s.smtp_recipient = ""
     with pytest.raises(RuntimeError):
         notify.send_digest(s, _rows(), password="pw", send_fn=lambda *a: None)
+
+
+def test_mailer_starttls_uses_default_certificate_verification(monkeypatch):
+    context = object()
+    calls = []
+
+    class _SMTP:
+        def __init__(self, host, port):
+            calls.append(("connect", host, port))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def starttls(self, *, context=None):
+            calls.append(("starttls", context))
+
+        def login(self, sender, password):
+            calls.append(("login", sender, password))
+
+        def send_message(self, message):
+            calls.append(("send", message["To"]))
+
+    monkeypatch.setattr(ssl, "create_default_context", lambda: context)
+    monkeypatch.setattr(mailer.smtplib, "SMTP", _SMTP)
+
+    mailer.send(_settings(), "subject", "<p>body</p>", "password")
+
+    assert calls == [
+        ("connect", "smtp.test", 587),
+        ("starttls", context),
+        ("login", "me@test", "password"),
+        ("send", "me@test"),
+    ]

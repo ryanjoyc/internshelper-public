@@ -13,8 +13,10 @@ Run everything from the repo root with the project venv: `.venv/bin/python`.
 
 ## Judgment — be GENEROUS, curation over gating
 
-Judge fit against **`config/profile.md`** (the user's role-fit profile), JD-over-title — title
-keywords must never be the reason to dismiss. the user would rather skim a loosely-relevant
+Judge fit against the user's private role-fit profile: `INTERNSHELPER_PROFILE` when set, otherwise
+**`config/profile.md`**. If it is missing, stop and ask the user to customize
+`config/profile.example.md`; do not infer personal criteria. Judge JD-over-title — title
+keywords must never be the reason to dismiss. The user would rather skim a loosely relevant
 role himself than have it hidden.
 
 - **Dismiss** ONLY confirmed junk: clearly non-technical with no CS / data / quant /

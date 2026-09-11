@@ -23,6 +23,12 @@ from internshelper.dotenv import feature_enabled
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _LABEL = "com.internshelper.run"
 _IGNORE_MATCHES = {".env", "/.env", "*.env"}
+USER_CONFIG_TEMPLATES = (
+    ("profile.example.md", "profile.md"),
+    ("companies.example.yaml", "companies.yaml"),
+    ("company-groups.example.yaml", "company-groups.yaml"),
+    ("sources.example.yaml", "sources.yaml"),
+)
 
 
 def launchd_log_dir(home: str | Path | None = None) -> Path:
@@ -40,8 +46,9 @@ def ensure_gitignore_has_env(gitignore_path: str | Path) -> bool:
 
 
 def render_env(sender: str = "", recipient: str = "", password: str = "", *,
-               email: bool = True, schedule: bool = True, dashboard: bool = True,
-               app: bool = True, availability: bool = True) -> str:
+               collect: bool = True, email: bool = True, schedule: bool = True,
+               dashboard: bool = True, app: bool = True,
+               availability: bool = True) -> str:
     """Render the per-machine `.env` (secrets + feature toggles)."""
     flag = lambda b: "1" if b else "0"  # noqa: E731
     return "\n".join([
@@ -54,7 +61,7 @@ def render_env(sender: str = "", recipient: str = "", password: str = "", *,
         f"INTERNSHELPER_SMTP_PASSWORD={password}",
         "",
         "# --- feature toggles (0 = off) ---",
-        "INTERNSHELPER_FEATURE_COLLECT=1",
+        f"INTERNSHELPER_FEATURE_COLLECT={flag(collect)}",
         f"INTERNSHELPER_FEATURE_EMAIL={flag(email)}",
         f"INTERNSHELPER_FEATURE_AVAILABILITY={flag(availability)}",
         f"INTERNSHELPER_FEATURE_SCHEDULE={flag(schedule)}",
@@ -64,18 +71,63 @@ def render_env(sender: str = "", recipient: str = "", password: str = "", *,
     ])
 
 
+def _write_private_file(path: Path, data: bytes) -> bool:
+    """Create one owner-only file without following or replacing an existing path."""
+
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return False
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+    except BaseException:
+        # Do not leave a partial secret/config file after a failed write.
+        path.unlink(missing_ok=True)
+        raise
+    return True
+
+
+def scaffold_user_configs(repo_dir: str | Path) -> tuple[Path, ...]:
+    """Seed missing private config files from public examples, without overwriting."""
+
+    config_dir = Path(repo_dir) / "config"
+    pending = [
+        (config_dir / example, config_dir / runtime)
+        for example, runtime in USER_CONFIG_TEMPLATES
+        if not (config_dir / runtime).exists()
+    ]
+    missing = [example for example, _runtime in pending if not example.is_file()]
+    if missing:
+        raise FileNotFoundError(f"public config example not found: {missing[0]}")
+
+    created = []
+    for example, runtime in pending:
+        if _write_private_file(runtime, example.read_bytes()):
+            created.append(runtime)
+    return tuple(created)
+
+
 def scaffold_env(path: str | Path, sender: str = "", recipient: str = "", password: str = "", *,
-                 email: bool = True, schedule: bool = True, dashboard: bool = True,
-                 app: bool = True, availability: bool = True) -> bool:
+                 collect: bool = True, email: bool = True, schedule: bool = True,
+                 dashboard: bool = True, app: bool = True,
+                 availability: bool = True) -> bool:
     """Write `.env` only if absent (never clobber existing secrets). Returns whether written."""
     p = Path(path)
     if p.exists():
         return False
-    p.write_text(render_env(sender, recipient, password,
-                            email=email, schedule=schedule, dashboard=dashboard, app=app,
-                            availability=availability),
-                 encoding="utf-8")
-    return True
+    rendered = render_env(
+        sender,
+        recipient,
+        password,
+        collect=collect,
+        email=email,
+        schedule=schedule,
+        dashboard=dashboard,
+        app=app,
+        availability=availability,
+    )
+    return _write_private_file(p, rendered.encode("utf-8"))
 
 
 def realize_plist(template: str | Path, dest: str | Path, repo_dir: str | Path) -> None:
@@ -142,16 +194,28 @@ def main(argv=None) -> int:
               "Add `.env` to .gitignore first.")
         return 1
 
+    try:
+        created_configs = scaffold_user_configs(repo_dir)
+    except FileNotFoundError as exc:
+        print(f"ABORT: {exc}")
+        return 1
+    if created_configs:
+        print("seeded private config: " + ", ".join(str(path) for path in created_configs))
+
     if args.no_input:
-        email = feature_enabled("EMAIL")
+        # An unattended public-clone bootstrap must not opt into email, launchd, or a
+        # native-app install merely because the corresponding variable is absent.
+        collect = feature_enabled("COLLECT")
+        email = feature_enabled("EMAIL", default=False)
         availability = feature_enabled("AVAILABILITY")
-        schedule = feature_enabled("SCHEDULE")
+        schedule = feature_enabled("SCHEDULE", default=False)
         dashboard = feature_enabled("DASHBOARD")
-        app = dashboard and feature_enabled("APP")
+        app = dashboard and feature_enabled("APP", default=False)
         sender = os.environ.get("INTERNSHELPER_SMTP_SENDER", "") if email else ""
         recipient = os.environ.get("INTERNSHELPER_SMTP_RECIPIENT", "") if email else ""
         password = os.environ.get("INTERNSHELPER_SMTP_PASSWORD", "") if email else ""
     else:
+        collect = True
         (
             email,
             availability,
@@ -163,9 +227,18 @@ def main(argv=None) -> int:
             password,
         ) = _prompt()
 
-    wrote = scaffold_env(repo_dir / ".env", sender, recipient, password,
-                         email=email, schedule=schedule, dashboard=dashboard, app=app,
-                         availability=availability)
+    wrote = scaffold_env(
+        repo_dir / ".env",
+        sender,
+        recipient,
+        password,
+        collect=collect,
+        email=email,
+        schedule=schedule,
+        dashboard=dashboard,
+        app=app,
+        availability=availability,
+    )
     print(f".env {'written' if wrote else 'already exists (left untouched)'}: {repo_dir / '.env'}")
 
     if schedule and sys.platform == "darwin":

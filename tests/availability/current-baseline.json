@@ -6,7 +6,7 @@
   "corpus_policy_version": "availability-policy-v1",
   "corpus_approval": {
     "status": "approved",
-    "approved_by": "the user",
+    "approved_by": "project maintainer",
     "approved_on": "2026-08-30"
   },
   "classification": {

@@ -267,6 +267,7 @@ def test_quick_status_preserves_focus_notes_and_error_feedback(
     response = page.request.post(
         f"{live_server}/board/move",
         form={"posting_id": "greenhouse:0", "status": "Applied"},
+        headers={"origin": live_server, "sec-fetch-site": "same-origin"},
     )
     assert response.ok
     page.goto(f"{live_server}/board")
@@ -326,6 +327,7 @@ def test_quick_status_focus_falls_back_to_a_hidden_target_lane(
     response = page.request.post(
         f"{live_server}/board/move",
         form={"posting_id": "greenhouse:0", "status": "Applied"},
+        headers={"origin": live_server, "sec-fetch-site": "same-origin"},
     )
     assert response.ok
     page.goto(f"{live_server}/board")

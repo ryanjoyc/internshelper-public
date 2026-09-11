@@ -66,18 +66,6 @@ def _refresh(conn: sqlite3.Connection) -> None:
     review.refresh_ranking(conn)
 
 
-def _self_heal_tiers(conn: sqlite3.Connection, groups_path: str) -> None:
-    """Migrate old posting-tier values on first load after this redesign."""
-    marks = ",".join("?" for _ in tiers.TIERS)
-    stale = conn.execute(
-        f"SELECT 1 FROM postings WHERE (tier IS NULL OR tier NOT IN ({marks})) "
-        f"AND {store.INBOX_SQL} LIMIT 1",
-        tiers.TIERS,
-    ).fetchone()
-    if stale:
-        tiers.retier_inbox(conn, tiers.load_tier_map(groups_path))
-
-
 def _group_by_company(rows: list, tier_map) -> list[dict]:
     """Group newest-first postings by canonical configured company identity."""
     def value(row, key):
@@ -349,7 +337,6 @@ def board_page(
     kept_page: int = 1,
     conn: sqlite3.Connection = Depends(get_conn),
 ):
-    _self_heal_tiers(conn, request.app.state.company_groups_path)
     ctx = _board_ctx(conn, view, request.app.state.company_groups_path)
     ctx["active"] = "board"
     requested_view = show if show in {"dismissed", "flagged", "duplicates"} else view

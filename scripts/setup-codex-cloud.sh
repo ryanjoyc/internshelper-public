@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Reproduce the internsHELPer engineering environment inside Codex Cloud.
 # This intentionally skips internshelper.setup: Cloud must not create .env,
-# install launchd jobs, send email, or point at the user's real SQLite database.
+# install launchd jobs, send email, or point at a user's real SQLite database.
 set -euo pipefail
 
 cloud_repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

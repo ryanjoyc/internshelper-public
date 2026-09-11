@@ -15,7 +15,7 @@ dependencies = [
 [project.optional-dependencies]
 # The web UI: FastAPI + Jinja2 server-rendered pages. HTMX/Alpine/Sortable are vendored
 # static files (no Node, no build step). Kept out of core so the cron collector stays lean.
-web = ["fastapi>=0.115,<1", "uvicorn>=0.30", "jinja2>=3.1"]
+web = ["fastapi>=0.115,<1", "uvicorn>=0.30", "jinja2>=3.1", "python-multipart>=0.0.20"]
 # The Dock app wraps the web UI in a native WKWebView window. Separate extra because
 # pywebview pulls the heavy pyobjc framework wheels (~100MB) on macOS.
 app = ["internshelper[web]", "pywebview>=5.1"]

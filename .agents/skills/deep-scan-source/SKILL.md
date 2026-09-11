@@ -68,7 +68,7 @@ session scratchpad directory, not the repo.
    ```
    Mapping: MATCH → leave visible in its configured company group; NO-MATCH → `dismiss`
    (term-matched-but-no-fit rows get reason `"<term> but not profile-fit; <evidence>"`);
-   **UNCERTAIN → leave visible** for the user to eyeball. The dismiss verb acts by `posting_id`,
+   **UNCERTAIN → leave visible** for the user to inspect. The dismiss verb acts by `posting_id`,
    so it **fails loudly for rows not yet collected**. If the
    source is registered but the enumerated `posting_id`s aren't in the DB yet, run one collect cycle
    first (`INTERNSHELPER_FEATURE_EMAIL=false .venv/bin/python -m internshelper.run`), then apply.
@@ -94,7 +94,9 @@ the SPA HTML is often empty — use the public JSON API instead (Lever v0/postin
 board API, Ashby posting-api, Workday CXS). CAVEAT: on Workday CXS do NOT trust the `startDate`
 field — it is the POSTING date, not the internship start; read the JD body for the term.
 
-Also Read <REPO>/config/profile.md. For each posting judge PROFILE-FIT from the JD (generously —
+Read the private role-fit profile at `$INTERNSHELPER_PROFILE` when set, otherwise
+`<REPO>/config/profile.md`. If it is missing, report that the user must customize
+`config/profile.example.md` and do not guess fit. For each posting judge PROFILE-FIT from the JD (generously —
 oddly-named roles like "Forward Deployed Engineer" fit if the work is CS/tech/quant/finance-relevant;
 pure sales/marketing/HR/recruiting/admin do not). Title keywords must never be the reason to
 reject fit.

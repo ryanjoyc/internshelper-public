@@ -1,6 +1,6 @@
 # internsHELPer roadmap
 
-_Last updated: 2026-08-30 · forward-looking product direction, not a release log_
+_Last updated: 2026-09-10 · forward-looking product direction, not a release log_
 
 For current runtime and Git status, read `STATE.md`. For the implementation map, use the
 `internshelper-guide` skill. Completed designs and implementation plans live in Git history rather
@@ -8,8 +8,8 @@ than the active docs tree.
 
 ## North star
 
-internsHELPer is a local-first internship aggregator the user can trust to collect broadly, organize
-by company, and track applications without silently hiding opportunities.
+internsHELPer is a local-first internship aggregator that collects broadly, organizes by company,
+and tracks applications without silently hiding opportunities.
 
 The core promise is:
 
@@ -48,6 +48,8 @@ The core promise is:
   investigation flow that cannot affect ranking.
 - Repository-local onboarding and task skills for source addition, company resolution, posting
   review, deep source verification, flagged-posting investigation, and project-state maintenance.
+- Public configuration templates with ignored per-user source, company, profile, environment, and
+  application data.
 
 ## Active priorities
 
@@ -55,9 +57,9 @@ The core promise is:
 
 - Research a representative batch of Unclassified companies.
 - Record concise proposals with evidence; never approve them automatically.
-- Review the user's approve/reject decisions and tighten the research rubric before scaling up.
+- Review approve/reject decisions and tighten the research rubric before scaling up.
 - Keep role relevance broad: company quality is the grouping question; the user chooses among the
-  company's postings himself.
+  company's postings.
 
 ### 2. Strengthen source reliability and coverage
 
@@ -85,21 +87,17 @@ The core promise is:
 ### 5. Package for non-technical distribution
 
 The current Dock app is a launcher over this checkout and its virtual environment. Do not present
-it as a distributable standalone application until this phase is complete, unless the user explicitly
-approves an exception.
+it as a distributable standalone application until this phase is complete.
 
 - Bundle Python, dependencies, templates, and static assets into a self-contained app.
 - Move runtime data and mutable config into per-user application-support directories.
 - Provide in-app first-run setup and scheduling.
 - Sign and notarize the macOS build; add a separate Windows packaging path only if worthwhile.
 
-## Operational follow-ups
+## Operational boundaries
 
-These are independent from product development and should not be silently folded into unrelated
-work:
-
-- Point the hourly `launchd` job at the current checkout and verify one scheduled cycle.
-- Configure or explicitly disable SMTP email on this machine.
+Scheduling, SMTP configuration, and native app installation are per-machine operations. Keep them
+out of unrelated product changes, and verify each one on the machine where it will run.
 
 ## Deferred decisions
 

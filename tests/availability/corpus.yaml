@@ -2,7 +2,7 @@ schema_version: 1
 policy_version: availability-policy-v1
 approval:
   status: approved
-  approved_by: the user
+  approved_by: project maintainer
   approved_on: "2026-08-30"
 
 coverage_requirements:
@@ -103,7 +103,7 @@ mutants:
 
 maintenance_rules:
   - Add a corpus case for each newly discovered production availability failure before fixing that failure.
-  - Obtain the user's approval before changing an expected user-visible outcome or locked product expectation.
+  - Obtain the project maintainer's approval before changing an expected user-visible outcome or locked product expectation.
   - Engineers may refactor fixtures and add cases that follow already-approved policy without a separate product decision.
   - Keep real-derived fixtures minimal and sanitized; retain only excerpts needed to reproduce the behavior.
   - Increment schema_version for incompatible manifest-shape changes and policy_version for approved expectation changes.
