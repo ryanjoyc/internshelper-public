@@ -71,7 +71,7 @@ Discovery suggestions carry reason/evidence and require user approval.
 | `sources` | Add/list/remove/test job-board sources: detect URL type (with a `sniffer` fallback for boards embedded on careers pages), live fetch-test, append-only writes to `sources.yaml` (comments preserved). Driven by the `add-source` skill or the web UI's Sources page. Exposes a reusable add core (`resolve_entry`, `is_duplicate`, `fetch_test`, `append_source`, `parse_kv`). |
 | `setup` | Bootstrap: seed missing private config from tracked examples, securely scaffold per-machine `.env` (secrets + feature toggles), offer the Dock app on macOS, and realize/load launchd only after explicit opt-in. Scheduler logs go to `~/Library/Logs/internshelper`. Idempotent. |
 | `web` | The web UI server: `python -m internshelper.web [--port 8510]` (binds 127.0.0.1 only). `create_app()` in `__init__.py` initializes schema and legacy tiers at startup; global middleware rejects non-loopback Host headers and requires same-origin provenance for unsafe methods. `deps.py` owns per-request DB connections. `routes/` contains Board (including Verify/replacement actions), Postings, Health including `/healthz`, Sources, and Companies; `templates/` holds Jinja + HTMX partials; `static/` holds CSS, JavaScript, vendored htmx/Alpine/Sortable, and Geist fonts. Routes stay thin; data and availability decisions live in domain/store modules. |
-| `app` | Dock-app runtime launcher: start the web server headless on port 8510 (under a pipe-watchdog that reaps it if the launcher dies), probe `/healthz`, show it in a native pywebview window, stop it on quit. Pidfile (`data/app.pid`) decides attach vs own for a pre-existing server; caps `data/app.log` at launch. |
+| `app` | Dock-app runtime launcher: start the web server headless on port 8510 (under a pipe-watchdog that reaps it if the launcher dies), probe `/healthz`, show it in a native pywebview window, and stop only the process started by this launcher. Pre-existing healthy servers are attached and left running; caps `data/app.log` at launch. |
 | `appbundle` | Build `InternsHELPer.app` into `build/` (Info.plist, launcher script execing `app`, `.icns` from `assets/icon-1024.png` via sips/iconutil); `--install` copies it to `~/Applications`. macOS-only. |
 
 **Libraries:**
@@ -90,14 +90,14 @@ Discovery suggestions carry reason/evidence and require user approval.
 | `models` | The normalized `Posting` dataclass shared across connectors / classify / store; carries scraped + classified fields + the raw payload. |
 | `classify` | Keyword matcher (whole-word, case-insensitive) over title + HTML-stripped description → the three flag booleans. |
 | `clock` | Canonical UTC ISO-8601 helpers: parse mixed date formats, convert to UTC, diff. |
-| `notify` | Render + send the Top-target digest email (HTML-escaped). |
+| `notify` | Render + send the Top-target digest email (HTML-escaped, HTTP(S)-only links). |
 | `display` | Pure display helpers: humanize mixed date formats with relative-age hints (framework-free). |
 | `dotenv` | Stdlib `.env` loader; shell env vars win; silent no-op if the file is missing. |
 | `text` | HTML→text helpers (stdlib `html.parser`, survives double-escaped HTML): `strip_html` one-liner for keyword/token matching, `html_to_text` paragraph/bullet-preserving for showing descriptions. |
 | `sourceurl` | Pure URL→`SourceEntry` detection (no network): map a pasted board URL to a source by host + path. |
 | `sniffer` | Heuristic, no-AI detection of embedded Greenhouse/Lever/Ashby/Workday boards on an arbitrary careers page (regex over the fetched HTML). The add-source fallback when `sourceurl` can't resolve a clean board URL. |
 | `filters` | Apply user filter booleans (`require_cs`, `require_intern_or_newgrad`) to classified postings. Pure function. |
-| `mailer` | Shared SMTP send helper used by `notify` (the v1 digest emailer is gone). |
+| `mailer` | Shared timeout-bounded SMTP send helper used by `notify` (the v1 digest emailer is gone). |
 | `__init__` | Package root (version). |
 
 ## Connectors (`internshelper/connectors/`)
@@ -157,7 +157,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
   (`INTERNSHELPER_DB`, `_SOURCES`, `_SETTINGS`, `_COMPANIES`, `_COMPANY_GROUPS`). Copyable values
   are documented in `.env.example`; a real exported environment variable always wins.
 - `data/` — **gitignored**: `data/internshelper.db` (SQLite) and `data/payloads/{id}.json` (raw
-  payloads). Paths resolve off the repo root, so the scheduler's working directory doesn't matter.
+  payloads). On macOS and Linux, new runtime data files use owner-only permissions. Paths resolve
+  off the repo root, so the scheduler's working directory doesn't matter.
 
 ## Documentation entrypoints
 

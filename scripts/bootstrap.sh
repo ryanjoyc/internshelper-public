@@ -38,16 +38,12 @@ echo "==> installing core engine + web UI + dev deps"
 .venv/bin/python -m pip install -q --upgrade pip
 .venv/bin/python -m pip install -e ".[dev,web]"
 
-# Dock app is macOS-only and best-effort: pywebview pulls the heavy pyobjc wheels.
-# Failure must NOT abort the bootstrap (the web UI still works in a browser).
+# Dock app is macOS-only. It is part of the primary macOS path, so a dependency
+# failure stops bootstrap before setup can install a launcher that will not open.
 if [ "$(uname)" = "Darwin" ]; then
-  echo "==> installing Dock app extra (best-effort)"
-  if .venv/bin/python -m pip install -e ".[app]"; then
-    echo "    Dock app deps ready"
-  else
-    echo "    WARNING: pywebview (Dock app) failed to install — continuing without it." >&2
-    echo "             Install later with: .venv/bin/python -m pip install -e \".[app]\"" >&2
-  fi
+  echo "==> installing Dock app extra"
+  .venv/bin/python -m pip install -e ".[app]"
+  echo "    Dock app deps ready"
 fi
 
 echo "==> configuring this machine"

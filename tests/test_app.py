@@ -1,12 +1,16 @@
 """Unit tests for the Dock-app runtime launcher (internshelper.app).
 
 Covers the pure, safe-to-test pieces: the web-server command line, the server poll loop
-(with injected probe/clock/sleep), pidfile round-trips, log capping, and the attach/own
-ownership decision. No sockets, no subprocesses, no pywebview — the window lifecycle is
-exercised manually.
+(with injected probe/clock/sleep), log capping, and the rule that only a process launched
+by the current app instance may be stopped. No sockets, no subprocesses, no pywebview —
+the window lifecycle is exercised manually.
 """
 
+import os
+import stat
 import sys
+
+import pytest
 
 from internshelper import app
 
@@ -23,16 +27,6 @@ def test_watchdog_command_wraps_server_command():
     assert cmd[1] == "-c"
     assert "stdin.buffer.read" in cmd[2]  # the pipe watch that reaps on launcher death
     assert cmd[3:] == app.server_command(8510, "/repo/here")
-
-
-def test_pid_alive_treats_eperm_as_not_ours(monkeypatch):
-    # A recycled pid owned by another user raises EPERM on signal 0 — we could never
-    # reap it, so the launcher must not claim it as its own server.
-    def kill(pid, sig):
-        raise PermissionError
-
-    monkeypatch.setattr(app.os, "kill", kill)
-    assert app.pid_alive(4242) is False
 
 
 def test_trim_log_caps_oversized_file(tmp_path):
@@ -74,30 +68,24 @@ def test_wait_for_server_times_out():
     assert now[0] >= 5  # the loop actually ran to the deadline
 
 
-def test_pidfile_roundtrip(tmp_path):
-    p = tmp_path / "app.pid"
-    app.write_pidfile(12345, p)
-    assert app.read_pidfile(p) == 12345
-    app.clear_pidfile(p)
-    assert app.read_pidfile(p) is None
-    app.clear_pidfile(p)  # idempotent on a missing file
+def test_log_event_keeps_log_and_data_directory_owner_only(tmp_path):
+    app.log_event("server ready", tmp_path)
+    data_dir = tmp_path / "data"
+    if os.name == "posix":
+        assert stat.S_IMODE(data_dir.stat().st_mode) == 0o700
+        assert stat.S_IMODE((data_dir / "app.log").stat().st_mode) == 0o600
 
 
-def test_read_pidfile_garbage(tmp_path):
-    p = tmp_path / "app.pid"
-    p.write_text("not-a-pid\n")
-    assert app.read_pidfile(p) is None
+def test_decide_never_claims_a_preexisting_server():
+    assert app.decide(False) == app.SPAWN
+    assert app.decide(True) == app.ATTACH_FOREIGN
 
 
-def test_decide_ownership_table():
-    alive = lambda pid: pid == 111  # noqa: E731
-    cases = [
-        # (healthy, pidfile_pid) -> mode
-        ((False, None), app.SPAWN),           # nothing running
-        ((False, 111), app.SPAWN),            # stale pidfile but no server: spawn fresh
-        ((True, None), app.ATTACH_FOREIGN),   # someone else's dev server
-        ((True, 111), app.ATTACH_OWN),        # our crashed window's server
-        ((True, 222), app.ATTACH_FOREIGN),    # pidfile pid is dead: not ours anymore
-    ]
-    for (healthy, pid), expected in cases:
-        assert app.decide(healthy, pid, alive) == expected, (healthy, pid)
+def test_shutdown_rejects_a_saved_or_recycled_pid_without_signaling(monkeypatch):
+    signals = []
+    monkeypatch.setattr(app.os, "kill", lambda *args: signals.append(args))
+
+    with pytest.raises(TypeError, match="launched by this app"):
+        app.shutdown(4242)
+
+    assert signals == []

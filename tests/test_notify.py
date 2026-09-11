@@ -38,6 +38,17 @@ def test_render_digest_singular_subject():
     assert subject == "internsHELPer: 1 new Top-target posting"
 
 
+@pytest.mark.parametrize(
+    "unsafe_url",
+    ["javascript:alert(1)", "http://", "https://user:pass@example.test/", "http://["],
+)
+def test_render_digest_does_not_link_unsafe_urls(unsafe_url):
+    rows = [{"title": "Unsafe", "company": "Example", "url": unsafe_url}]
+    _subject, rendered = notify.render_digest(rows)
+    assert unsafe_url not in rendered
+    assert "<li>Unsafe — Example</li>" in rendered
+
+
 def test_send_digest_missing_password_raises():
     with pytest.raises(RuntimeError):
         notify.send_digest(_settings(), _rows(), password=None, send_fn=lambda *a: None)
@@ -62,8 +73,8 @@ def test_mailer_starttls_uses_default_certificate_verification(monkeypatch):
     calls = []
 
     class _SMTP:
-        def __init__(self, host, port):
-            calls.append(("connect", host, port))
+        def __init__(self, host, port, timeout):
+            calls.append(("connect", host, port, timeout))
 
         def __enter__(self):
             return self
@@ -86,7 +97,7 @@ def test_mailer_starttls_uses_default_certificate_verification(monkeypatch):
     mailer.send(_settings(), "subject", "<p>body</p>", "password")
 
     assert calls == [
-        ("connect", "smtp.test", 587),
+        ("connect", "smtp.test", 587, mailer.SMTP_TIMEOUT),
         ("starttls", context),
         ("login", "me@test", "password"),
         ("send", "me@test"),

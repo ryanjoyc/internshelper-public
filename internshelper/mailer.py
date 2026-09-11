@@ -13,6 +13,8 @@ from email.message import EmailMessage
 
 from internshelper.config import Settings
 
+SMTP_TIMEOUT = 30.0
+
 
 def send(settings: Settings, subject: str, html: str, password: str) -> None:
     """Send an HTML email via SMTP+STARTTLS. Raises on any SMTP error."""
@@ -22,7 +24,9 @@ def send(settings: Settings, subject: str, html: str, password: str) -> None:
     msg["To"] = settings.smtp_recipient
     msg.set_content("This message is best viewed as HTML.")
     msg.add_alternative(html, subtype="html")
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+    with smtplib.SMTP(
+        settings.smtp_host, settings.smtp_port, timeout=SMTP_TIMEOUT
+    ) as server:
         server.starttls(context=ssl.create_default_context())
         server.login(settings.smtp_sender, password)
         server.send_message(msg)

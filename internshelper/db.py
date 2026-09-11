@@ -110,19 +110,45 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 
+def _secure_database_files(path: Path) -> None:
+    for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+        if candidate.is_file():
+            try:
+                candidate.chmod(0o600)
+            except FileNotFoundError:
+                pass
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
     """Open a connection with WAL + a 5s busy timeout (single-user concurrency)."""
+    raw_path = str(path)
+    is_memory = raw_path == ":memory:"
     path = Path(path)
-    if path.parent != Path(""):
-        path.parent.mkdir(parents=True, exist_ok=True)
-    # check_same_thread=False: Streamlit reruns the app on different threads, so a
-    # connection may be created on one thread and used on another. Safe here — access is
-    # serialized (single-user, one script run at a time) and guarded by WAL + busy_timeout.
-    conn = sqlite3.connect(str(path), timeout=5.0, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA foreign_keys=ON")
+    if not is_memory:
+        if path.parent != Path(""):
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            path.touch(mode=0o600, exist_ok=False)
+        except FileExistsError:
+            pass
+    # Web routes can use a connection from a worker thread other than the one that opened it.
+    # Access remains single-user and is guarded by WAL + busy_timeout.
+    conn = sqlite3.connect(raw_path, timeout=5.0, check_same_thread=False)
+    try:
+        if not is_memory:
+            # Make SQLite validate an existing file before changing its permissions.
+            # A typo that points at an unrelated regular file must leave it untouched.
+            conn.execute("PRAGMA schema_version").fetchone()
+            _secure_database_files(path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA foreign_keys=ON")
+        if not is_memory:
+            _secure_database_files(path)
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 

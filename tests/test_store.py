@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -59,6 +61,27 @@ def test_upsert_writes_raw_payload_for_new_posting(tmp_path):
     assert row["review_status"] == "pending"
     assert row["payload_path"]
     assert json.loads(Path(row["payload_path"]).read_text()) == {"id": 1, "title": "X", "extra": "data"}
+    if os.name == "posix":
+        assert stat.S_IMODE(payloads.stat().st_mode) == 0o700
+        assert stat.S_IMODE(Path(row["payload_path"]).stat().st_mode) == 0o600
+
+
+def test_upsert_writes_payload_when_fchmod_is_unavailable(tmp_path, monkeypatch):
+    c = _conn(tmp_path)
+    posting = _p("greenhouse:portable")
+    posting.raw = {"id": "portable"}
+    monkeypatch.delattr(store.os, "fchmod")
+
+    store.upsert(
+        c,
+        posting,
+        now="2026-06-18T10:00:00+00:00",
+        payloads_dir=tmp_path / "payloads",
+    )
+
+    assert json.loads(Path(_row(c, posting.posting_id)["payload_path"]).read_text()) == {
+        "id": "portable"
+    }
 
 
 def test_upsert_update_preserves_review_state_and_original_payload(tmp_path):

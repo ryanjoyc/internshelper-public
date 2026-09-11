@@ -9,25 +9,43 @@ shared SMTP send helper from `mailer`.
 from __future__ import annotations
 
 import html
+from urllib.parse import urlsplit
 
 from internshelper import mailer
 from internshelper.config import Settings
+
+
+def _http_url(value: object) -> str:
+    url = str(value or "").strip()
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return ""
+    return (
+        url
+        if parsed.scheme.lower() in {"http", "https"}
+        and parsed.hostname
+        and parsed.username is None
+        and parsed.password is None
+        else ""
+    )
 
 
 def render_digest(rows) -> tuple[str, str]:
     """(subject, html) for the top-target digest. `rows` need title/company/url."""
     n = len(rows)
     subject = f"internsHELPer: {n} new Top-target posting{'' if n == 1 else 's'}"
-    items = "".join(
-        f'<li><a href="{html.escape(r["url"] or "", quote=True)}">'
-        f"{html.escape(r['title'] or '')}</a>"
-        f" — {html.escape(r['company'] or '')}</li>"
-        for r in rows
-    )
+    items = []
+    for row in rows:
+        title = html.escape(row["title"] or "")
+        company = html.escape(row["company"] or "")
+        url = _http_url(row["url"])
+        label = f'<a href="{html.escape(url, quote=True)}">{title}</a>' if url else title
+        items.append(f"<li>{label} — {company}</li>")
     body = (
         "<html><body>"
         f"<h2>{n} new posting{'' if n == 1 else 's'} from Top targets</h2>"
-        f"<ul>{items}</ul>"
+        f"<ul>{''.join(items)}</ul>"
         "<p>Open the internsHELPer Board to browse the company (dismiss what's not you, "
         "drag to Applied when you've applied).</p>"
         "</body></html>"

@@ -1,5 +1,10 @@
+import os
 import sqlite3
+import stat
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
 
 from internshelper import db
 
@@ -10,6 +15,75 @@ def _conn(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     db.init_db(conn)
     return conn
+
+
+def test_connect_keeps_database_owner_only(tmp_path):
+    path = tmp_path / "private.db"
+    conn = db.connect(path)
+    try:
+        if os.name == "posix":
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    finally:
+        conn.close()
+
+
+def test_connect_keeps_relative_database_owner_only(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    conn = db.connect("private.db")
+    try:
+        if os.name == "posix":
+            assert stat.S_IMODE((tmp_path / "private.db").stat().st_mode) == 0o600
+    finally:
+        conn.close()
+
+
+def test_connect_secures_existing_wal_sidecars(tmp_path):
+    path = tmp_path / "private.db"
+    first = sqlite3.connect(path)
+    first.execute("PRAGMA journal_mode=WAL")
+    first.execute("CREATE TABLE private_data (value TEXT)")
+    first.execute("INSERT INTO private_data VALUES ('application record')")
+    first.commit()
+    sidecars = [Path(f"{path}-wal"), Path(f"{path}-shm")]
+    assert all(sidecar.exists() for sidecar in sidecars)
+    path.chmod(0o644)
+    for sidecar in sidecars:
+        sidecar.chmod(0o644)
+
+    second = db.connect(path)
+    try:
+        if os.name == "posix":
+            assert all(
+                stat.S_IMODE(candidate.stat().st_mode) == 0o600
+                for candidate in [path, *sidecars]
+            )
+    finally:
+        second.close()
+        first.close()
+
+
+def test_connect_does_not_chmod_a_misconfigured_directory(tmp_path):
+    path = tmp_path / "not-a-database"
+    path.mkdir(mode=0o755)
+    path.chmod(0o755)
+
+    with pytest.raises(sqlite3.OperationalError):
+        db.connect(path)
+
+    if os.name == "posix":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o755
+
+
+def test_connect_does_not_chmod_a_non_database_file(tmp_path):
+    path = tmp_path / "not-a-database"
+    path.write_text("#!/bin/sh\necho unrelated\n")
+    path.chmod(0o755)
+
+    with pytest.raises(sqlite3.DatabaseError):
+        db.connect(path)
+
+    if os.name == "posix":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o755
 
 
 def test_fresh_db_has_v2_columns(tmp_path):
@@ -216,7 +290,7 @@ def test_connection_uses_wal(tmp_path):
 
 
 def test_connection_usable_from_another_thread(tmp_path):
-    # Streamlit reruns the script on different threads; the connection must not raise
+    # Web handlers may use the connection from another worker thread; it must not raise
     # sqlite3.ProgrammingError("created in a thread can only be used in that same thread").
     import threading
 

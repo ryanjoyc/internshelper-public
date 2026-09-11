@@ -56,7 +56,7 @@ def test_url_key_drops_tracking_params_but_keeps_identity_query():
     base = "https://capitalone.wd12.myworkdayjobs.com/Capital_One/job/McLean-VA/Prod_R246020-1"
     # R246020-1 isn't a >=5-digit pure-numeric segment, so this falls to canonical host/path;
     # a utm wrapper must not defeat the match.
-    assert k(base) == k(base + "?utm_source=github-vansh-ouckah")
+    assert k(base) == k(base + "?utm_source=community-list")
 
 
 def test_url_key_ignores_four_digit_year_and_falls_back_to_canonical_path():

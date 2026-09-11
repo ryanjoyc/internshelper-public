@@ -8,10 +8,9 @@ which is left alone.
 
 The server runs under a pipe-watchdog (see _WATCHDOG_SRC) that kills it whenever the
 launcher dies, however it dies — Cmd-Q terminates the launcher through the Cocoa runtime
-without unwinding Python, so cleanup can't live only after webview.start(). A pidfile
-(`data/app.pid`, holding the watchdog pid) backstops the rare case where the watchdog
-itself is gone but its server survived: a healthy server plus a live pidfile pid is ours
-to reap on close; a healthy server without one is someone else's and is left alone.
+without unwinding Python, so cleanup can't live only after webview.start(). Only the live
+Popen handle establishes process ownership. A server that predates this launcher is always
+left alone because a saved PID can be recycled and does not prove ownership.
 """
 
 from __future__ import annotations
@@ -28,7 +27,6 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 APP_PORT = 8510  # dedicated port so a manual dev run on another port never collides
-PIDFILE = _REPO_ROOT / "data" / "app.pid"
 LOG_MAX_BYTES = 1_000_000  # cap data/app.log at launch so it can't grow unbounded
 
 WINDOW_TITLE = "internsHELPer"
@@ -37,7 +35,6 @@ WINDOW_MIN_SIZE = (980, 640)  # app.css sets the matching body min-width: 980px
 
 # Ownership modes for an already-healthy server on APP_PORT.
 SPAWN = "spawn"          # no server: start one and own it
-ATTACH_OWN = "attach_own"    # our stale server (crashed window): attach + kill on close
 ATTACH_FOREIGN = "attach_foreign"  # someone else's server: attach, leave running
 
 
@@ -58,49 +55,37 @@ def port_in_use(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-# --- pidfile ------------------------------------------------------------------------
+# --- private runtime files ----------------------------------------------------------
 
-def read_pidfile(path: str | Path = PIDFILE) -> int | None:
+def _private_directory(path: Path) -> None:
+    if path == Path("."):
+        return
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.chmod(0o700)
+
+
+def _open_private_text(path: Path, mode: str):
+    _private_directory(path.parent)
+    handle = open(
+        path,
+        mode,
+        encoding="utf-8",
+        opener=lambda name, flags: os.open(name, flags, 0o600),
+    )
     try:
-        return int(Path(path).read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        return None
-
-
-def write_pidfile(pid: int, path: str | Path = PIDFILE) -> None:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(f"{pid}\n", encoding="utf-8")
-
-
-def clear_pidfile(path: str | Path = PIDFILE) -> None:
-    Path(path).unlink(missing_ok=True)
-
-
-def pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # A live pid we can't signal belongs to another user — pids get recycled, and a
-        # server we could never reap must not be claimed as ours (shutdown would crash).
-        return False
-    return True
+        if hasattr(os, "fchmod"):
+            os.fchmod(handle.fileno(), 0o600)
+    except BaseException:
+        handle.close()
+        raise
+    return handle
 
 
 # --- decisions (pure) ---------------------------------------------------------------
 
-def decide(healthy: bool, pidfile_pid: int | None, alive) -> str:
-    """Ownership mode for the server situation on APP_PORT.
-
-    `alive` is pid_alive, injected for testability.
-    """
-    if not healthy:
-        return SPAWN
-    if pidfile_pid is not None and alive(pidfile_pid):
-        return ATTACH_OWN
-    return ATTACH_FOREIGN
+def decide(healthy: bool) -> str:
+    """Start a server only when none exists; never claim a pre-existing process."""
+    return ATTACH_FOREIGN if healthy else SPAWN
 
 
 def server_command(port: int, repo_root: str | Path) -> list[str]:
@@ -160,8 +145,7 @@ def trim_log(path: str | Path, max_bytes: int = LOG_MAX_BYTES) -> None:
 def log_event(message: str, repo_root: str | Path = _REPO_ROOT) -> None:
     """Append a launcher lifecycle event to the Dock app log."""
     log_path = Path(repo_root) / "data" / "app.log"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a", encoding="utf-8") as log:
+    with _open_private_text(log_path, "a") as log:
         log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
 
 
@@ -169,9 +153,9 @@ def launch_server(port: int, repo_root: Path = _REPO_ROOT) -> subprocess.Popen:
     """Start the server under the watchdog. cwd stays the repo root so relative
     data/config paths and the log land in the right place."""
     log_path = repo_root / "data" / "app.log"
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    _private_directory(log_path.parent)
     trim_log(log_path)
-    log = open(log_path, "a", encoding="utf-8")
+    log = _open_private_text(log_path, "a")
     return subprocess.Popen(
         watchdog_command(port, repo_root),
         cwd=repo_root, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT,
@@ -179,26 +163,15 @@ def launch_server(port: int, repo_root: Path = _REPO_ROOT) -> subprocess.Popen:
     )
 
 
-def shutdown(pid_or_proc) -> None:
-    """Stop an owned server: terminate → wait → kill. Accepts a Popen or a bare pid."""
-    if isinstance(pid_or_proc, subprocess.Popen):
-        pid_or_proc.terminate()
-        try:
-            pid_or_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            pid_or_proc.kill()
-    else:
-        try:
-            os.kill(pid_or_proc, 15)
-            for _ in range(20):
-                if not pid_alive(pid_or_proc):
-                    break
-                time.sleep(0.25)
-            else:
-                os.kill(pid_or_proc, 9)
-        except ProcessLookupError:
-            pass
-    clear_pidfile()
+def shutdown(proc: subprocess.Popen) -> None:
+    """Stop a server process launched by this live app instance."""
+    if not isinstance(proc, subprocess.Popen):
+        raise TypeError("shutdown requires a process launched by this app instance")
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
 
 
 def fail(msg: str) -> int:
@@ -226,31 +199,21 @@ def main() -> int:
                         f"Run: .venv/bin/python -m pip install -e '{hint}'")
 
     port = APP_PORT
-    mode = decide(probe_health(port), read_pidfile(), pid_alive)
+    mode = decide(probe_health(port))
     proc = None
-    owned_pid = None
 
     if mode == SPAWN:
         if port_in_use(port):
-            # Something answers on 8510 but fails /healthz. If the pidfile says it's
-            # ours (e.g. a pre-upgrade Streamlit server from before the web-UI cutover),
-            # reap it and take the port back; otherwise fail loudly rather than hide the
-            # app on a random port no future launch would find.
-            stale = read_pidfile()
-            if stale is not None and pid_alive(stale):
-                shutdown(stale)
-            if port_in_use(port):
-                return fail(f"Port {port} is in use by another process. "
-                            "Quit it (or reboot) and relaunch internsHELPer.")
+            # The process on 8510 did not pass our health check, so its ownership is
+            # unknown. Never signal it based on stale local state.
+            return fail(f"Port {port} is in use by another process. "
+                        "Quit it (or reboot) and relaunch internsHELPer.")
         proc = launch_server(port)
-        write_pidfile(proc.pid)
         if not wait_for_server(lambda: probe_health(port)):
             shutdown(proc)
             return fail("The app server did not start in time. "
                         f"See {_REPO_ROOT / 'data' / 'app.log'} for details.")
         log_event(f"Dock app server ready on http://127.0.0.1:{port}")
-    elif mode == ATTACH_OWN:
-        owned_pid = read_pidfile()
 
     import webview  # heavy import (pyobjc); deferred until after the checks
 
@@ -262,8 +225,6 @@ def main() -> int:
 
     if proc is not None:
         shutdown(proc)
-    elif owned_pid is not None:
-        shutdown(owned_pid)
     return 0
 
 

@@ -5,6 +5,7 @@ and application tracking. All timestamps are UTC ISO-8601 strings.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from collections.abc import Iterable
@@ -79,8 +80,17 @@ def upsert(
     payload_path = None
     if is_new and payloads_dir is not None and posting.raw is not None:
         dest = payload_path_for(payloads_dir, posting.posting_id)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(json.dumps(posting.raw, indent=2, default=str))
+        dest.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        dest.parent.chmod(0o700)
+        with open(
+            dest,
+            "w",
+            encoding="utf-8",
+            opener=lambda name, flags: os.open(name, flags, 0o600),
+        ) as handle:
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), 0o600)
+            json.dump(posting.raw, handle, indent=2, default=str)
         payload_path = str(dest)
 
     conn.execute(

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <!-- InternsHELPer app icon — source of truth for internshelper/assets/icon-1024.png.
-       macOS tile grid (same as planTracker/icon.svg): 824x824 tile centered at (100,100),
+       macOS tile grid: 824x824 tile centered at (100,100),
        ~100px transparent margin, rounded squircle rx=185.
        Palette: dashboard indigo (#6b78ff -> #3f4ccc) with a white 🎯 target motif. -->
   <defs>

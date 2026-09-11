@@ -106,8 +106,8 @@ appends it to `config/sources.yaml` (your comments are preserved):
 Accepted URLs: `boards.greenhouse.io/<token>`, `jobs.lever.co/<token>`,
 `jobs.ashbyhq.com/<org>`, Workday careers sites, and GitHub lists (a `…/blob/…/listings.json` → `github`, a
 `…/blob/…/README.md` → `markdown`). For a **company name**, a **careers page**, or a **single
-job link** instead of a clean board URL, open the repo in Claude Code and run **`/add-source`**
-— the agent researches it, resolves it to a board, and calls the CLI for you.
+job link** instead of a clean board URL, run **`/add-source`** in a supported coding agent
+workspace; the agent researches it, resolves it to a board, and calls the CLI for you.
 
 `config/sources.yaml` is per-user and ignored by Git. Back it up privately if you want to share the
 same source list across your own machines. Keep reusable examples in
@@ -154,7 +154,8 @@ Each run: scrape → apply each source's coarse title guard → save raw payload
 duplicates and reconcile their availability evidence → refresh ranking hints and company groups.
 When optional email is enabled, it then sends an exactly-once Top-target digest. Community-list
 rows remain hidden until their destination check finishes. Data lives in
-`data/internshelper.db` (gitignored).
+`data/internshelper.db` (gitignored); on macOS and Linux, new database, payload, and app-log
+files use owner-only permissions.
 
 Set `INTERNSHELPER_FEATURE_COLLECT=0` to disable a machine's collector,
 `INTERNSHELPER_FEATURE_AVAILABILITY=0` to retain legacy collection without destination checks, or
@@ -200,8 +201,9 @@ checkout and needs the `app` extra (`pip install -e ".[app]"`, macOS only).
 
 Notes:
 
-- If a previous window crashed and left its server running, the next launch re-attaches to it and
-  cleans it up on quit. A server you started by hand on port 8510 is attached to but never killed.
+- If a healthy server is already running on port 8510, the app attaches to it and leaves it running
+  on quit. If another process occupies that port without passing the health check, the app asks you
+  to quit that process or reboot instead of trying to kill an unverified process.
 - The repo path is baked into the bundle at build time. If you move the repo, run `--install` again.
 - The bundle is unsigned. A local build runs normally; a copy received through AirDrop or a zip may
   need `xattr -dr com.apple.quarantine InternsHELPer.app`.
@@ -331,7 +333,8 @@ removal confirmation:
 .venv/bin/python -m pytest -m browser
 ```
 
-Connector tests run against frozen real fixtures (no live calls); store/run/notify/review logic
+Connector tests run against frozen, sanitized public-response fixtures (no live calls);
+store/run/notify/review logic
 (close-detection, payload capture, Top-target digest, company grouping, reversible deduplication,
 and schema migrations) is unit-tested. The portability layer is covered too: URL→source detection
 (`test_sourceurl`), the sources CLI incl. comment-preserving writes (`test_sources`), the `.env`
