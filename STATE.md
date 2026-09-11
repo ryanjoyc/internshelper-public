@@ -28,8 +28,8 @@ _Snapshot as of 2026-09-11, after public-release verification._
   relying on this snapshot.
 - **Remote effects:** this candidate has no remote. No repository was created, pushed, or made
   public during preparation.
-- **Historical branch:** `archive/phase2-connector-coverage` is archived development history and is
-  not a supported release branch.
+- **History:** the phase-two experiments are retained in `main`'s ancestry; `main` is the only
+  branch, with no tags or remote configured.
 
 ## Planning docs
 
