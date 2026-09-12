@@ -9,13 +9,15 @@ kept in Git history, not beside active guidance.
    authoritative documentation index.
 2. Use the repository's `internshelper-guide` skill for the module map, data flow, CLIs, config,
    and testing conventions.
-3. Read [`../README.md`](../README.md) for setup and operator workflows.
-4. Read [`../ROADMAP.md`](../ROADMAP.md) only for forward-looking product priorities.
+3. Read [`../README.md`](../README.md) for the public introduction and agent-first quick start.
+4. Use [`operator-guide.md`](operator-guide.md) for detailed installation, configuration, operation, automation, and testing.
+5. Read [`../ROADMAP.md`](../ROADMAP.md) only for forward-looking product priorities.
 
 ## Current references
 
 | Document | Use it for |
 |---|---|
+| [`operator-guide.md`](operator-guide.md) | Detailed installation, configuration, operation, automation, and testing. |
 | [`codex-cloud.md`](codex-cloud.md) | Reproduce the pstack engineering and test environment in Codex Cloud without real data or operations. |
 | [`source-coverage.md`](source-coverage.md) | Supported connectors, configured footprint, known boundaries, and connector acceptance criteria. |
 | [`ui-design-system.md`](ui-design-system.md) | Approved interface principles, tokens, component contracts, responsive behavior, and verification criteria. |

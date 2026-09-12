@@ -165,7 +165,8 @@ Subcommands below; use `--help` (or read the module's argparse) for full flags.
 - `STATE.md` — living current-focus, runtime, Git, and active-doc dashboard. Read first; verify its
   time-sensitive claims live when they matter.
 - `docs/README.md` — documentation catalog and lifecycle rules.
-- `README.md` — setup and operator workflows.
+- `README.md` — public introduction and agent-first quick start.
+- `docs/operator-guide.md` — detailed setup, operation, automation, and testing.
 - `ROADMAP.md` — forward-looking product direction only.
 - `docs/source-coverage.md` — connector support, boundaries, and acceptance criteria.
 - `docs/codex-cloud.md` — engineering-only Codex Cloud environment, pstack portability, safety

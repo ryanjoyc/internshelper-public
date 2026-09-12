@@ -1,6 +1,6 @@
 # Project state — internsHELPer
 
-_Last updated: 2026-09-11 · maintained by the project-state skills · keep this to one screen_
+_Last updated: 2026-09-12 · maintained by the project-state skills · keep this to one screen_
 
 ## Current focus
 
@@ -37,7 +37,8 @@ _Snapshot as of 2026-09-11, after public-release verification._
 |---|---|---|---|
 | Docs index | `docs/README.md` | Reading order and documentation lifecycle rules | active |
 | Roadmap | `ROADMAP.md` | Forward-looking product direction and deferred decisions | active |
-| Readme | `README.md` | Public setup, operation, testing, and privacy guidance | active |
+| Readme | `README.md` | Public introduction, agent workflow, quick start, and privacy boundary | active |
+| Operator guide | `docs/operator-guide.md` | Detailed setup, operation, automation, and testing | active |
 | Codex Cloud | `docs/codex-cloud.md` | Engineering-only Cloud setup and safety boundaries | active |
 | Source coverage | `docs/source-coverage.md` | Connector support, limits, and acceptance criteria | reference |
 | UI design system | `docs/ui-design-system.md` | Interface principles, components, and verification | reference |
